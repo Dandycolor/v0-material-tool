@@ -355,10 +355,19 @@ export function ModelMesh({
           console.log("[v0] Using matcap material with effects")
           console.log("[v0] Matcap settings:", matcapSettings)
           newMaterial = createMatcapMaterial(matcapTexture, matcapNormalMap, matcapSettings)
-        } else if (gradientSettings?.enabled) {
+          
+          // Log uniforms for debugging
+          if (newMaterial instanceof THREE.ShaderMaterial) {
+            console.log("[v0] Matcap shader uniforms:", {
+              bevelEnabled: newMaterial.uniforms.bevelEnabled.value,
+              bevelStrength: newMaterial.uniforms.bevelStrength.value,
+              bevelSmoothing: newMaterial.uniforms.bevelSmoothing.value,
+            })
+          }
+        } else if (renderMode === "gradient" && gradientSettings?.enabled) {
           console.log("[v0] Using gradient material")
           newMaterial = createGradientMaterial(gradientSettings)
-        } else if (hasCustomTextures) {
+        } else if (renderMode === "pbr" && hasCustomTextures) {
           console.log("[v0] Using custom PBR textures")
           newMaterial = createPBRMaterial(
             materialSettings,

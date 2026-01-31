@@ -1433,6 +1433,7 @@ function ExtrudedSVGMesh({
   gradientSettings,
   matcapNormalMap,
   matcapSettings,
+  renderMode,
 }: {
   geometrySettings: GeometrySettings
   materialSettings: MaterialSettings
@@ -1464,7 +1465,13 @@ function ExtrudedSVGMesh({
     rimIntensity: number
     rimPower: number
     rimColor: string
+    bevelEnabled: boolean
+    bevelStrength: number
+    bevelSmoothing: number
+    bevelContrast: number
+    bevelOffset: number
   }
+  renderMode?: "pbr" | "matcap" | "gradient"
 }) {
   const finalColorMap = hueShiftedColorMap || colorMap
   const finalColor = materialSettings.useHueShift ? new THREE.Color("#ffffff") : tintColor
@@ -1521,7 +1528,7 @@ function ExtrudedSVGMesh({
     return (
       <mesh ref={meshRef} geometry={geometry}>
         {!gradientSettings?.enabled && (
-          useMatcap && matcapTexture ? (
+          (renderMode === "matcap" && matcapTexture) || (useMatcap && matcapTexture) ? (
             <MatcapMaterialWithEffects 
               matcap={matcapTexture}
               normalMap={matcapNormalMap || null}
@@ -1777,6 +1784,10 @@ function PBRMesh({
           envIntensity={lightingSettings.envIntensity}
           hueShiftedColorMap={hueShiftedColorMap}
           gradientSettings={gradientSettings}
+          renderMode={renderMode}
+          matcapTexture={renderMode === "matcap" ? matcapTexture : null}
+          matcapNormalMap={renderMode === "matcap" ? matcapNormalMap : null}
+          matcapSettings={matcapSettings}
         />
       )}
     </>

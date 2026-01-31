@@ -9,6 +9,7 @@ import { Mesh } from "three"
 import { useThree } from "@react-three/fiber"
 import { TransformControls } from "@react-three/drei"
 import { createGradientMaterial } from "./gradient-shader"
+import { createBevelMaterial } from "./bevel-shader"
 
 interface ModelMeshProps {
   modelUrl: string
@@ -35,6 +36,11 @@ interface ModelMeshProps {
     rimIntensity: number
     rimPower: number
     rimColor: string
+    bevelEnabled: boolean
+    bevelStrength: number
+    bevelSmoothing: number
+    bevelContrast: number
+    bevelOffset: number
   }
   // Gradient
   gradientSettings?: {
@@ -677,6 +683,11 @@ function createMatcapMaterial(
     rimIntensity: number
     rimPower: number
     rimColor: string
+    bevelEnabled: boolean
+    bevelStrength: number
+    bevelSmoothing: number
+    bevelContrast: number
+    bevelOffset: number
   }
 ): THREE.ShaderMaterial {
   const vertexShader = `
@@ -701,6 +712,11 @@ function createMatcapMaterial(
     uniform float rimPower;
     uniform vec3 rimColor;
     uniform bool hasNormalMap;
+    uniform bool bevelEnabled;
+    uniform float bevelStrength;
+    uniform float bevelSmoothing;
+    uniform float bevelContrast;
+    uniform float bevelOffset;
 
     varying vec3 vNormal;
     varying vec3 vViewPosition;
@@ -725,6 +741,17 @@ function createMatcapMaterial(
       return normalize(T * (mapN.x * scale) + B * (mapN.y * scale) + N * mapN.z);
     }
 
+    float getBevelMask() {
+      // Edge detection based on normal derivatives
+      vec3 ddx = dFdx(vNormal);
+      vec3 ddy = dFdy(vNormal);
+      float edgeFactor = length(ddx) + length(ddy);
+      
+      // Smooth transition
+      float mask = smoothstep(0.0, bevelSmoothing * 0.5, edgeFactor);
+      return mask * bevelStrength;
+    }
+
     void main() {
       vec3 normal = normalize(vNormal);
 
@@ -744,12 +771,26 @@ function createMatcapMaterial(
 
       vec4 matcapColor = texture2D(matcap, matcapUv);
 
+      // Apply bevel effect if enabled
+      vec3 finalColor = matcapColor.rgb;
+      if (bevelEnabled) {
+        float bevelMask = getBevelMask();
+        
+        // Highlight on edges
+        float highlight = bevelMask;
+        finalColor += vec3(0.3 * highlight);
+        
+        // Shadow opposite side
+        float shadow = (1.0 - bevelMask) * bevelMask * 0.3;
+        finalColor *= (1.0 - shadow * (2.0 - bevelContrast));
+      }
+
       // Apply rim lighting with color
       float rim = 1.0 - max(dot(normalize(vViewPosition), normal), 0.0);
       rim = pow(rim, rimPower);
       vec3 rimLight = rimColor * rimIntensity * rim;
 
-      gl_FragColor = vec4(matcapColor.rgb + rimLight, matcapColor.a);
+      gl_FragColor = vec4(finalColor + rimLight, matcapColor.a);
     }
   `
 
@@ -762,6 +803,11 @@ function createMatcapMaterial(
       rimPower: { value: matcapSettings?.rimPower || 3 },
       rimColor: { value: new THREE.Color(matcapSettings?.rimColor || "#ffffff") },
       hasNormalMap: { value: !!matcapNormalMap },
+      bevelEnabled: { value: matcapSettings?.bevelEnabled || false },
+      bevelStrength: { value: matcapSettings?.bevelStrength || 0.5 },
+      bevelSmoothing: { value: matcapSettings?.bevelSmoothing || 0.5 },
+      bevelContrast: { value: matcapSettings?.bevelContrast || 1.0 },
+      bevelOffset: { value: matcapSettings?.bevelOffset || 0 },
     },
     vertexShader,
     fragmentShader,

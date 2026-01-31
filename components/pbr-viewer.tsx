@@ -116,6 +116,11 @@ function MatcapMaterialWithEffects({
   rimIntensity = 0,
   rimPower = 3,
   rimColor = "#ffffff",
+  bevelEnabled = false,
+  bevelStrength = 0.5,
+  bevelSmoothing = 0.5,
+  bevelContrast = 1.0,
+  bevelOffset = 0,
 }: {
   matcap: THREE.Texture | null
   normalMap: THREE.Texture | null
@@ -123,6 +128,11 @@ function MatcapMaterialWithEffects({
   rimIntensity?: number
   rimPower?: number
   rimColor?: string
+  bevelEnabled?: boolean
+  bevelStrength?: number
+  bevelSmoothing?: number
+  bevelContrast?: number
+  bevelOffset?: number
 }) {
   const materialRef = useRef<THREE.ShaderMaterial>(null)
 
@@ -135,6 +145,11 @@ function MatcapMaterialWithEffects({
       rimPower: { value: rimPower },
       rimColor: { value: new THREE.Color(rimColor) },
       hasNormalMap: { value: !!normalMap },
+      bevelEnabled: { value: bevelEnabled },
+      bevelStrength: { value: bevelStrength },
+      bevelSmoothing: { value: bevelSmoothing },
+      bevelContrast: { value: bevelContrast },
+      bevelOffset: { value: bevelOffset },
     }),
     []
   )
@@ -149,9 +164,14 @@ function MatcapMaterialWithEffects({
       materialRef.current.uniforms.rimPower.value = rimPower
       materialRef.current.uniforms.rimColor.value = new THREE.Color(rimColor)
       materialRef.current.uniforms.hasNormalMap.value = !!normalMap
+      materialRef.current.uniforms.bevelEnabled.value = bevelEnabled
+      materialRef.current.uniforms.bevelStrength.value = bevelStrength
+      materialRef.current.uniforms.bevelSmoothing.value = bevelSmoothing
+      materialRef.current.uniforms.bevelContrast.value = bevelContrast
+      materialRef.current.uniforms.bevelOffset.value = bevelOffset
       materialRef.current.needsUpdate = true
     }
-  }, [matcap, normalMap, normalIntensity, rimIntensity, rimPower, rimColor])
+  }, [matcap, normalMap, normalIntensity, rimIntensity, rimPower, rimColor, bevelEnabled, bevelStrength, bevelSmoothing, bevelContrast, bevelOffset])
 
   const vertexShader = `
     varying vec3 vNormal;
@@ -175,6 +195,11 @@ function MatcapMaterialWithEffects({
     uniform float rimPower;
     uniform vec3 rimColor;
     uniform bool hasNormalMap;
+    uniform bool bevelEnabled;
+    uniform float bevelStrength;
+    uniform float bevelSmoothing;
+    uniform float bevelContrast;
+    uniform float bevelOffset;
 
     varying vec3 vNormal;
     varying vec3 vViewPosition;
@@ -199,6 +224,19 @@ function MatcapMaterialWithEffects({
       return normalize(T * (mapN.x * scale) + B * (mapN.y * scale) + N * mapN.z);
     }
 
+    float getBevelEffect() {
+      // Simple edge detection - higher derivatives = edges
+      vec3 ddx = dFdx(vNormal);
+      vec3 ddy = dFdy(vNormal);
+      float edgeStrength = length(ddx) + length(ddy);
+      
+      // Clamp and smooth
+      edgeStrength = clamp(edgeStrength, 0.0, 1.0);
+      float bevelFactor = smoothstep(0.0, bevelSmoothing, edgeStrength * 2.0);
+      
+      return bevelFactor;
+    }
+
     void main() {
       vec3 normal = normalize(vNormal);
 
@@ -218,12 +256,30 @@ function MatcapMaterialWithEffects({
 
       vec4 matcapColor = texture2D(matcap, matcapUv);
 
+      vec3 finalColor = matcapColor.rgb;
+      
+      // Apply bevel effect if enabled
+      if (bevelEnabled) {
+        float bevelMask = getBevelEffect();
+        
+        // Apply bevel strength
+        float bevelAmount = bevelMask * bevelStrength;
+        
+        // Highlight effect on edges (bright) - increased visibility
+        float highlight = bevelAmount * 0.8;
+        finalColor = mix(finalColor, finalColor + vec3(0.5), highlight);
+        
+        // Shadow/darkening on opposite edges
+        float shadow = bevelAmount * bevelContrast * 0.4;
+        finalColor = mix(finalColor, finalColor * 0.6, shadow);
+      }
+
       // Apply rim lighting with color
       float rim = 1.0 - max(dot(normalize(vViewPosition), normal), 0.0);
       rim = pow(rim, rimPower);
       vec3 rimLight = rimColor * rimIntensity * rim;
 
-      gl_FragColor = vec4(matcapColor.rgb + rimLight, matcapColor.a);
+      gl_FragColor = vec4(finalColor + rimLight, matcapColor.a);
     }
   `
 
@@ -1458,6 +1514,11 @@ function ExtrudedSVGMesh({
               rimIntensity={matcapSettings?.rimIntensity || 0}
               rimPower={matcapSettings?.rimPower || 3}
               rimColor={matcapSettings?.rimColor || "#ffffff"}
+              bevelEnabled={matcapSettings?.bevelEnabled || false}
+              bevelStrength={matcapSettings?.bevelStrength || 0.5}
+              bevelSmoothing={matcapSettings?.bevelSmoothing || 0.5}
+              bevelContrast={matcapSettings?.bevelContrast || 1.0}
+              bevelOffset={matcapSettings?.bevelOffset || 0}
             />
           ) : (
             <Material materialSettings={materialSettings} shapeType="extruded" />
@@ -2341,6 +2402,11 @@ function SceneContent({
             rimIntensity={matcapSettings?.rimIntensity || 0}
             rimPower={matcapSettings?.rimPower || 3}
             rimColor={matcapSettings?.rimColor || "#ffffff"}
+            bevelEnabled={matcapSettings?.bevelEnabled || false}
+            bevelStrength={matcapSettings?.bevelStrength || 0.5}
+            bevelSmoothing={matcapSettings?.bevelSmoothing || 0.5}
+            bevelContrast={matcapSettings?.bevelContrast || 1.0}
+            bevelOffset={matcapSettings?.bevelOffset || 0}
           />
         </mesh>
       ) : geometrySettings.type === "model" ? (

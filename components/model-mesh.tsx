@@ -352,18 +352,7 @@ export function ModelMesh({
         let newMaterial: THREE.Material
 
         if (renderMode === "matcap" && matcapTexture) {
-          console.log("[v0] Using matcap material with effects")
-          console.log("[v0] Matcap settings:", matcapSettings)
           newMaterial = createMatcapMaterial(matcapTexture, matcapNormalMap, matcapSettings)
-          
-          // Log uniforms for debugging
-          if (newMaterial instanceof THREE.ShaderMaterial) {
-            console.log("[v0] Matcap shader uniforms:", {
-              bevelEnabled: newMaterial.uniforms.bevelEnabled.value,
-              bevelStrength: newMaterial.uniforms.bevelStrength.value,
-              bevelSmoothing: newMaterial.uniforms.bevelSmoothing.value,
-            })
-          }
         } else if (renderMode === "gradient" && gradientSettings?.enabled) {
           console.log("[v0] Using gradient material")
           newMaterial = createGradientMaterial(gradientSettings)
@@ -828,8 +817,5 @@ function createMatcapMaterial(
     vertexShader,
     fragmentShader,
     extensions: { derivatives: true },
-    onBeforeCompile: (shader) => {
-      console.log("[v0] Shader compiled with bevel enabled:", matcapSettings?.bevelEnabled)
-    }
   })
 }

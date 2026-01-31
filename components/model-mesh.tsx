@@ -353,6 +353,7 @@ export function ModelMesh({
 
         if (renderMode === "matcap" && matcapTexture) {
           console.log("[v0] Using matcap material with effects")
+          console.log("[v0] Matcap settings:", matcapSettings)
           newMaterial = createMatcapMaterial(matcapTexture, matcapNormalMap, matcapSettings)
         } else if (gradientSettings?.enabled) {
           console.log("[v0] Using gradient material")
@@ -741,15 +742,17 @@ function createMatcapMaterial(
       return normalize(T * (mapN.x * scale) + B * (mapN.y * scale) + N * mapN.z);
     }
 
-    float getBevelMask() {
-      // Edge detection based on normal derivatives
+    float getBevelEffect() {
+      // Simple edge detection - higher derivatives = edges
       vec3 ddx = dFdx(vNormal);
       vec3 ddy = dFdy(vNormal);
-      float edgeFactor = length(ddx) + length(ddy);
+      float edgeStrength = length(ddx) + length(ddy);
       
-      // Smooth transition
-      float mask = smoothstep(0.0, bevelSmoothing * 0.5, edgeFactor);
-      return mask * bevelStrength;
+      // Clamp and smooth
+      edgeStrength = clamp(edgeStrength, 0.0, 1.0);
+      float bevelFactor = smoothstep(0.0, bevelSmoothing, edgeStrength * 2.0);
+      
+      return bevelFactor;
     }
 
     void main() {
@@ -771,18 +774,22 @@ function createMatcapMaterial(
 
       vec4 matcapColor = texture2D(matcap, matcapUv);
 
-      // Apply bevel effect if enabled
       vec3 finalColor = matcapColor.rgb;
+      
+      // Apply bevel effect if enabled
       if (bevelEnabled) {
-        float bevelMask = getBevelMask();
+        float bevelMask = getBevelEffect();
         
-        // Highlight on edges
-        float highlight = bevelMask;
-        finalColor += vec3(0.3 * highlight);
+        // Apply bevel strength
+        float bevelAmount = bevelMask * bevelStrength;
         
-        // Shadow opposite side
-        float shadow = (1.0 - bevelMask) * bevelMask * 0.3;
-        finalColor *= (1.0 - shadow * (2.0 - bevelContrast));
+        // Highlight effect on edges (bright) - increased visibility
+        float highlight = bevelAmount * 0.8;
+        finalColor = mix(finalColor, finalColor + vec3(0.5), highlight);
+        
+        // Shadow/darkening on opposite edges
+        float shadow = bevelAmount * bevelContrast * 0.4;
+        finalColor = mix(finalColor, finalColor * 0.6, shadow);
       }
 
       // Apply rim lighting with color
@@ -812,5 +819,8 @@ function createMatcapMaterial(
     vertexShader,
     fragmentShader,
     extensions: { derivatives: true },
+    onBeforeCompile: (shader) => {
+      console.log("[v0] Shader compiled with bevel enabled:", matcapSettings?.bevelEnabled)
+    }
   })
 }

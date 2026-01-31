@@ -224,21 +224,45 @@ function MatcapMaterialWithEffects({
       return normalize(T * (mapN.x * scale) + B * (mapN.y * scale) + N * mapN.z);
     }
 
-    float getBevelEffect() {
-      // Simple edge detection - higher derivatives = edges
+    float getEdgeFactor() {
+      // Edge detection using normal derivatives
       vec3 ddx = dFdx(vNormal);
       vec3 ddy = dFdy(vNormal);
       float edgeStrength = length(ddx) + length(ddy);
       
-      // Clamp and smooth
-      edgeStrength = clamp(edgeStrength, 0.0, 1.0);
-      float bevelFactor = smoothstep(0.0, bevelSmoothing, edgeStrength * 2.0);
+      // Normalize and apply smoothing
+      edgeStrength = clamp(edgeStrength * 5.0, 0.0, 1.0);
+      return smoothstep(0.0, bevelSmoothing + 0.01, edgeStrength);
+    }
+
+    vec3 applyBevelToNormal(vec3 normal, float edgeFactor) {
+      // Create bevel by blending normal towards view direction on edges
+      vec3 viewDir = normalize(vViewPosition);
       
-      return bevelFactor;
+      // Calculate a perpendicular direction for bevel
+      vec3 bevelDir = normalize(cross(normal, viewDir));
+      vec3 bevelNormal = normalize(cross(bevelDir, normal));
+      
+      // Mix normal with beveled normal based on edge factor
+      float bevelAmount = edgeFactor * bevelStrength * 0.5;
+      vec3 modifiedNormal = mix(normal, bevelNormal, bevelAmount);
+      
+      return normalize(modifiedNormal);
     }
 
     void main() {
       vec3 normal = normalize(vNormal);
+      float edgeFactor = 0.0;
+
+      // Calculate edge factor if bevel is enabled
+      if (bevelEnabled) {
+        edgeFactor = getEdgeFactor();
+        
+        // Apply bevel modification to normal BEFORE matcap lookup
+        if (edgeFactor > 0.01) {
+          normal = applyBevelToNormal(normal, edgeFactor);
+        }
+      }
 
       // Apply normal map if available
       if (hasNormalMap && normalIntensity > 0.0) {
@@ -248,7 +272,7 @@ function MatcapMaterialWithEffects({
         normal = perturbNormal2Arb(-vViewPosition, normal, mapN, faceDirection);
       }
 
-      // Calculate matcap UV from perturbed normal
+      // Calculate matcap UV from the modified normal
       vec3 viewDir = normalize(vViewPosition);
       vec3 x = normalize(vec3(viewDir.z, 0.0, -viewDir.x));
       vec3 y = cross(viewDir, x);
@@ -258,20 +282,11 @@ function MatcapMaterialWithEffects({
 
       vec3 finalColor = matcapColor.rgb;
       
-      // Apply bevel effect if enabled
-      if (bevelEnabled) {
-        float bevelMask = getBevelEffect();
-        
-        // Apply bevel strength
-        float bevelAmount = bevelMask * bevelStrength;
-        
-        // Highlight effect on edges (bright) - increased visibility
-        float highlight = bevelAmount * 0.8;
-        finalColor = mix(finalColor, finalColor + vec3(0.5), highlight);
-        
-        // Shadow/darkening on opposite edges
-        float shadow = bevelAmount * bevelContrast * 0.4;
-        finalColor = mix(finalColor, finalColor * 0.6, shadow);
+      // Apply additional contrast on edges if bevel is enabled
+      if (bevelEnabled && edgeFactor > 0.01) {
+        // Subtle highlight/shadow based on contrast setting
+        float contrastMod = (edgeFactor - 0.5) * bevelContrast * 0.3;
+        finalColor = finalColor * (1.0 + contrastMod);
       }
 
       // Apply rim lighting with color

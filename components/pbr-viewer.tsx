@@ -1527,24 +1527,22 @@ function ExtrudedSVGMesh({
   if (geometry) {
     return (
       <mesh ref={meshRef} geometry={geometry}>
-        {!gradientSettings?.enabled && (
-          (renderMode === "matcap" && matcapTexture) || (useMatcap && matcapTexture) ? (
-            <MatcapMaterialWithEffects 
-              matcap={matcapTexture}
-              normalMap={matcapNormalMap || null}
-              normalIntensity={matcapSettings?.normalIntensity || 1}
-              rimIntensity={matcapSettings?.rimIntensity || 0}
-              rimPower={matcapSettings?.rimPower || 3}
-              rimColor={matcapSettings?.rimColor || "#ffffff"}
-              bevelEnabled={matcapSettings?.bevelEnabled || false}
-              bevelStrength={matcapSettings?.bevelStrength || 0.5}
-              bevelSmoothing={matcapSettings?.bevelSmoothing || 0.5}
-              bevelContrast={matcapSettings?.bevelContrast || 1.0}
-              bevelOffset={matcapSettings?.bevelOffset || 0}
-            />
-          ) : (
-            <Material materialSettings={materialSettings} shapeType="extruded" />
-          )
+        {gradientSettings?.enabled ? null : (renderMode === "matcap" && matcapTexture) || (useMatcap && matcapTexture) ? (
+          <MatcapMaterialWithEffects 
+            matcap={matcapTexture}
+            normalMap={matcapNormalMap || null}
+            normalIntensity={matcapSettings?.normalIntensity || 1}
+            rimIntensity={matcapSettings?.rimIntensity || 0}
+            rimPower={matcapSettings?.rimPower || 3}
+            rimColor={matcapSettings?.rimColor || "#ffffff"}
+            bevelEnabled={matcapSettings?.bevelEnabled || false}
+            bevelStrength={matcapSettings?.bevelStrength || 0.5}
+            bevelSmoothing={matcapSettings?.bevelSmoothing || 0.5}
+            bevelContrast={matcapSettings?.bevelContrast || 1.0}
+            bevelOffset={matcapSettings?.bevelOffset || 0}
+          />
+        ) : (
+          <Material materialSettings={materialSettings} shapeType="extruded" />
         )}
       </mesh>
     )

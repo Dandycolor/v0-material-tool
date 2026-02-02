@@ -201,7 +201,7 @@ export function ModelSearch({ onSelect, onClose }: ModelSearchProps) {
                   : "bg-[#2d2d2d] text-zinc-400 hover:text-white"
               }`}
             >
-              3D Scans
+              Sketchfab
             </button>
             <button
               onClick={() => setUploadTab("upload")}
@@ -227,7 +227,7 @@ export function ModelSearch({ onSelect, onClose }: ModelSearchProps) {
 
           {uploadTab === "threedscans" && (
             <Input
-              placeholder="Search 3D scans (head, face, hand...)"
+              placeholder="Поиск моделей (персонаж, голова, объект...)"
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value)
@@ -414,7 +414,7 @@ export function ModelSearch({ onSelect, onClose }: ModelSearchProps) {
         {uploadTab === "threedscans" && (
           <div className="p-3 border-t border-[#2a2a2a]">
             <p className="text-xs text-zinc-500 text-center">
-              3D Scans powered by threedscans.com. Click to download and load.
+              Модели от Sketchfab. Кликните для загрузки и просмотра.
             </p>
           </div>
         )}

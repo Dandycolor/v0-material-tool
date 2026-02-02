@@ -20,6 +20,8 @@ import { ModelSearch } from "@/components/model-search"
 import { MaterialPreview } from "@/components/material-preview"
 
 import { LightRotationControl } from "@/components/light-rotation-control"
+import { VectorPrimitivePreview } from "@/components/vector-primitive-preview"
+import { VectorExtrude } from "@/components/vector-extrude"
 
 interface IconifyIcon {
   id: string // format: "prefix:name" e.g. "mdi:flower"
@@ -917,6 +919,8 @@ export default function MaterialTool() {
   const [showModelSearch, setShowModelSearch] = useState(false)
   const [showIconSearch, setShowIconSearch] = useState(false)
   const [modelLoadError, setModelLoadError] = useState<string | null>(null)
+  const [selectedVectorPrimitive, setSelectedVectorPrimitive] = useState<any>(null)
+  const [extrudedVectorPath, setExtrudedVectorPath] = useState<string | null>(null)
 
   const [openSections, setOpenSections] = useState({
     geometry: true,
@@ -1374,6 +1378,12 @@ export default function MaterialTool() {
                 className="text-zinc-500 text-sm py-2 px-4 rounded-lg data-[state=active]:bg-[#2d2d2d] data-[state=active]:text-white hover:text-zinc-300 transition-colors"
               >
                 Lighting
+              </TabsTrigger>
+              <TabsTrigger
+                value="vector"
+                className="text-zinc-500 text-sm py-2 px-4 rounded-lg data-[state=active]:bg-[#2d2d2d] data-[state=active]:text-white hover:text-zinc-300 transition-colors"
+              >
+                Vector
               </TabsTrigger>
             </TabsList>
 
@@ -2884,6 +2894,31 @@ export default function MaterialTool() {
                   </p>
                   </div>
                 )}
+              </TabsContent>
+
+              <TabsContent value="vector">
+                <div className="space-y-6 px-4">
+                  <VectorPrimitivePreview
+                    onSelect={(shape) => {
+                      setSelectedVectorPrimitive(shape)
+                      setExtrudedVectorPath(shape.path)
+                    }}
+                    onExtrude={(shape) => {
+                      setExtrudedVectorPath(shape.path)
+                    }}
+                  />
+
+                  {extrudedVectorPath && (
+                    <VectorExtrude
+                      svgPath={extrudedVectorPath}
+                      shapeName={selectedVectorPrimitive?.name || "Selected Shape"}
+                      depth={10}
+                      onDepthChange={(depth) => {
+                        console.log("[v0] Extrude depth changed:", depth)
+                      }}
+                    />
+                  )}
+                </div>
               </TabsContent>
             </Tabs>
           </div>

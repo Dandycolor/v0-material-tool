@@ -63,13 +63,14 @@ export function ModelSearch({ onSelect, onClose }: ModelSearchProps) {
   const loadThreeScansModels = async (searchQuery: string = "") => {
     setThreeScansLoading(true)
     try {
-      const url = new URL("https://api.threedscans.com/v1/search")
+      // Use our own API route to avoid CORS issues
+      const params = new URLSearchParams()
       if (searchQuery) {
-        url.searchParams.append("q", searchQuery)
+        params.append("q", searchQuery)
       }
-      url.searchParams.append("limit", "24")
+      params.append("limit", "24")
       
-      const response = await fetch(url.toString())
+      const response = await fetch(`/api/threedscans/search?${params.toString()}`)
       const data = await response.json()
       
       // Transform the API response to match our Model interface

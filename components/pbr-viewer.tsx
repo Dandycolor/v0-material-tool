@@ -116,11 +116,6 @@ function MatcapMaterialWithEffects({
   rimIntensity = 0,
   rimPower = 3,
   rimColor = "#ffffff",
-  bevelEnabled = false,
-  bevelStrength = 0.5,
-  bevelSmoothing = 0.5,
-  bevelContrast = 1.0,
-  bevelOffset = 0,
 }: {
   matcap: THREE.Texture | null
   normalMap: THREE.Texture | null
@@ -128,11 +123,6 @@ function MatcapMaterialWithEffects({
   rimIntensity?: number
   rimPower?: number
   rimColor?: string
-  bevelEnabled?: boolean
-  bevelStrength?: number
-  bevelSmoothing?: number
-  bevelContrast?: number
-  bevelOffset?: number
 }) {
   const materialRef = useRef<THREE.ShaderMaterial>(null)
 
@@ -145,11 +135,6 @@ function MatcapMaterialWithEffects({
       rimPower: { value: rimPower },
       rimColor: { value: new THREE.Color(rimColor) },
       hasNormalMap: { value: !!normalMap },
-      bevelEnabled: { value: bevelEnabled },
-      bevelStrength: { value: bevelStrength },
-      bevelSmoothing: { value: bevelSmoothing },
-      bevelContrast: { value: bevelContrast },
-      bevelOffset: { value: bevelOffset },
     }),
     []
   )
@@ -164,14 +149,9 @@ function MatcapMaterialWithEffects({
       materialRef.current.uniforms.rimPower.value = rimPower
       materialRef.current.uniforms.rimColor.value = new THREE.Color(rimColor)
       materialRef.current.uniforms.hasNormalMap.value = !!normalMap
-      materialRef.current.uniforms.bevelEnabled.value = bevelEnabled
-      materialRef.current.uniforms.bevelStrength.value = bevelStrength
-      materialRef.current.uniforms.bevelSmoothing.value = bevelSmoothing
-      materialRef.current.uniforms.bevelContrast.value = bevelContrast
-      materialRef.current.uniforms.bevelOffset.value = bevelOffset
       materialRef.current.needsUpdate = true
     }
-  }, [matcap, normalMap, normalIntensity, rimIntensity, rimPower, rimColor, bevelEnabled, bevelStrength, bevelSmoothing, bevelContrast, bevelOffset])
+  }, [matcap, normalMap, normalIntensity, rimIntensity, rimPower, rimColor])
 
   const vertexShader = `
     varying vec3 vNormal;
@@ -195,11 +175,6 @@ function MatcapMaterialWithEffects({
     uniform float rimPower;
     uniform vec3 rimColor;
     uniform bool hasNormalMap;
-    uniform bool bevelEnabled;
-    uniform float bevelStrength;
-    uniform float bevelSmoothing;
-    uniform float bevelContrast;
-    uniform float bevelOffset;
 
     varying vec3 vNormal;
     varying vec3 vViewPosition;
@@ -224,45 +199,8 @@ function MatcapMaterialWithEffects({
       return normalize(T * (mapN.x * scale) + B * (mapN.y * scale) + N * mapN.z);
     }
 
-    float getEdgeFactor() {
-      // Edge detection using normal derivatives
-      vec3 ddx = dFdx(vNormal);
-      vec3 ddy = dFdy(vNormal);
-      float edgeStrength = length(ddx) + length(ddy);
-      
-      // Normalize and apply smoothing
-      edgeStrength = clamp(edgeStrength * 5.0, 0.0, 1.0);
-      return smoothstep(0.0, bevelSmoothing + 0.01, edgeStrength);
-    }
-
-    vec3 applyBevelToNormal(vec3 normal, float edgeFactor) {
-      // Create bevel by blending normal towards view direction on edges
-      vec3 viewDir = normalize(vViewPosition);
-      
-      // Calculate a perpendicular direction for bevel
-      vec3 bevelDir = normalize(cross(normal, viewDir));
-      vec3 bevelNormal = normalize(cross(bevelDir, normal));
-      
-      // Mix normal with beveled normal based on edge factor
-      float bevelAmount = edgeFactor * bevelStrength * 0.5;
-      vec3 modifiedNormal = mix(normal, bevelNormal, bevelAmount);
-      
-      return normalize(modifiedNormal);
-    }
-
     void main() {
       vec3 normal = normalize(vNormal);
-      float edgeFactor = 0.0;
-
-      // Calculate edge factor if bevel is enabled
-      if (bevelEnabled) {
-        edgeFactor = getEdgeFactor();
-        
-        // Apply bevel modification to normal BEFORE matcap lookup
-        if (edgeFactor > 0.01) {
-          normal = applyBevelToNormal(normal, edgeFactor);
-        }
-      }
 
       // Apply normal map if available
       if (hasNormalMap && normalIntensity > 0.0) {
@@ -272,7 +210,7 @@ function MatcapMaterialWithEffects({
         normal = perturbNormal2Arb(-vViewPosition, normal, mapN, faceDirection);
       }
 
-      // Calculate matcap UV from the modified normal
+      // Calculate matcap UV from perturbed normal
       vec3 viewDir = normalize(vViewPosition);
       vec3 x = normalize(vec3(viewDir.z, 0.0, -viewDir.x));
       vec3 y = cross(viewDir, x);
@@ -280,21 +218,12 @@ function MatcapMaterialWithEffects({
 
       vec4 matcapColor = texture2D(matcap, matcapUv);
 
-      vec3 finalColor = matcapColor.rgb;
-      
-      // Apply additional contrast on edges if bevel is enabled
-      if (bevelEnabled && edgeFactor > 0.01) {
-        // Subtle highlight/shadow based on contrast setting
-        float contrastMod = (edgeFactor - 0.5) * bevelContrast * 0.3;
-        finalColor = finalColor * (1.0 + contrastMod);
-      }
-
       // Apply rim lighting with color
       float rim = 1.0 - max(dot(normalize(vViewPosition), normal), 0.0);
       rim = pow(rim, rimPower);
       vec3 rimLight = rimColor * rimIntensity * rim;
 
-      gl_FragColor = vec4(finalColor + rimLight, matcapColor.a);
+      gl_FragColor = vec4(matcapColor.rgb + rimLight, matcapColor.a);
     }
   `
 
@@ -1433,7 +1362,6 @@ function ExtrudedSVGMesh({
   gradientSettings,
   matcapNormalMap,
   matcapSettings,
-  renderMode,
 }: {
   geometrySettings: GeometrySettings
   materialSettings: MaterialSettings
@@ -1465,13 +1393,7 @@ function ExtrudedSVGMesh({
     rimIntensity: number
     rimPower: number
     rimColor: string
-    bevelEnabled: boolean
-    bevelStrength: number
-    bevelSmoothing: number
-    bevelContrast: number
-    bevelOffset: number
   }
-  renderMode?: "pbr" | "matcap" | "gradient"
 }) {
   const finalColorMap = hueShiftedColorMap || colorMap
   const finalColor = materialSettings.useHueShift ? new THREE.Color("#ffffff") : tintColor
@@ -1527,22 +1449,19 @@ function ExtrudedSVGMesh({
   if (geometry) {
     return (
       <mesh ref={meshRef} geometry={geometry}>
-        {gradientSettings?.enabled ? null : (renderMode === "matcap" && matcapTexture) || (useMatcap && matcapTexture) ? (
-          <MatcapMaterialWithEffects 
-            matcap={matcapTexture}
-            normalMap={matcapNormalMap || null}
-            normalIntensity={matcapSettings?.normalIntensity || 1}
-            rimIntensity={matcapSettings?.rimIntensity || 0}
-            rimPower={matcapSettings?.rimPower || 3}
-            rimColor={matcapSettings?.rimColor || "#ffffff"}
-            bevelEnabled={matcapSettings?.bevelEnabled || false}
-            bevelStrength={matcapSettings?.bevelStrength || 0.5}
-            bevelSmoothing={matcapSettings?.bevelSmoothing || 0.5}
-            bevelContrast={matcapSettings?.bevelContrast || 1.0}
-            bevelOffset={matcapSettings?.bevelOffset || 0}
-          />
-        ) : (
-          <Material materialSettings={materialSettings} shapeType="extruded" />
+        {!gradientSettings?.enabled && (
+          useMatcap && matcapTexture ? (
+            <MatcapMaterialWithEffects 
+              matcap={matcapTexture}
+              normalMap={matcapNormalMap || null}
+              normalIntensity={matcapSettings?.normalIntensity || 1}
+              rimIntensity={matcapSettings?.rimIntensity || 0}
+              rimPower={matcapSettings?.rimPower || 3}
+              rimColor={matcapSettings?.rimColor || "#ffffff"}
+            />
+          ) : (
+            <Material materialSettings={materialSettings} shapeType="extruded" />
+          )
         )}
       </mesh>
     )
@@ -1782,10 +1701,6 @@ function PBRMesh({
           envIntensity={lightingSettings.envIntensity}
           hueShiftedColorMap={hueShiftedColorMap}
           gradientSettings={gradientSettings}
-          renderMode={renderMode}
-          matcapTexture={renderMode === "matcap" ? matcapTexture : null}
-          matcapNormalMap={renderMode === "matcap" ? matcapNormalMap : null}
-          matcapSettings={matcapSettings}
         />
       )}
     </>
@@ -2426,11 +2341,6 @@ function SceneContent({
             rimIntensity={matcapSettings?.rimIntensity || 0}
             rimPower={matcapSettings?.rimPower || 3}
             rimColor={matcapSettings?.rimColor || "#ffffff"}
-            bevelEnabled={matcapSettings?.bevelEnabled || false}
-            bevelStrength={matcapSettings?.bevelStrength || 0.5}
-            bevelSmoothing={matcapSettings?.bevelSmoothing || 0.5}
-            bevelContrast={matcapSettings?.bevelContrast || 1.0}
-            bevelOffset={matcapSettings?.bevelOffset || 0}
           />
         </mesh>
       ) : geometrySettings.type === "model" ? (

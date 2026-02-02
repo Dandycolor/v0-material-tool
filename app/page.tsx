@@ -912,12 +912,6 @@ export default function MaterialTool() {
     rimIntensity: 0,
     rimPower: 3,
     rimColor: "#ffffff",
-    // Bevel settings
-    bevelEnabled: false,
-    bevelStrength: 0.5,
-    bevelSmoothing: 0.5,
-    bevelContrast: 1.0,
-    bevelOffset: 0,
   })
 
   const [showModelSearch, setShowModelSearch] = useState(false)
@@ -2182,106 +2176,6 @@ export default function MaterialTool() {
                                 </div>
                                 <p className="text-[10px] text-zinc-600 mt-2">
                                   Edge glow effect for enhanced depth
-                                </p>
-                              </div>
-
-                              <div className="mt-4 pt-4 border-t border-[#2a2a2a]">
-                                <div className="flex items-center justify-between mb-3">
-                                  <Label className="text-xs text-zinc-500 uppercase tracking-wider">Bevel Effect</Label>
-                                  <Switch
-                                    checked={matcapSettings.bevelEnabled}
-                                    onCheckedChange={(checked) =>
-                                      setMatcapSettings({ ...matcapSettings, bevelEnabled: checked })
-                                    }
-                                  />
-                                </div>
-
-                                {matcapSettings.bevelEnabled && (
-                                  <div className="space-y-3">
-                                    <div>
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-[10px] text-zinc-600">Strength</span>
-                                        <span className="text-xs text-zinc-500 font-mono">
-                                          {matcapSettings.bevelStrength.toFixed(2)}
-                                        </span>
-                                      </div>
-                                      <Slider
-                                        value={[matcapSettings.bevelStrength]}
-                                        onValueChange={([value]) =>
-                                          setMatcapSettings({ ...matcapSettings, bevelStrength: value })
-                                        }
-                                        min={0}
-                                        max={2}
-                                        step={0.05}
-                                        className="w-full"
-                                      />
-                                      <p className="text-[10px] text-zinc-700 mt-1">Edge intensity</p>
-                                    </div>
-
-                                    <div>
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-[10px] text-zinc-600">Smoothing</span>
-                                        <span className="text-xs text-zinc-500 font-mono">
-                                          {matcapSettings.bevelSmoothing.toFixed(2)}
-                                        </span>
-                                      </div>
-                                      <Slider
-                                        value={[matcapSettings.bevelSmoothing]}
-                                        onValueChange={([value]) =>
-                                          setMatcapSettings({ ...matcapSettings, bevelSmoothing: value })
-                                        }
-                                        min={0}
-                                        max={1}
-                                        step={0.05}
-                                        className="w-full"
-                                      />
-                                      <p className="text-[10px] text-zinc-700 mt-1">Softness of bevel edges</p>
-                                    </div>
-
-                                    <div>
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-[10px] text-zinc-600">Contrast</span>
-                                        <span className="text-xs text-zinc-500 font-mono">
-                                          {matcapSettings.bevelContrast.toFixed(2)}
-                                        </span>
-                                      </div>
-                                      <Slider
-                                        value={[matcapSettings.bevelContrast]}
-                                        onValueChange={([value]) =>
-                                          setMatcapSettings({ ...matcapSettings, bevelContrast: value })
-                                        }
-                                        min={0.5}
-                                        max={2}
-                                        step={0.05}
-                                        className="w-full"
-                                      />
-                                      <p className="text-[10px] text-zinc-700 mt-1">Light/shadow contrast</p>
-                                    </div>
-
-                                    <div>
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-[10px] text-zinc-600">Offset</span>
-                                        <span className="text-xs text-zinc-500 font-mono">
-                                          {matcapSettings.bevelOffset.toFixed(2)}
-                                        </span>
-                                      </div>
-                                      <Slider
-                                        value={[matcapSettings.bevelOffset]}
-                                        onValueChange={([value]) =>
-                                          setMatcapSettings({ ...matcapSettings, bevelOffset: value })
-                                        }
-                                        min={-1}
-                                        max={1}
-                                        step={0.05}
-                                        className="w-full"
-                                      />
-                                      <p className="text-[10px] text-zinc-700 mt-1">Bevel position offset</p>
-                                    </div>
-                                  </div>
-                                )}
-
-                                <p className="text-[10px] text-zinc-600 mt-2">
-                                  Fake 3D chamfered edges using normal mapping
                                 </p>
                               </div>
                             </div>

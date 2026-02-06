@@ -20,7 +20,6 @@ import { ModelSearch } from "@/components/model-search"
 import { MaterialPreview } from "@/components/material-preview"
 
 import { LightRotationControl } from "@/components/light-rotation-control"
-import { PotteryWheel } from "@/components/pottery-wheel"
 
 interface IconifyIcon {
   id: string // format: "prefix:name" e.g. "mdi:flower"
@@ -853,6 +852,8 @@ export default function MaterialTool() {
     inflateSphereRadius: 0.5, // Радиус сферы влияния (меньшее значение для локального эффекта)
     flatBase: false, // Flat Base toggle
     deformEnabled: false, // Enable deform для extruded SVG
+    usePotteryMode: false, // Pottery wheel/lathe mode
+    latheSegments: 64, // Number of segments around the axis for lathe geometry
   })
 
   const [materialSettings, setMaterialSettings] = useState<MaterialSettings>({
@@ -918,8 +919,6 @@ export default function MaterialTool() {
   const [showModelSearch, setShowModelSearch] = useState(false)
   const [showIconSearch, setShowIconSearch] = useState(false)
   const [modelLoadError, setModelLoadError] = useState<string | null>(null)
-  const [usePotteryMode, setUsePotteryMode] = useState(false)
-  const [potteryRotationSpeed, setPotteryRotationSpeed] = useState(0.5)
 
   const [openSections, setOpenSections] = useState({
     geometry: true,
@@ -1359,7 +1358,7 @@ export default function MaterialTool() {
           </div>
 
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value)}>
-            <TabsList className="flex w-full bg-transparent p-0 px-4 mb-5 gap-1 overflow-x-auto overflow-y-hidden pb-2 scrollbar-hide">
+            <TabsList className="flex w-full bg-transparent p-0 px-4 mb-5 gap-1">
               <TabsTrigger
                 value="geometry"
                 className="text-zinc-500 text-sm py-2 px-4 rounded-lg data-[state=active]:bg-[#2d2d2d] data-[state=active]:text-white hover:text-zinc-300 transition-colors"
@@ -1377,12 +1376,6 @@ export default function MaterialTool() {
                 className="text-zinc-500 text-sm py-2 px-4 rounded-lg data-[state=active]:bg-[#2d2d2d] data-[state=active]:text-white hover:text-zinc-300 transition-colors"
               >
                 Lighting
-              </TabsTrigger>
-              <TabsTrigger
-                value="vector"
-                className="text-zinc-500 text-sm py-2 px-4 rounded-lg data-[state=active]:bg-[#2d2d2d] data-[state=active]:text-white hover:text-zinc-300 transition-colors"
-              >
-                Vector
               </TabsTrigger>
             </TabsList>
 
@@ -1728,6 +1721,48 @@ export default function MaterialTool() {
                             className=""
                           />
                           <p className="text-xs text-zinc-500">Adjusts texture tiling to fix stretching on bevels</p>
+                        </div>
+
+                        <div className="pt-4 space-y-4 border-t border-[#2a2a2a]/50">
+                          <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-gradient-to-r from-amber-900/20 to-orange-900/20 border border-amber-700/30">
+                            <div className="flex-1">
+                              <Label className="text-sm font-semibold text-amber-100 block mb-1">
+                                Pottery Wheel Mode
+                              </Label>
+                              <p className="text-xs text-amber-200/70">
+                                {geometrySettings.usePotteryMode
+                                  ? "Rotate profile around central axis"
+                                  : "Standard extrusion mode"}
+                              </p>
+                            </div>
+                            <Switch
+                              checked={geometrySettings.usePotteryMode}
+                              onCheckedChange={(checked) =>
+                                setGeometrySettings({ ...geometrySettings, usePotteryMode: checked })
+                              }
+                              className="data-[state=checked]:bg-amber-600"
+                            />
+                          </div>
+
+                          {geometrySettings.usePotteryMode && (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-xs text-zinc-500">Bevel Segments</Label>
+                                <span className="text-xs text-white font-mono">{geometrySettings.latheSegments}</span>
+                              </div>
+                              <Slider
+                                value={[geometrySettings.latheSegments]}
+                                onValueChange={([value]) =>
+                                  setGeometrySettings({ ...geometrySettings, latheSegments: value })
+                                }
+                                min={8}
+                                max={128}
+                                step={4}
+                                className="w-full"
+                              />
+                              <p className="text-xs text-zinc-500">Controls smoothness around the rotation axis</p>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -2893,51 +2928,6 @@ export default function MaterialTool() {
                   </p>
                   </div>
                 )}
-              </TabsContent>
-
-              <TabsContent value="vector" className="px-4">
-                <div className="space-y-6">
-                  <div className="p-4 rounded-lg bg-gradient-to-r from-amber-900/30 to-orange-900/30 border border-amber-700/50">
-                    <div className="flex items-center gap-3">
-                      <Switch
-                        checked={usePotteryMode}
-                        onCheckedChange={setUsePotteryMode}
-                        className="data-[state=checked]:bg-amber-600"
-                      />
-                      <div className="flex-1">
-                        <Label className="text-sm font-semibold text-amber-100 block mb-1">
-                          Режим гончарного круга (Pottery Wheel)
-                        </Label>
-                        <p className="text-xs text-amber-200/70">
-                          {usePotteryMode
-                            ? 'Вращайте профиль вокруг центральной оси'
-                            : 'Выключен - используется режим экструзии'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {usePotteryMode ? (
-                    <PotteryWheel
-                      svgPath="/pottery-shapes/union-1.svg"
-                      shapeName="Union 1"
-                      rotationSpeed={potteryRotationSpeed}
-                      onRotationSpeedChange={setPotteryRotationSpeed}
-                    />
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="p-4 rounded-lg bg-zinc-900/50 border border-zinc-700">
-                        <h3 className="text-sm font-semibold text-zinc-300 mb-2">Режим экструзии</h3>
-                        <p className="text-xs text-zinc-500 mb-4">
-                          Выберите векторный примитив и выдавите его в 3D форму
-                        </p>
-                        <div className="text-center py-8 text-zinc-500 text-sm">
-                          <p>Включите режим гончарного круга выше для интерактивного вращения профилей</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
               </TabsContent>
             </Tabs>
           </div>

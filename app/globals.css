@@ -160,12 +160,3 @@
 .bg-accent-selected {
   background-color: oklch(0.72 0.14 195);
 }
-
-.scrollbar-hide {
-  -ms-overflow-style: none; /* IE and Edge */
-  scrollbar-width: none; /* Firefox */
-}
-
-.scrollbar-hide::-webkit-scrollbar {
-  display: none; /* Chrome, Safari and Opera */
-}

@@ -1204,6 +1204,57 @@ function isPointInShape(x: number, y: number, points: THREE.Vector2[]): boolean 
   return inside
 }
 
+function createLatheGeometry(
+  svgString: string,
+  segments: number,
+): THREE.BufferGeometry | null {
+  if (!svgString) return null
+
+  try {
+    const shapes = parseSVGContent(svgString)
+    if (shapes.length === 0) {
+      console.warn("[v0] No valid shapes found in SVG for lathe")
+      return null
+    }
+
+    const shape = shapes[0]
+    const points = shape.getPoints(50)
+
+    if (points.length < 2) {
+      console.warn("[v0] Not enough points for lathe geometry")
+      return null
+    }
+
+    const lathePoints: THREE.Vector2[] = points.map((p) => new THREE.Vector2(Math.abs(p.x), p.y))
+
+    lathePoints.sort((a, b) => a.y - b.y)
+
+    const geometry = new THREE.LatheGeometry(lathePoints, segments, 0, Math.PI * 2)
+
+    geometry.center()
+    geometry.computeBoundingBox()
+    const box = geometry.boundingBox
+    if (!box) return null
+
+    const size = new THREE.Vector3()
+    box.getSize(size)
+    const maxDim = Math.max(size.x, size.y, size.z)
+
+    if (maxDim > 0) {
+      const scale = 2 / maxDim
+      geometry.scale(scale, scale, scale)
+    }
+
+    geometry.computeVertexNormals()
+    console.log("[v0] Created lathe geometry with", segments, "segments")
+
+    return geometry
+  } catch (error) {
+    console.error("[v0] Error creating lathe geometry:", error)
+    return null
+  }
+}
+
 function createExtrudedGeometry(
   svgString: string,
   thickness: number,
@@ -1415,6 +1466,14 @@ function ExtrudedSVGMesh({
 
   const geometry = useMemo(() => {
     if (!geometrySettings.svgPath) return null
+    
+    if (geometrySettings.usePotteryMode) {
+      return createLatheGeometry(
+        geometrySettings.svgPath,
+        geometrySettings.latheSegments || 64,
+      )
+    }
+    
     const baseGeometry = createExtrudedGeometry(
       geometrySettings.svgPath,
       geometrySettings.thickness,
@@ -1430,6 +1489,8 @@ function ExtrudedSVGMesh({
     geometrySettings.bevelSize,
     geometrySettings.bevelSegments,
     geometrySettings.bevelQuality,
+    geometrySettings.usePotteryMode,
+    geometrySettings.latheSegments,
   ])
 
   const meshRef = useRef<THREE.Mesh>(null)

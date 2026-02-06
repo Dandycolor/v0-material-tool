@@ -1218,7 +1218,7 @@ function createLatheGeometry(
     }
 
     const shape = shapes[0]
-    const points = shape.getPoints(30)
+    const points = shape.getPoints(20)
 
     if (points.length < 2) {
       console.warn("[v0] Not enough points for lathe geometry")
@@ -1226,7 +1226,6 @@ function createLatheGeometry(
     }
 
     const lathePoints: THREE.Vector2[] = points.map((p) => new THREE.Vector2(Math.abs(p.x), p.y))
-
     lathePoints.sort((a, b) => a.y - b.y)
 
     const geometry = new THREE.LatheGeometry(lathePoints, segments, 0, Math.PI * 2)
@@ -1247,34 +1246,45 @@ function createLatheGeometry(
 
     geometry.computeBoundingBox()
     const bbox = geometry.boundingBox!
-    const heightRange = bbox.max.y - bbox.min.y
     
-    const uvArray = geometry.attributes.uv.array as Float32Array
     const positionArray = geometry.attributes.position.array as Float32Array
+    const normalArray = geometry.attributes.normal.array as Float32Array
+    const uvCount = positionArray.length / 3
+    const newUVs = new Float32Array(uvCount * 2)
     
-    for (let i = 0; i < uvArray.length; i += 2) {
-      const vertexIndex = i / 2
-      const x = positionArray[vertexIndex * 3]
-      const y = positionArray[vertexIndex * 3 + 1]
-      const z = positionArray[vertexIndex * 3 + 2]
+    for (let i = 0; i < uvCount; i++) {
+      const x = positionArray[i * 3]
+      const y = positionArray[i * 3 + 1]
+      const z = positionArray[i * 3 + 2]
       
-      const radius = Math.sqrt(x * x + z * z)
-      const circumference = 2 * Math.PI * radius
+      const nx = normalArray[i * 3]
+      const ny = normalArray[i * 3 + 1]
+      const nz = normalArray[i * 3 + 2]
       
-      let angle = Math.atan2(z, x)
-      if (angle < 0) angle += Math.PI * 2
+      const absNx = Math.abs(nx)
+      const absNy = Math.abs(ny)
+      const absNz = Math.abs(nz)
       
-      const u = angle / (Math.PI * 2)
-      const v = (y - bbox.min.y) / heightRange
+      let u = 0
+      let v = 0
       
-      uvArray[i] = u * 2
-      uvArray[i + 1] = v * 2
+      if (absNy > absNx && absNy > absNz) {
+        u = x
+        v = z
+      } else {
+        const angle = Math.atan2(z, x)
+        u = (angle / Math.PI + 1) * 0.5
+        v = (y - bbox.min.y) / (bbox.max.y - bbox.min.y)
+      }
+      
+      newUVs[i * 2] = u
+      newUVs[i * 2 + 1] = v
     }
     
-    geometry.attributes.uv.needsUpdate = true
+    geometry.setAttribute('uv', new THREE.BufferAttribute(newUVs, 2))
     geometry.computeVertexNormals()
     
-    console.log("[v0] Created lathe geometry with", segments, "segments and custom UV mapping")
+    console.log("[v0] Created lathe geometry with", segments, "segments,", points.length, "profile points")
 
     return geometry
   } catch (error) {

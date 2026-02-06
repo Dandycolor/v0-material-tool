@@ -853,7 +853,7 @@ export default function MaterialTool() {
     flatBase: false, // Flat Base toggle
     deformEnabled: false, // Enable deform для extruded SVG
     usePotteryMode: false, // Pottery wheel/lathe mode
-    latheSegments: 48, // Number of segments around the axis for lathe geometry
+    latheSegments: 32, // Number of segments around the axis for lathe geometry
   })
 
   const [materialSettings, setMaterialSettings] = useState<MaterialSettings>({
@@ -1756,11 +1756,11 @@ export default function MaterialTool() {
                                   setGeometrySettings({ ...geometrySettings, latheSegments: value })
                                 }
                                 min={16}
-                                max={96}
+                                max={64}
                                 step={4}
                                 className="w-full"
                               />
-                              <p className="text-xs text-zinc-500">Controls smoothness around the rotation axis (16-96 for optimal performance)</p>
+                              <p className="text-xs text-zinc-500">Controls smoothness around the rotation axis (16-64 recommended)</p>
                             </div>
                           )}
                         </div>

@@ -1774,22 +1774,6 @@ export default function MaterialTool() {
 
               <TabsContent value="material">
                 <div className="space-y-4 px-4">
-                  {/* Warning banner for incompatible materials */}
-                  {(materialTypeTab === "gradient" || materialTypeTab === "matcap") && (
-                    <div className="bg-amber-950 border border-amber-700 rounded-lg p-3 flex gap-3">
-                      <Info className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="text-sm text-amber-200 font-medium">
-                          PBR Lighting disabled
-                        </p>
-                        <p className="text-xs text-amber-300 mt-1">
-                          {materialTypeTab === "gradient" 
-                            ? "Gradient materials use their own shading and don't support PBR lighting."
-                            : "Matcap materials use baked lighting and don't support PBR lighting."}
-                        </p>
-                      </div>
-                    </div>
-                  )}
                   {/* Material Type Tabs */}
                   <Tabs value={materialTypeTab} onValueChange={setMaterialTypeTab} className="w-full">
                   <TabsList className="flex w-full bg-transparent p-0 gap-1 mb-4 border-b border-[#2a2a2a]">
@@ -2798,6 +2782,22 @@ export default function MaterialTool() {
               <TabsContent value="lighting">
               {renderMode === "pbr" ? (
                 <div className="space-y-4 px-4">
+                  {/* Warning banner for incompatible materials */}
+                  {(materialTypeTab === "gradient" || materialTypeTab === "matcap") && (
+                    <div className="bg-amber-950 border border-amber-700 rounded-lg p-3 flex gap-3">
+                      <Info className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-sm text-amber-200 font-medium">
+                          PBR Lighting disabled
+                        </p>
+                        <p className="text-xs text-amber-300 mt-1">
+                          {materialTypeTab === "gradient" 
+                            ? "Gradient materials use their own shading and don't support PBR lighting."
+                            : "Matcap materials use baked lighting and don't support PBR lighting."}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   <div className="rounded-lg overflow-hidden">
                     <div className="p-4">
                       <div className="flex justify-between items-center mb-3">

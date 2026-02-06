@@ -2784,13 +2784,13 @@ export default function MaterialTool() {
                 <div className="space-y-4 px-4">
                   {/* Warning banner for incompatible materials */}
                   {(materialTypeTab === "gradient" || materialTypeTab === "matcap") && (
-                    <div className="bg-amber-950 border border-amber-700 rounded-lg p-3 flex gap-3">
-                      <Info className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div className="border rounded-lg p-3 flex gap-3 bg-zinc-800 border-zinc-700">
+                      <Info className="w-5 h-5 flex-shrink-0 mt-0.5 text-white" />
                       <div className="flex-1">
-                        <p className="text-sm text-amber-200 font-medium">
+                        <p className="text-sm font-medium text-slate-50">
                           PBR Lighting disabled
                         </p>
-                        <p className="text-xs text-amber-300 mt-1">
+                        <p className="text-xs mt-1 text-neutral-600">
                           {materialTypeTab === "gradient" 
                             ? "Gradient materials use their own shading and don't support PBR lighting."
                             : "Matcap materials use baked lighting and don't support PBR lighting."}

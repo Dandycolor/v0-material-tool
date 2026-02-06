@@ -2514,7 +2514,7 @@ function SceneContent({
       </TransformControls>
       </group>
       <GridHelper visible={showGrid} />
-      <axesHelper args={[0.5]} position={[0, -1.2, 0]} visible={showRotateControls} />
+      {showRotateControls && <axesHelper args={[0.5]} position={[0, -1.2, 0]} />}
     </>
   )
 }

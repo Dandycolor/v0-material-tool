@@ -1359,7 +1359,7 @@ export default function MaterialTool() {
           </div>
 
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value)}>
-            <TabsList className="flex w-full bg-transparent p-0 px-4 mb-5 gap-1">
+            <TabsList className="flex w-full bg-transparent p-0 px-4 mb-5 gap-1 overflow-x-auto overflow-y-hidden pb-2 scrollbar-hide">
               <TabsTrigger
                 value="geometry"
                 className="text-zinc-500 text-sm py-2 px-4 rounded-lg data-[state=active]:bg-[#2d2d2d] data-[state=active]:text-white hover:text-zinc-300 transition-colors"
@@ -2896,16 +2896,25 @@ export default function MaterialTool() {
               </TabsContent>
 
               <TabsContent value="vector" className="px-4">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3 p-4 rounded-lg bg-[#2a2a2a]/50">
-                    <Switch
-                      checked={usePotteryMode}
-                      onCheckedChange={setUsePotteryMode}
-                      className="data-[state=checked]:bg-amber-600"
-                    />
-                    <Label className="text-sm text-zinc-300 cursor-pointer">
-                      Режим гончарного круга (Pottery Wheel)
-                    </Label>
+                <div className="space-y-6">
+                  <div className="p-4 rounded-lg bg-gradient-to-r from-amber-900/30 to-orange-900/30 border border-amber-700/50">
+                    <div className="flex items-center gap-3">
+                      <Switch
+                        checked={usePotteryMode}
+                        onCheckedChange={setUsePotteryMode}
+                        className="data-[state=checked]:bg-amber-600"
+                      />
+                      <div className="flex-1">
+                        <Label className="text-sm font-semibold text-amber-100 block mb-1">
+                          Режим гончарного круга (Pottery Wheel)
+                        </Label>
+                        <p className="text-xs text-amber-200/70">
+                          {usePotteryMode
+                            ? 'Вращайте профиль вокруг центральной оси'
+                            : 'Выключен - используется режим экструзии'}
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
                   {usePotteryMode ? (
@@ -2916,8 +2925,16 @@ export default function MaterialTool() {
                       onRotationSpeedChange={setPotteryRotationSpeed}
                     />
                   ) : (
-                    <div className="text-center py-8 text-zinc-500 text-sm">
-                      <p>Включите режим гончарного круга чтобы начать</p>
+                    <div className="space-y-4">
+                      <div className="p-4 rounded-lg bg-zinc-900/50 border border-zinc-700">
+                        <h3 className="text-sm font-semibold text-zinc-300 mb-2">Режим экструзии</h3>
+                        <p className="text-xs text-zinc-500 mb-4">
+                          Выберите векторный примитив и выдавите его в 3D форму
+                        </p>
+                        <div className="text-center py-8 text-zinc-500 text-sm">
+                          <p>Включите режим гончарного круга выше для интерактивного вращения профилей</p>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

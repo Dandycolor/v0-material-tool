@@ -1596,6 +1596,7 @@ function ExtrudedSVGMesh({
     geometrySettings.bevelQuality,
     geometrySettings.usePotteryMode,
     geometrySettings.latheSegments,
+    geometrySettings.latheAxis,
   ])
 
   const meshRef = useRef<THREE.Mesh>(null)

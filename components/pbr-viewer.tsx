@@ -1245,6 +1245,10 @@ function createLatheGeometry(
       geometry.scale(scale, scale, scale)
     }
 
+    geometry.computeBoundingBox()
+    const bbox = geometry.boundingBox!
+    const heightRange = bbox.max.y - bbox.min.y
+    
     const uvArray = geometry.attributes.uv.array as Float32Array
     const positionArray = geometry.attributes.position.array as Float32Array
     
@@ -1254,18 +1258,23 @@ function createLatheGeometry(
       const y = positionArray[vertexIndex * 3 + 1]
       const z = positionArray[vertexIndex * 3 + 2]
       
-      const angle = Math.atan2(z, x)
-      const u = (angle + Math.PI) / (Math.PI * 2)
+      const radius = Math.sqrt(x * x + z * z)
+      const circumference = 2 * Math.PI * radius
       
-      const height = (y + 1) / 2
-      const v = height
+      let angle = Math.atan2(z, x)
+      if (angle < 0) angle += Math.PI * 2
       
-      uvArray[i] = u
-      uvArray[i + 1] = v
+      const u = angle / (Math.PI * 2)
+      const v = (y - bbox.min.y) / heightRange
+      
+      uvArray[i] = u * 2
+      uvArray[i + 1] = v * 2
     }
     
     geometry.attributes.uv.needsUpdate = true
     geometry.computeVertexNormals()
+    
+    console.log("[v0] Created lathe geometry with", segments, "segments and custom UV mapping")
 
     return geometry
   } catch (error) {

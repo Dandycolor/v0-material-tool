@@ -1247,7 +1247,8 @@ function createLatheGeometry(
       return new THREE.Vector2(x, y)
     })
 
-    const geometry = new THREE.LatheGeometry(lathePoints, segments, 0, Math.PI * 2)
+    // Create lathe geometry - add one extra segment to ensure seamless closure
+    const geometry = new THREE.LatheGeometry(lathePoints, segments + 1, 0, Math.PI * 2)
 
     geometry.center()
     geometry.computeBoundingBox()
@@ -1285,41 +1286,6 @@ function createLatheGeometry(
     }
     
     geometry.setAttribute('uv', new THREE.BufferAttribute(newUVs, 2))
-    
-    // Fix seam artifacts by smoothing UV discontinuities at the wraparound point
-    const posAttr = geometry.attributes.position
-    const uvAttr = geometry.attributes.uv
-    const indices = geometry.index?.array as Uint32Array | null
-    
-    if (indices) {
-      // Check for UV discontinuities and smooth them
-      for (let i = 0; i < indices.length; i += 3) {
-        const i0 = indices[i]
-        const i1 = indices[i + 1]
-        const i2 = indices[i + 2]
-        
-        const u0 = uvAttr.getX(i0)
-        const u1 = uvAttr.getX(i1)
-        const u2 = uvAttr.getX(i2)
-        
-        // Detect and fix UV wrapping discontinuities
-        // If there's a large jump in U coordinates, it's likely a seam
-        if (Math.abs(u1 - u0) > 0.5) {
-          if (u0 > u1) uvAttr.setX(i1, u1 + 1)
-          else uvAttr.setX(i0, u0 + 1)
-        }
-        if (Math.abs(u2 - u1) > 0.5) {
-          if (u1 > u2) uvAttr.setX(i2, u2 + 1)
-          else uvAttr.setX(i1, u1 + 1)
-        }
-        if (Math.abs(u2 - u0) > 0.5) {
-          if (u0 > u2) uvAttr.setX(i2, u2 + 1)
-          else uvAttr.setX(i0, u0 + 1)
-        }
-      }
-      uvAttr.needsUpdate = true
-    }
-    
     geometry.computeVertexNormals()
 
     return geometry

@@ -1351,6 +1351,38 @@ function createLatheGeometry(
     
     // Recompute normals after seam smoothing to ensure consistency
     geometry.computeVertexNormals()
+    
+    // Ensure normals face outward - check if they need to be flipped
+    const finalNormArray = geometry.attributes.normal.array as Float32Array
+    const finalPosArray = geometry.attributes.position.array as Float32Array
+    
+    // Sample a few faces to determine if normals are pointing outward
+    let outwardCount = 0
+    const sampleFaces = Math.min(100, Math.floor(finalPosArray.length / 9))
+    
+    for (let i = 0; i < sampleFaces; i++) {
+      const faceIdx = Math.floor((i / sampleFaces) * (finalPosArray.length / 3))
+      const px = finalPosArray[faceIdx * 3]
+      const py = finalPosArray[faceIdx * 3 + 1]
+      const pz = finalPosArray[faceIdx * 3 + 2]
+      
+      const nx = finalNormArray[faceIdx * 3]
+      const ny = finalNormArray[faceIdx * 3 + 1]
+      const nz = finalNormArray[faceIdx * 3 + 2]
+      
+      // If dot product is positive, normal points outward (good)
+      if (px * nx + py * ny + pz * nz > 0) {
+        outwardCount++
+      }
+    }
+    
+    // If most normals point inward, flip all of them
+    if (outwardCount < sampleFaces * 0.5) {
+      for (let i = 0; i < finalNormArray.length; i++) {
+        finalNormArray[i] *= -1
+      }
+      geometry.attributes.normal.needsUpdate = true
+    }
 
     return geometry
   } catch (error) {

@@ -55,16 +55,31 @@ export function createProceduralShape(params: ProceduralShapeParams): THREE.Buff
     const noiseVal1 = seededRandom(randomSeed + i * 0.1) * 2 - 1
     const noiseVal2 = seededRandom(randomSeed + i * 0.2 + 100) * 2 - 1
 
-    // Apply bulge/indent with sinusoidal variation
+    // Fade factor для плавного затухания деформаций к верхушке и низу
+    // Это создает плавный переход вместо резкого обрыва
+    let fadeFactor = 1
+    const fadeZoneSize = 0.15 // 15% от верха и низа - зона затухания
+    
+    if (t > 1 - fadeZoneSize) {
+      // Затухание к верхушке
+      const fadeBlend = (1 - t) / fadeZoneSize
+      fadeFactor *= fadeBlend * fadeBlend // Квадратичное затухание для плавности
+    } else if (t < fadeZoneSize) {
+      // Затухание к низу
+      const fadeBlend = t / fadeZoneSize
+      fadeFactor *= fadeBlend * fadeBlend
+    }
+
+    // Apply bulge/indent with sinusoidal variation, но они затухают к верхушке/низу
     const bulgeSin = Math.sin(t * Math.PI) // Peak in the middle
-    const bulgeAmount = bulgeSin * bulgeFactor
+    const bulgeAmount = bulgeSin * bulgeFactor * fadeFactor // fadeFactor ослабляет булж к краям
     // Используем bulgeFrequency для контроля количества волн
-    const indentAmount = Math.sin(t * Math.PI * bulgeFrequency) * indentFactor
+    const indentAmount = Math.sin(t * Math.PI * bulgeFrequency) * indentFactor * fadeFactor
 
     // Combine all radius variations
     radiusVar += (bulgeAmount - indentAmount) * 0.5
-    radiusVar += noiseVal1 * noiseScale * 0.1
-    radiusVar += noiseVal2 * noiseScale * 0.05
+    radiusVar += noiseVal1 * noiseScale * 0.1 * fadeFactor
+    radiusVar += noiseVal2 * noiseScale * 0.05 * fadeFactor
 
     // Применяем заострение к верхушке и низу
     // topSharpness: 0 = широкая плоская площадка, 1 = острый конус

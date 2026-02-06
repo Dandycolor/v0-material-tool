@@ -1,8 +1,6 @@
 "use client"
 
-import React from "react"
-
-import { Canvas, useLoader, useThree, useFrame } from "@react-three/fiber"
+import { Canvas, useLoader, useThree } from "@react-three/fiber"
 import { OrbitControls, Environment, TransformControls } from "@react-three/drei"
 import * as THREE from "three"
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
@@ -2148,50 +2146,6 @@ interface SceneContentProps {
   onGeometrySettingsChange?: (settings: Partial<GeometrySettings>) => void
 }
 
-// Component to apply saved transforms
-function SavedTransformGroup({ 
-  savedTransform, 
-  children 
-}: { 
-  savedTransform: { position: THREE.Vector3; quaternion: THREE.Quaternion }
-  children: React.ReactNode
-}) {
-  const groupRef = useRef<THREE.Group>(null)
-  
-  // Применяем сохранённую трансформацию при монтировании
-  useEffect(() => {
-    if (groupRef.current) {
-      const group = groupRef.current
-      console.log("[v0] Применяю трансформацию:", savedTransform)
-      group.position.copy(savedTransform.position)
-      group.quaternion.copy(savedTransform.quaternion)
-    }
-  }, [savedTransform])
-  
-  return <group ref={groupRef}>{children}</group>
-}
-
-function TransformGroup({ 
-  savedTransform, 
-  children 
-}: { 
-  savedTransform: { position: [number, number, number]; quaternion: [number, number, number, number] }
-  children: React.ReactNode
-}) {
-  const groupRef = useRef(null)
-  
-  // Применяем сохранённую трансформацию через useEffect после монтирования
-  useEffect(() => {
-    if (groupRef.current) {
-      const group = groupRef.current as any
-      group.position.set(...savedTransform.position)
-      group.quaternion.set(...savedTransform.quaternion)
-    }
-  }, [])
-  
-  return <group ref={groupRef}>{children}</group>
-}
-
 function SceneContent({
   geometrySettings,
   materialSettings,
@@ -2210,36 +2164,6 @@ function SceneContent({
   backgroundColor,
 }: SceneContentProps & { onExportReady: (fn: () => void) => void, backgroundColor?: string }) {
   const { gl, scene, camera } = useThree()
-  const modelGroupRef = useRef(null)
-  const contentGroupRef = useRef<THREE.Group>(null)
-  
-  // Используем useRef для сохранения трансформации как THREE объектов
-  const savedTransformRef = useRef({
-    position: new THREE.Vector3(0, 0, 0),
-    quaternion: new THREE.Quaternion(0, 0, 0, 1)
-  })
-  
-  // Постоянно обновляем сохранённую трансформацию на каждом кадре когда режим Rotate активен
-  useFrame(() => {
-    if (showRotateControls && contentGroupRef.current) {
-      const group = contentGroupRef.current
-      savedTransformRef.current.position.copy(group.position)
-      savedTransformRef.current.quaternion.copy(group.quaternion)
-    }
-  })
-  
-  // Сохраняем трансформацию когда режим Rotate выключается
-  useEffect(() => {
-    if (!showRotateControls && contentGroupRef.current) {
-      const group = contentGroupRef.current
-      console.log("[v0] Сохраняю трансформацию при выключении Rotate:", {
-        position: [group.position.x, group.position.y, group.position.z],
-        quaternion: [group.quaternion.x, group.quaternion.y, group.quaternion.z, group.quaternion.w]
-      })
-      savedTransformRef.current.position.copy(group.position)
-      savedTransformRef.current.quaternion.copy(group.quaternion)
-    }
-  }, [showRotateControls])
   
   // Apply background color
   useEffect(() => {
@@ -2515,7 +2439,7 @@ function SceneContent({
     }
   }, [matcapNormalMap, matcapSettings?.normalRepeat])
 
-  const content = (
+  return (
     <>
       {showMatcap ? (
         <>
@@ -2585,24 +2509,6 @@ function SceneContent({
           />
         </>
       )}
-    </>
-  )
-
-  return (
-    <>
-      <group ref={modelGroupRef}>
-        {showRotateControls ? (
-          <TransformControls mode="rotate">
-            <group ref={contentGroupRef}>
-              {content}
-            </group>
-          </TransformControls>
-        ) : (
-          <SavedTransformGroup savedTransform={savedTransformRef.current}>
-            {content}
-          </SavedTransformGroup>
-        )}
-      </group>
       <GridHelper visible={showGrid} />
       {showRotateControls && <axesHelper args={[0.5]} position={[0, -1.2, 0]} />}
     </>

@@ -1243,7 +1243,7 @@ function createLatheGeometry(
     const sizeY = maxY - minY
     
     const rightSidePoints = allPoints
-      .filter(p => p.x >= centerX)
+      .filter(p => p.x >= centerX - 0.01)
       .map(p => ({
         x: p.x - centerX,
         y: p.y - centerY
@@ -1251,14 +1251,38 @@ function createLatheGeometry(
     
     rightSidePoints.sort((a, b) => a.y - b.y)
     
-    const lathePoints: THREE.Vector2[] = rightSidePoints.map(p => 
-      new THREE.Vector2(
-        Math.abs(p.x),
-        p.y
+    const heightBuckets = 12
+    const bucketHeight = sizeY / heightBuckets
+    const simplifiedPoints: {x: number, y: number}[] = []
+    
+    for (let i = 0; i < heightBuckets; i++) {
+      const bucketMinY = minY - centerY + i * bucketHeight
+      const bucketMaxY = bucketMinY + bucketHeight
+      
+      const pointsInBucket = rightSidePoints.filter(
+        p => p.y >= bucketMinY && p.y < bucketMaxY
       )
+      
+      if (pointsInBucket.length > 0) {
+        const maxXInBucket = Math.max(...pointsInBucket.map(p => Math.abs(p.x)))
+        const avgY = pointsInBucket.reduce((sum, p) => sum + p.y, 0) / pointsInBucket.length
+        simplifiedPoints.push({ x: maxXInBucket, y: avgY })
+      }
+    }
+    
+    if (simplifiedPoints.length < 2) {
+      simplifiedPoints.push({ x: 0, y: minY - centerY })
+      simplifiedPoints.push({ x: sizeX / 2, y: 0 })
+      simplifiedPoints.push({ x: 0, y: maxY - centerY })
+    }
+    
+    simplifiedPoints.sort((a, b) => a.y - b.y)
+    
+    const lathePoints: THREE.Vector2[] = simplifiedPoints.map(p => 
+      new THREE.Vector2(Math.abs(p.x), p.y)
     )
     
-    console.log("[v0] Lathe profile: extracted", lathePoints.length, "points from right side")
+    console.log("[v0] Lathe profile: simplified from", rightSidePoints.length, "to", lathePoints.length, "points")
 
     const geometry = new THREE.LatheGeometry(lathePoints, segments, 0, Math.PI * 2)
 
@@ -1293,8 +1317,8 @@ function createLatheGeometry(
       const u = (angle / (Math.PI * 2) + 0.5) % 1.0
       const v = (y - bbox.min.y) / heightRange
       
-      newUVs[i * 2] = u * 3
-      newUVs[i * 2 + 1] = v * 3
+      newUVs[i * 2] = u
+      newUVs[i * 2 + 1] = v
     }
     
     geometry.setAttribute('uv', new THREE.BufferAttribute(newUVs, 2))

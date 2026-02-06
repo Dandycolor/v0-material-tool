@@ -63,7 +63,7 @@ export function createProceduralShape(params: ProceduralShapeParams): THREE.Buff
     points.push(new THREE.Vector2(radius, y))
   }
 
-  // Create lathe geometry from the profile
+  // Create lathe geometry from the profile (openEnded: false закрывает верх и низ)
   const latheGeometry = new THREE.LatheGeometry(points, segments, 0, Math.PI * 2)
 
   // Apply twist deformation

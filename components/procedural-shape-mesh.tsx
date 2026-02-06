@@ -65,6 +65,7 @@ export function ProceduralShapeMesh({
         matcap: matcapTexture,
         normalMap: matcapNormalMap || undefined,
         normalScale: normalScaleVector || new THREE.Vector2(1, 1),
+        flatShading: false, // Smooth shading для мягких граней
       })
     }
 
@@ -78,6 +79,7 @@ export function ProceduralShapeMesh({
       metalness: materialSettings.metalness ?? 0,
       color: tintColor,
       side: THREE.FrontSide,
+      flatShading: false, // Smooth shading для мягких граней
       transmission: materialSettings.transmission ?? 0,
       ior: materialSettings.ior ?? 1.5,
       thickness: materialSettings.thickness ?? 0.5,

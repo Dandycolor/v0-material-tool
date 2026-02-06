@@ -38,8 +38,8 @@ export function createProceduralShape(params: ProceduralShapeParams): THREE.Buff
     return x - Math.floor(x)
   }
 
-  // Create the profile curve with bulges and indents
-  const profileSegments = Math.max(16, Math.floor(height / 4))
+  // Create the profile curve with bulges and indents (больше сегментов = более гладкая форма)
+  const profileSegments = Math.max(64, Math.floor(height * 32))
   for (let i = 0; i <= profileSegments; i++) {
     const t = i / profileSegments // 0 to 1
     const y = (t - 0.5) * height

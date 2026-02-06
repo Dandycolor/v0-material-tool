@@ -2166,6 +2166,11 @@ function SceneContent({
   const { gl, scene, camera } = useThree()
   const modelGroupRef = useRef(null)
   const modelQuaternionRef = useRef(new THREE.Quaternion())
+  const transformStateRef = useRef({
+    position: new THREE.Vector3(0, 0, 0),
+    quaternion: new THREE.Quaternion(),
+    scale: new THREE.Vector3(1, 1, 1)
+  })
   
   // Apply background color
   useEffect(() => {
@@ -2520,11 +2525,15 @@ function SceneContent({
     const group = modelGroupRef.current as any
     
     if (showRotateControls) {
-      // Reset rotation to stored quaternion when entering rotate mode
-      group.quaternion.copy(modelQuaternionRef.current)
+      // Entering rotate mode - restore saved transform
+      group.position.copy(transformStateRef.current.position)
+      group.quaternion.copy(transformStateRef.current.quaternion)
+      group.scale.copy(transformStateRef.current.scale)
     } else {
-      // Save current rotation when exiting rotate mode
-      modelQuaternionRef.current.copy(group.quaternion)
+      // Exiting rotate mode - save current transform
+      transformStateRef.current.position.copy(group.position)
+      transformStateRef.current.quaternion.copy(group.quaternion)
+      transformStateRef.current.scale.copy(group.scale)
     }
   }, [showRotateControls])
 

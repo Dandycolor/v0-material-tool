@@ -2153,19 +2153,30 @@ function SavedTransformGroup({
   savedTransform, 
   children 
 }: { 
-  savedTransform: { quaternion: THREE.Quaternion; position: THREE.Vector3 }
-  children: React.ReactNode 
+  savedTransform: { position: THREE.Vector3; quaternion: THREE.Quaternion }
+  children: React.ReactNode
 }) {
-  const groupRef = useRef<THREE.Group>(null)
+  const groupRef = useRef(null)
+  const hasApplied = useRef(false)
   
   useEffect(() => {
-    if (groupRef.current) {
-      console.log("[v0] Restoring transform:", {
-        quaternion: savedTransform.quaternion,
-        position: savedTransform.position
-      })
-      groupRef.current.quaternion.copy(savedTransform.quaternion)
-      groupRef.current.position.copy(savedTransform.position)
+    // Apply transform on next frame to ensure group is mounted
+    const timer = setTimeout(() => {
+      if (groupRef.current && !hasApplied.current) {
+        const group = groupRef.current as any
+        console.log("[v0] Restoring transform to:", {
+          position: [savedTransform.position.x, savedTransform.position.y, savedTransform.position.z],
+          quaternion: [savedTransform.quaternion.x, savedTransform.quaternion.y, savedTransform.quaternion.z, savedTransform.quaternion.w]
+        })
+        group.position.copy(savedTransform.position)
+        group.quaternion.copy(savedTransform.quaternion)
+        hasApplied.current = true
+      }
+    }, 0)
+    
+    return () => {
+      clearTimeout(timer)
+      hasApplied.current = false
     }
   }, [savedTransform])
   
@@ -2555,10 +2566,6 @@ function SceneContent({
                 const group = contentGroupRef.current as any
                 savedTransformRef.current.quaternion.copy(group.quaternion)
                 savedTransformRef.current.position.copy(group.position)
-                console.log("[v0] Saved transform:", {
-                  quaternion: savedTransformRef.current.quaternion,
-                  position: savedTransformRef.current.position
-                })
               }
             }}
           >

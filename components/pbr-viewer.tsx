@@ -1893,6 +1893,7 @@ function PBRMesh({
             inflateSpherePosition={geometrySettings.inflateSpherePosition || [0, 0, 0]}
             inflateSphereRadius={geometrySettings.inflateSphereRadius || 1.0}
             flatBase={geometrySettings.flatBase || false}
+            usePotteryMode={geometrySettings.usePotteryMode || false}
             onInflateSphereMove={(pos) => onGeometrySettingsChange?.({ inflateSpherePosition: pos })}
           />
         )
@@ -2578,6 +2579,7 @@ function SceneContent({
               inflateSpherePosition={geometrySettings.inflateSpherePosition || [0, 0, 0]}
               inflateSphereRadius={geometrySettings.inflateSphereRadius || 1.0}
               flatBase={geometrySettings.flatBase || false}
+              usePotteryMode={geometrySettings.usePotteryMode || false}
             />
             )
           ) : (

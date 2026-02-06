@@ -55,6 +55,8 @@ interface ModelMeshProps {
   inflateSphereRadius?: number
   flatBase?: boolean
   onInflateSphereMove?: (position: [number, number, number]) => void
+  // Pottery wheel mode
+  usePotteryMode?: boolean
 }
 
 export function ModelMesh({
@@ -81,6 +83,7 @@ export function ModelMesh({
   inflateSphereRadius = 1.0,
   flatBase = false,
   onInflateSphereMove,
+  usePotteryMode = false,
 }: ModelMeshProps) {
   const [scene, setScene] = useState<THREE.Group | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -450,6 +453,12 @@ export function ModelMesh({
         }
 
         child.material = newMaterial
+        
+        // Enable double-sided rendering for pottery wheel mode to avoid culled faces
+        if (usePotteryMode && newMaterial instanceof THREE.Material) {
+          newMaterial.side = THREE.DoubleSide
+        }
+        
         child.userData.isOriginalMaterial = hasOriginal && !hasCustomTextures && renderMode === "pbr"
       }
     })
@@ -469,6 +478,7 @@ export function ModelMesh({
     envIntensity,
     tintColor,
     textureScale,
+    usePotteryMode,
   ])
 
 

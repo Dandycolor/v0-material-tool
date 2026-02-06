@@ -2,7 +2,6 @@
 
 import React, { useMemo, useRef, useEffect } from 'react'
 import * as THREE from 'three'
-import { useFrame } from '@react-three/fiber'
 import { createProceduralShape, type ProceduralShapeParams } from './procedural-shape-generator'
 import type { MaterialSettings } from './pbr-viewer'
 
@@ -50,13 +49,6 @@ export function ProceduralShapeMesh({
   const geometry = useMemo(() => {
     return createProceduralShape(params)
   }, [params])
-
-  // Update rotation for visual effect
-  useFrame(() => {
-    if (meshRef.current) {
-      meshRef.current.rotation.y += 0.002
-    }
-  })
 
   // Create material
   const material = useMemo(() => {

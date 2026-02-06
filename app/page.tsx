@@ -20,6 +20,8 @@ import { ModelSearch } from "@/components/model-search"
 import { MaterialPreview } from "@/components/material-preview"
 
 import { LightRotationControl } from "@/components/light-rotation-control"
+import { ProceduralShapeControls } from "@/components/procedural-shape-controls"
+import type { ProceduralShapeParams } from "@/components/procedural-shape-generator"
 
 interface IconifyIcon {
   id: string // format: "prefix:name" e.g. "mdi:flower"
@@ -833,7 +835,7 @@ interface MaterialSettings {
 
 export default function MaterialTool() {
   const [geometrySettings, setGeometrySettings] = useState({
-    type: "sphere" as "sphere" | "extruded" | "model",
+    type: "sphere" as "sphere" | "extruded" | "model" | "procedural",
     primitiveType: "sphere" as "sphere" | "cone" | "torus" | "torusKnot" | "capsule",
     svgPath: SVG_PATHS.star,
     // Remove selectedShape tracking for NounProject
@@ -852,6 +854,16 @@ export default function MaterialTool() {
     inflateSphereRadius: 0.5, // Радиус сферы влияния (меньшее значение для локального эффекта)
     flatBase: false, // Flat Base toggle
     deformEnabled: false, // Enable deform для extruded SVG
+    proceduralParams: {
+      baseRadius: 1,
+      height: 2,
+      segments: 64,
+      twistAmount: 0,
+      bulgeFactor: 0.4,
+      indentFactor: 0.2,
+      noiseScale: 0.3,
+      randomSeed: 42,
+    } as ProceduralShapeParams,
   })
 
   const [materialSettings, setMaterialSettings] = useState<MaterialSettings>({
@@ -1381,7 +1393,7 @@ export default function MaterialTool() {
               <div className="space-y-4 px-4">
                 {/* Geometry Settings */}
                 <div className="flex flex-col gap-6">
-                  <div className="grid grid-cols-3 gap-6">
+                  <div className="grid grid-cols-4 gap-6">
                     <div className="flex flex-col items-center gap-3">
                       <button
                         onClick={() => {
@@ -1400,6 +1412,24 @@ export default function MaterialTool() {
                         />
                       </button>
                       <span className="text-xs font-normal text-zinc-500">Primitives</span>
+                    </div>
+
+                    <div className="flex flex-col items-center gap-3">
+                      <button
+                        onClick={() => {
+                          setGeometrySettings({ ...geometrySettings, type: "procedural" })
+                        }}
+                        className={`w-24 h-24 flex items-center justify-center rounded-lg border-2 transition-all overflow-hidden ${
+                          geometrySettings.type === "procedural"
+                            ? "border-white bg-[#1f1f1f]"
+                            : "border-[#2a2a2a] bg-[#1a1a1a] hover:border-[#3a3a3a]"
+                        }`}
+                      >
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#2d8c8c] to-[#1a5555] text-white font-bold">
+                          Ø
+                        </div>
+                      </button>
+                      <span className="text-xs font-normal text-zinc-500">Shape Form</span>
                     </div>
 
                     <div className="flex flex-col items-center gap-3">
@@ -1607,6 +1637,20 @@ export default function MaterialTool() {
                         ))}
                       </div>
                     </>
+                  )}
+
+                  {geometrySettings.type === "procedural" && (
+                    <div className="pt-4 space-y-4">
+                      <ProceduralShapeControls
+                        onShapeChange={(geometry) => {
+                          // Shape will be applied in the viewer
+                          console.log("[v0] Procedural shape updated")
+                        }}
+                        onParamsChange={(params) => {
+                          setGeometrySettings({ ...geometrySettings, proceduralParams: params })
+                        }}
+                      />
+                    </div>
                   )}
 
                   {geometrySettings.type === "model" && (

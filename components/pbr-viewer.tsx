@@ -1,11 +1,12 @@
 "use client"
 
-import { Canvas, useLoader, useThree } from "@react-three/fiber"
-import { OrbitControls, Environment } from "@react-three/drei"
+import React, { useEffect, useRef, useState, useMemo, useCallback } from "react"
 import * as THREE from "three"
-import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
-import { Suspense, useMemo, useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react"
+import { Canvas, useFrame, useThree } from "@react-three/fiber"
+import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js"
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils"
+import { createProceduralShape, type ProceduralShapeParams } from "./procedural-shape-generator"
+import { ProceduralShapeMesh } from "./procedural-shape-mesh"
 import { ModelMesh } from "./model-mesh"
 import { createGradientMaterial } from "./gradient-shader"
 
@@ -239,7 +240,7 @@ function MatcapMaterialWithEffects({
 }
 
 interface GeometrySettings {
-  type: "sphere" | "extruded" | "model"
+  type: "sphere" | "extruded" | "model" | "procedural"
   primitiveType?: "sphere" | "cone" | "torus" | "torusKnot" | "capsule"
   svgPath: string
   thickness: number
@@ -255,6 +256,7 @@ interface GeometrySettings {
   inflateSphereRadius: number
   flatBase?: boolean
   deformEnabled?: boolean
+  proceduralParams?: ProceduralShapeParams
 }
 
 export interface MaterialSettings {
@@ -1687,6 +1689,28 @@ function PBRMesh({
             onInflateSphereMove={(pos) => onGeometrySettingsChange?.({ inflateSpherePosition: pos })}
           />
         )
+      ) : geometrySettings.type === "procedural" ? (
+        geometrySettings.proceduralParams && (
+          <ProceduralShapeMesh
+            key={fullTextureKey}
+            params={geometrySettings.proceduralParams}
+            materialSettings={materialSettings}
+            renderMode={renderMode}
+            colorMap={colorMap}
+            normalMap={normalMap}
+            roughnessMap={roughnessMap}
+            metalnessMap={metalnessMap}
+            hueShiftedColorMap={hueShiftedColorMap}
+            normalScaleVector={normalMap ? normalScaleVector : null}
+            envIntensity={lightingSettings.envIntensity}
+            tintColor={tintColor}
+            textureScale={materialSettings.textureScale}
+            matcapTexture={renderMode === "matcap" ? matcapTexture : null}
+            matcapNormalMap={renderMode === "matcap" ? matcapNormalMap : null}
+            matcapSettings={matcapSettings}
+            gradientSettings={gradientSettings}
+          />
+        )
       ) : (
         <ExtrudedSVGMesh
           key={fullTextureKey}
@@ -2360,6 +2384,27 @@ function SceneContent({
               inflateSphereRadius={geometrySettings.inflateSphereRadius || 1.0}
               flatBase={geometrySettings.flatBase || false}
             />
+            )
+          ) : geometrySettings.type === "procedural" ? (
+            geometrySettings.proceduralParams && (
+              <ProceduralShapeMesh
+                params={geometrySettings.proceduralParams}
+                materialSettings={materialSettings}
+                renderMode={renderMode}
+                colorMap={null}
+                normalMap={null}
+                roughnessMap={null}
+                metalnessMap={null}
+                hueShiftedColorMap={null}
+                normalScaleVector={null}
+                envIntensity={0}
+                tintColor={new THREE.Color(materialSettings.colorTint)}
+                textureScale={1}
+                matcapTexture={matcapTextureLoaded}
+                matcapNormalMap={matcapNormalMap}
+                matcapSettings={matcapSettings}
+                gradientSettings={gradientSettings}
+              />
             )
           ) : (
             <ExtrudedSVGMesh

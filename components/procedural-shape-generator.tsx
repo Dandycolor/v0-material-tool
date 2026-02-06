@@ -67,26 +67,46 @@ export function createProceduralShape(params: ProceduralShapeParams): THREE.Buff
     radiusVar += noiseVal2 * noiseScale * 0.05
 
     // Применяем заострение к верхушке и низу
-    // topSharpness: 0 = плоский, 1 = острый
-    // bottomSharpness: 0 = плоский, 1 = острый
+    // topSharpness: 0 = широкая плоская площадка, 1 = острый конус
+    // bottomSharpness: 0 = широкое плоское дно, 1 = острый низ
     
     // Для верхушки (t близко к 1)
     if (t > 0.8) {
       const topBlend = (t - 0.8) / 0.2 // 0 to 1 для последних 20%
-      // Острота определяет насколько быстро радиус уменьшается
-      const topCurve = Math.pow(1 - topBlend, 2 - topSharpness) // topSharpness 0 = медленное, 1 = быстрое
-      radiusVar *= topCurve
+      
+      // При низкой остроте (0) - широкая плоская площадка
+      // При высокой остроте (1) - острый конус
+      const flatZoneSize = 1 - topSharpness // Размер плоской зоны: 0-1
+      
+      if (topBlend < flatZoneSize) {
+        // В плоской зоне - радиус не уменьшается (или уменьшается минимально)
+        const minRadius = 0.3 // Минимальный радиус для плоской площадки
+        radiusVar *= (1 - minRadius) * (1 - topBlend / flatZoneSize) + minRadius
+      } else {
+        // За пределами плоской зоны - сходимся к точке
+        const coneBlend = (topBlend - flatZoneSize) / (1 - flatZoneSize)
+        const sharpnessPower = 1 + topSharpness * 2 // 1 (пологий) до 3 (крутой)
+        radiusVar *= (1 - Math.pow(coneBlend, sharpnessPower)) * 0.3
+      }
     }
     
     // Для низа (t близко к 0)
     if (t < 0.2) {
       const bottomBlend = (0.2 - t) / 0.2 // 0 to 1 для первых 20%
-      // Острота определяет насколько быстро радиус уменьшается
-      const bottomCurve = Math.pow(1 - bottomBlend, 2 - bottomSharpness) // bottomSharpness 0 = медленное, 1 = быстрое
-      radiusVar *= bottomCurve
+      
+      const flatZoneSize = 1 - bottomSharpness
+      
+      if (bottomBlend < flatZoneSize) {
+        const minRadius = 0.3
+        radiusVar *= (1 - minRadius) * (1 - bottomBlend / flatZoneSize) + minRadius
+      } else {
+        const coneBlend = (bottomBlend - flatZoneSize) / (1 - flatZoneSize)
+        const sharpnessPower = 1 + bottomSharpness * 2
+        radiusVar *= (1 - Math.pow(coneBlend, sharpnessPower)) * 0.3
+      }
     }
 
-    const radius = baseRadius * Math.max(0.01, radiusVar) // Минимальный радиус 0.01 чтобы закрыть верх/низ
+    const radius = baseRadius * Math.max(0.001, radiusVar) // Минимальный радиус для закрытия
     points.push(new THREE.Vector2(radius, y))
   }
 

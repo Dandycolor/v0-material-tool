@@ -20,8 +20,7 @@ import { ModelSearch } from "@/components/model-search"
 import { MaterialPreview } from "@/components/material-preview"
 
 import { LightRotationControl } from "@/components/light-rotation-control"
-import { VectorPrimitivePreview } from "@/components/vector-primitive-preview"
-import { VectorExtrude } from "@/components/vector-extrude"
+import { PotteryWheel } from "@/components/pottery-wheel"
 
 interface IconifyIcon {
   id: string // format: "prefix:name" e.g. "mdi:flower"
@@ -919,8 +918,8 @@ export default function MaterialTool() {
   const [showModelSearch, setShowModelSearch] = useState(false)
   const [showIconSearch, setShowIconSearch] = useState(false)
   const [modelLoadError, setModelLoadError] = useState<string | null>(null)
-  const [selectedVectorPrimitive, setSelectedVectorPrimitive] = useState<any>(null)
-  const [extrudedVectorPath, setExtrudedVectorPath] = useState<string | null>(null)
+  const [usePotteryMode, setUsePotteryMode] = useState(false)
+  const [potteryRotationSpeed, setPotteryRotationSpeed] = useState(0.5)
 
   const [openSections, setOpenSections] = useState({
     geometry: true,
@@ -2896,27 +2895,30 @@ export default function MaterialTool() {
                 )}
               </TabsContent>
 
-              <TabsContent value="vector">
-                <div className="space-y-6 px-4">
-                  <VectorPrimitivePreview
-                    onSelect={(shape) => {
-                      setSelectedVectorPrimitive(shape)
-                      setExtrudedVectorPath(shape.path)
-                    }}
-                    onExtrude={(shape) => {
-                      setExtrudedVectorPath(shape.path)
-                    }}
-                  />
-
-                  {extrudedVectorPath && (
-                    <VectorExtrude
-                      svgPath={extrudedVectorPath}
-                      shapeName={selectedVectorPrimitive?.name || "Selected Shape"}
-                      depth={10}
-                      onDepthChange={(depth) => {
-                        console.log("[v0] Extrude depth changed:", depth)
-                      }}
+              <TabsContent value="vector" className="px-4">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 p-4 rounded-lg bg-[#2a2a2a]/50">
+                    <Switch
+                      checked={usePotteryMode}
+                      onCheckedChange={setUsePotteryMode}
+                      className="data-[state=checked]:bg-amber-600"
                     />
+                    <Label className="text-sm text-zinc-300 cursor-pointer">
+                      Режим гончарного круга (Pottery Wheel)
+                    </Label>
+                  </div>
+
+                  {usePotteryMode ? (
+                    <PotteryWheel
+                      svgPath="/pottery-shapes/union-1.svg"
+                      shapeName="Union 1"
+                      rotationSpeed={potteryRotationSpeed}
+                      onRotationSpeedChange={setPotteryRotationSpeed}
+                    />
+                  ) : (
+                    <div className="text-center py-8 text-zinc-500 text-sm">
+                      <p>Включите режим гончарного круга чтобы начать</p>
+                    </div>
                   )}
                 </div>
               </TabsContent>

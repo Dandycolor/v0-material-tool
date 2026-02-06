@@ -2171,6 +2171,27 @@ function SavedTransformGroup({
   return <group ref={groupRef}>{children}</group>
 }
 
+function TransformGroup({ 
+  savedTransform, 
+  children 
+}: { 
+  savedTransform: { position: [number, number, number]; quaternion: [number, number, number, number] }
+  children: React.ReactNode
+}) {
+  const groupRef = useRef(null)
+  
+  // Применяем сохранённую трансформацию через useEffect после монтирования
+  useEffect(() => {
+    if (groupRef.current) {
+      const group = groupRef.current as any
+      group.position.set(...savedTransform.position)
+      group.quaternion.set(...savedTransform.quaternion)
+    }
+  }, [])
+  
+  return <group ref={groupRef}>{children}</group>
+}
+
 function SceneContent({
   geometrySettings,
   materialSettings,
@@ -2572,21 +2593,14 @@ function SceneContent({
       <group ref={modelGroupRef}>
         {showRotateControls ? (
           <TransformControls mode="rotate">
-            <group 
-              ref={contentGroupRef}
-              position={savedTransformRef.current.position as any}
-              quaternion={savedTransformRef.current.quaternion as any}
-            >
+            <group ref={contentGroupRef}>
               {content}
             </group>
           </TransformControls>
         ) : (
-          <group 
-            position={savedTransformRef.current.position as any}
-            quaternion={savedTransformRef.current.quaternion as any}
-          >
+          <SavedTransformGroup savedTransform={savedTransformRef.current}>
             {content}
-          </group>
+          </SavedTransformGroup>
         )}
       </group>
       <GridHelper visible={showGrid} />

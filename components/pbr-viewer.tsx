@@ -2160,6 +2160,10 @@ function SavedTransformGroup({
   
   useEffect(() => {
     if (groupRef.current) {
+      console.log("[v0] Restoring transform:", {
+        quaternion: savedTransform.quaternion,
+        position: savedTransform.position
+      })
       groupRef.current.quaternion.copy(savedTransform.quaternion)
       groupRef.current.position.copy(savedTransform.position)
     }
@@ -2551,6 +2555,10 @@ function SceneContent({
                 const group = contentGroupRef.current as any
                 savedTransformRef.current.quaternion.copy(group.quaternion)
                 savedTransformRef.current.position.copy(group.position)
+                console.log("[v0] Saved transform:", {
+                  quaternion: savedTransformRef.current.quaternion,
+                  position: savedTransformRef.current.position
+                })
               }
             }}
           >

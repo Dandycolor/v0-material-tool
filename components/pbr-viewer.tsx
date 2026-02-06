@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useMemo, useCallback, forwardRef, useImperativeHandle, Suspense } from "react"
 import * as THREE from "three"
-import { Canvas, useFrame, useThree } from "@react-three/fiber"
+import { Canvas, useFrame, useThree, useLoader } from "@react-three/fiber"
 import { OrbitControls, Environment } from "@react-three/drei"
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js"
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils"

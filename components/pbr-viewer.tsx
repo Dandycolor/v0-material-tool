@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { Canvas, useLoader, useThree } from "@react-three/fiber"
+import { Canvas, useLoader, useThree, useFrame } from "@react-three/fiber"
 import { OrbitControls, Environment, TransformControls } from "@react-three/drei"
 import * as THREE from "three"
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
@@ -2157,26 +2157,17 @@ function SavedTransformGroup({
   children: React.ReactNode
 }) {
   const groupRef = useRef(null)
-  const hasApplied = useRef(false)
   
+  // Применяем сохранённую трансформацию при монтировании
   useEffect(() => {
-    // Apply transform on next frame to ensure group is mounted
-    const timer = setTimeout(() => {
-      if (groupRef.current && !hasApplied.current) {
-        const group = groupRef.current as any
-        console.log("[v0] Restoring transform to:", {
-          position: [savedTransform.position.x, savedTransform.position.y, savedTransform.position.z],
-          quaternion: [savedTransform.quaternion.x, savedTransform.quaternion.y, savedTransform.quaternion.z, savedTransform.quaternion.w]
-        })
-        group.position.copy(savedTransform.position)
-        group.quaternion.copy(savedTransform.quaternion)
-        hasApplied.current = true
-      }
-    }, 0)
-    
-    return () => {
-      clearTimeout(timer)
-      hasApplied.current = false
+    if (groupRef.current) {
+      const group = groupRef.current as any
+      console.log("[v0] Применяю трансформацию:", {
+        position: [savedTransform.position.x, savedTransform.position.y, savedTransform.position.z],
+        quaternion: [savedTransform.quaternion.x, savedTransform.quaternion.y, savedTransform.quaternion.z, savedTransform.quaternion.w]
+      })
+      group.position.copy(savedTransform.position)
+      group.quaternion.copy(savedTransform.quaternion)
     }
   }, [savedTransform])
   
@@ -2206,6 +2197,15 @@ function SceneContent({
   const savedTransformRef = useRef({ 
     quaternion: new THREE.Quaternion(),
     position: new THREE.Vector3()
+  })
+  
+  // Постоянно обновляем сохранённую трансформацию на каждом кадре когда режим Rotate активен
+  useFrame(() => {
+    if (showRotateControls && contentGroupRef.current) {
+      const group = contentGroupRef.current as any
+      savedTransformRef.current.quaternion.copy(group.quaternion)
+      savedTransformRef.current.position.copy(group.position)
+    }
   })
   
   // Apply background color

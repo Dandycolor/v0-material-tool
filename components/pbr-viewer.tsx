@@ -1,7 +1,7 @@
 "use client"
 
 import { Canvas, useLoader, useThree } from "@react-three/fiber"
-import { OrbitControls, Environment } from "@react-three/drei"
+import { OrbitControls, Environment, TransformControls } from "@react-three/drei"
 import * as THREE from "three"
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
 import { Suspense, useMemo, useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react"
@@ -309,6 +309,7 @@ interface PBRViewerProps {
   matcapTexture?: string
   matcapHueShift?: number
   showGrid?: boolean
+  showRotateControls?: boolean
   onModelLoadError?: (error: string) => void
   onGeometrySettingsChange?: (settings: Partial<GeometrySettings>) => void
 }
@@ -1578,6 +1579,31 @@ function ExtrudedSVGMesh({
   return null
 }
 
+function RotateControlsHelper({ enabled }: { enabled?: boolean }) {
+  const groupRef = useRef(null)
+  const { camera } = useThree()
+  
+  if (!enabled) return null
+  
+  return (
+    <>
+      <TransformControls 
+        ref={groupRef}
+        mode="rotate"
+        position={[0, -0.8, 0]}
+        scale={0.5}
+      >
+        <mesh visible={false}>
+          <boxGeometry args={[0.1, 0.1, 0.1]} />
+          <meshBasicMaterial />
+        </mesh>
+      </TransformControls>
+      
+      <axesHelper args={[0.4]} position={[0, -0.8, 0]} />
+    </>
+  )
+}
+
 function PBRMesh({
   geometrySettings,
   materialSettings,
@@ -2123,6 +2149,7 @@ interface SceneContentProps {
     rimColor: string
   }
   showGrid?: boolean
+  showRotateControls?: boolean
   gradientSettings?: {
     enabled: boolean
     type: "radial" | "linear"
@@ -2153,6 +2180,7 @@ function SceneContent({
   matcapHueShift = 0,
   matcapSettings,
   showGrid = true,
+  showRotateControls = false,
   gradientSettings,
   customMaterial,
   onModelLoadError,
@@ -2506,6 +2534,7 @@ function SceneContent({
         </>
       )}
       <GridHelper visible={showGrid} />
+      <RotateControlsHelper enabled={showRotateControls} />
     </>
   )
 }
@@ -2532,6 +2561,8 @@ export const PBRViewer = forwardRef<
     rimColor: string
   }
   backgroundColor?: string
+  showGrid?: boolean
+  showRotateControls?: boolean
   gradientSettings?: {
     enabled: boolean
     type: "radial" | "linear"
@@ -2552,7 +2583,7 @@ export const PBRViewer = forwardRef<
   onGeometrySettingsChange?: (settings: Partial<GeometrySettings>) => void
   }
 >(function PBRViewer(
-  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, showGrid, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
+  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, showGrid, showRotateControls, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
   ref,
   ) {
   const exportFnRef = useRef<(() => void) | null>(null)
@@ -2590,9 +2621,10 @@ export const PBRViewer = forwardRef<
             onExportReady={handleExportReady}
             renderMode={renderMode}
             matcapTexture={matcapTexture}
-              matcapHueShift={matcapHueShift}
-              matcapSettings={matcapSettings}
-              showGrid={showGrid}
+            matcapHueShift={matcapHueShift}
+            matcapSettings={matcapSettings}
+            showGrid={showGrid}
+            showRotateControls={showRotateControls}
             backgroundColor={backgroundColor}
             gradientSettings={gradientSettings}
             customMaterial={customMaterial}
@@ -2600,7 +2632,11 @@ export const PBRViewer = forwardRef<
             onGeometrySettingsChange={onGeometrySettingsChange}
           />
         </Suspense>
-        <OrbitControls enableDamping dampingFactor={0.05} />
+        <OrbitControls 
+          enabled={!showRotateControls}
+          enableDamping 
+          dampingFactor={0.05} 
+        />
       </Canvas>
     </div>
   )

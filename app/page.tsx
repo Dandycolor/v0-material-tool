@@ -939,6 +939,7 @@ export default function MaterialTool() {
   )
   const [backgroundColor, setBackgroundColor] = useState("#1a1a1a")
   const [showGrid, setShowGrid] = useState(false)
+  const [showRotateControls, setShowRotateControls] = useState(false)
   
   // Custom material selections
   const [customMaterial, setCustomMaterial] = useState({
@@ -1333,6 +1334,7 @@ export default function MaterialTool() {
                 matcapSettings={matcapSettings}
                 backgroundColor={backgroundColor}
           showGrid={showGrid}
+          showRotateControls={showRotateControls}
           gradientSettings={gradientSettings}
           customMaterial={customMaterial}
           onModelLoadError={setModelLoadError}
@@ -3052,6 +3054,19 @@ export default function MaterialTool() {
             type="checkbox"
             checked={showGrid}
             onChange={(e) => setShowGrid(e.target.checked)}
+            className="hidden"
+          />
+        </label>
+
+        <label className="flex items-center gap-2 px-3 py-2 bg-[#2a2a2a] hover:bg-[#353535] text-white text-sm rounded-lg border border-[#404040] transition-all cursor-pointer">
+          <div 
+            className={`w-4 h-4 rounded border border-[#505050] flex-shrink-0 transition-all ${showRotateControls ? 'bg-orange-500' : 'bg-transparent'}`}
+          />
+          <span>Rotate</span>
+          <input
+            type="checkbox"
+            checked={showRotateControls}
+            onChange={(e) => setShowRotateControls(e.target.checked)}
             className="hidden"
           />
         </label>

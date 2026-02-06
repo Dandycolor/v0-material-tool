@@ -2165,6 +2165,10 @@ function SceneContent({
 }: SceneContentProps & { onExportReady: (fn: () => void) => void, backgroundColor?: string }) {
   const { gl, scene, camera } = useThree()
   const modelGroupRef = useRef(null)
+  const savedTransformRef = useRef({ 
+    quaternion: new THREE.Quaternion(),
+    position: new THREE.Vector3()
+  })
   
   // Apply background color
   useEffect(() => {
@@ -2516,9 +2520,27 @@ function SceneContent({
   return (
     <>
       <group ref={modelGroupRef}>
-        <TransformControls mode="rotate" enabled={showRotateControls}>
-          {content}
-        </TransformControls>
+        {showRotateControls ? (
+          <TransformControls 
+            mode="rotate"
+            onObjectChange={() => {
+              if (modelGroupRef.current) {
+                const group = modelGroupRef.current as any
+                savedTransformRef.current.quaternion.copy(group.quaternion)
+                savedTransformRef.current.position.copy(group.position)
+              }
+            }}
+          >
+            {content}
+          </TransformControls>
+        ) : (
+          <group 
+            position={savedTransformRef.current.position}
+            quaternion={savedTransformRef.current.quaternion}
+          >
+            {content}
+          </group>
+        )}
       </group>
       <GridHelper visible={showGrid} />
       {showRotateControls && <axesHelper args={[0.5]} position={[0, -1.2, 0]} />}

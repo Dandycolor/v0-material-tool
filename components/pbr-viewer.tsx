@@ -1,5 +1,7 @@
 "use client"
 
+import React from "react"
+
 import { Canvas, useLoader, useThree } from "@react-three/fiber"
 import { OrbitControls, Environment, TransformControls } from "@react-three/drei"
 import * as THREE from "three"
@@ -2146,6 +2148,26 @@ interface SceneContentProps {
   onGeometrySettingsChange?: (settings: Partial<GeometrySettings>) => void
 }
 
+// Component to apply saved transforms
+function SavedTransformGroup({ 
+  savedTransform, 
+  children 
+}: { 
+  savedTransform: { quaternion: THREE.Quaternion; position: THREE.Vector3 }
+  children: React.ReactNode 
+}) {
+  const groupRef = useRef<THREE.Group>(null)
+  
+  useEffect(() => {
+    if (groupRef.current) {
+      groupRef.current.quaternion.copy(savedTransform.quaternion)
+      groupRef.current.position.copy(savedTransform.position)
+    }
+  }, [savedTransform])
+  
+  return <group ref={groupRef}>{children}</group>
+}
+
 function SceneContent({
   geometrySettings,
   materialSettings,
@@ -2534,12 +2556,9 @@ function SceneContent({
             {content}
           </TransformControls>
         ) : (
-          <group 
-            position={savedTransformRef.current.position}
-            quaternion={savedTransformRef.current.quaternion}
-          >
+          <SavedTransformGroup savedTransform={savedTransformRef.current}>
             {content}
-          </group>
+          </SavedTransformGroup>
         )}
       </group>
       <GridHelper visible={showGrid} />

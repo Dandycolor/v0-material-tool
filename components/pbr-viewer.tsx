@@ -2469,6 +2469,7 @@ export const PBRViewer = forwardRef<
     rimColor: string
   }
   backgroundColor?: string
+  showGrid?: boolean
   gradientSettings?: {
     enabled: boolean
     type: "radial" | "linear"

@@ -2176,6 +2176,14 @@ function SceneContent({
     }
   })
   
+  // Apply saved transform when rotate controls are disabled
+  useEffect(() => {
+    if (!showRotateControls && transformGroupRef.current) {
+      transformGroupRef.current.rotation.copy(savedRotation.current)
+      transformGroupRef.current.position.copy(savedPosition.current)
+    }
+  }, [showRotateControls])
+  
   // Apply background color
   useEffect(() => {
     if (backgroundColor) {
@@ -2528,11 +2536,7 @@ function SceneContent({
           </group>
         </TransformControls>
       ) : (
-        <group 
-          ref={transformGroupRef}
-          rotation={savedRotation.current}
-          position={savedPosition.current}
-        >
+        <group ref={transformGroupRef}>
           {content}
         </group>
       )}

@@ -11,6 +11,8 @@ interface ProceduralShapeParams {
   bulgeFactor: number
   indentFactor: number
   bulgeFrequency: number // Количество волн выпуклостей по высоте (0 = нет волн, 10 = много волн)
+  topSharpness: number // 0 = плоская, 1 = острая вершина
+  bottomSharpness: number // 0 = плоское дно, 1 = острый низ
   noiseScale: number
   randomSeed: number
 }
@@ -27,6 +29,8 @@ export function createProceduralShape(params: ProceduralShapeParams): THREE.Buff
     bulgeFactor,
     indentFactor,
     bulgeFrequency,
+    topSharpness,
+    bottomSharpness,
     noiseScale,
     randomSeed,
   } = params
@@ -62,7 +66,27 @@ export function createProceduralShape(params: ProceduralShapeParams): THREE.Buff
     radiusVar += noiseVal1 * noiseScale * 0.1
     radiusVar += noiseVal2 * noiseScale * 0.05
 
-    const radius = baseRadius * Math.max(0.1, radiusVar)
+    // Применяем заострение к верхушке и низу
+    // topSharpness: 0 = плоский, 1 = острый
+    // bottomSharpness: 0 = плоский, 1 = острый
+    
+    // Для верхушки (t близко к 1)
+    if (t > 0.8) {
+      const topBlend = (t - 0.8) / 0.2 // 0 to 1 для последних 20%
+      // Острота определяет насколько быстро радиус уменьшается
+      const topCurve = Math.pow(1 - topBlend, 2 - topSharpness) // topSharpness 0 = медленное, 1 = быстрое
+      radiusVar *= topCurve
+    }
+    
+    // Для низа (t близко к 0)
+    if (t < 0.2) {
+      const bottomBlend = (0.2 - t) / 0.2 // 0 to 1 для первых 20%
+      // Острота определяет насколько быстро радиус уменьшается
+      const bottomCurve = Math.pow(1 - bottomBlend, 2 - bottomSharpness) // bottomSharpness 0 = медленное, 1 = быстрое
+      radiusVar *= bottomCurve
+    }
+
+    const radius = baseRadius * Math.max(0.01, radiusVar) // Минимальный радиус 0.01 чтобы закрыть верх/низ
     points.push(new THREE.Vector2(radius, y))
   }
 

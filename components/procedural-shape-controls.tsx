@@ -22,6 +22,8 @@ export function ProceduralShapeControls({ onShapeChange, onParamsChange }: Proce
     bulgeFactor: 0.4,
     indentFactor: 0.2,
     bulgeFrequency: 4, // Количество волн по высоте
+    topSharpness: 0.5, // 0 = плоский верх, 1 = острый
+    bottomSharpness: 0.5, // 0 = плоский низ, 1 = острый
     noiseScale: 0.3,
     randomSeed: 42,
   })
@@ -55,6 +57,8 @@ export function ProceduralShapeControls({ onShapeChange, onParamsChange }: Proce
       bulgeFactor: Math.random() * 0.8,
       indentFactor: Math.random() * 0.5,
       bulgeFrequency: 2 + Math.floor(Math.random() * 10), // 2-12 волн
+      topSharpness: Math.random(),
+      bottomSharpness: Math.random(),
       noiseScale: Math.random() * 0.5,
       randomSeed: Math.floor(Math.random() * 10000),
     }
@@ -70,6 +74,8 @@ export function ProceduralShapeControls({ onShapeChange, onParamsChange }: Proce
       bulgeFactor: 0.4,
       indentFactor: 0.2,
       bulgeFrequency: 4,
+      topSharpness: 0.5,
+      bottomSharpness: 0.5,
       noiseScale: 0.3,
       randomSeed: 42,
     })
@@ -219,6 +225,42 @@ export function ProceduralShapeControls({ onShapeChange, onParamsChange }: Proce
           />
           <p className="text-xs text-zinc-600">Number of bulges along height</p>
         </div>
+
+        <div className="border-t border-[#2a2a2a]/50 my-3" />
+
+        {/* Top Sharpness */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-zinc-500">Top Sharpness</Label>
+            <span className="text-xs text-white font-mono">{params.topSharpness.toFixed(2)}</span>
+          </div>
+          <Slider
+            value={[params.topSharpness]}
+            onValueChange={([value]) => handleParamChange('topSharpness', value)}
+            min={0}
+            max={1}
+            step={0.05}
+          />
+          <p className="text-xs text-zinc-600">0 = flat top, 1 = sharp point</p>
+        </div>
+
+        {/* Bottom Sharpness */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-zinc-500">Bottom Sharpness</Label>
+            <span className="text-xs text-white font-mono">{params.bottomSharpness.toFixed(2)}</span>
+          </div>
+          <Slider
+            value={[params.bottomSharpness]}
+            onValueChange={([value]) => handleParamChange('bottomSharpness', value)}
+            min={0}
+            max={1}
+            step={0.05}
+          />
+          <p className="text-xs text-zinc-600">0 = flat bottom, 1 = sharp point</p>
+        </div>
+
+        <div className="border-t border-[#2a2a2a]/50 my-3" />
 
         {/* Noise Scale */}
         <div className="space-y-2">

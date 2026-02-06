@@ -1218,7 +1218,7 @@ function createLatheGeometry(
     }
 
     const shape = shapes[0]
-    const points = shape.getPoints(50)
+    const points = shape.getPoints(30)
 
     if (points.length < 2) {
       console.warn("[v0] Not enough points for lathe geometry")
@@ -1245,8 +1245,27 @@ function createLatheGeometry(
       geometry.scale(scale, scale, scale)
     }
 
+    const uvArray = geometry.attributes.uv.array as Float32Array
+    const positionArray = geometry.attributes.position.array as Float32Array
+    
+    for (let i = 0; i < uvArray.length; i += 2) {
+      const vertexIndex = i / 2
+      const x = positionArray[vertexIndex * 3]
+      const y = positionArray[vertexIndex * 3 + 1]
+      const z = positionArray[vertexIndex * 3 + 2]
+      
+      const angle = Math.atan2(z, x)
+      const u = (angle + Math.PI) / (Math.PI * 2)
+      
+      const height = (y + 1) / 2
+      const v = height
+      
+      uvArray[i] = u
+      uvArray[i + 1] = v
+    }
+    
+    geometry.attributes.uv.needsUpdate = true
     geometry.computeVertexNormals()
-    console.log("[v0] Created lathe geometry with", segments, "segments")
 
     return geometry
   } catch (error) {
@@ -1506,6 +1525,15 @@ function ExtrudedSVGMesh({
       }
     }
   }, [gradientSettings])
+
+  // Cleanup geometry on unmount or when dependencies change
+  useEffect(() => {
+    return () => {
+      if (geometry) {
+        geometry.dispose()
+      }
+    }
+  }, [geometry])
 
   if (geometry) {
     return (

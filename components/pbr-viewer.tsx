@@ -2439,76 +2439,86 @@ function SceneContent({
     }
   }, [matcapNormalMap, matcapSettings?.normalRepeat])
 
+  const content = showMatcap ? (
+    <>
+      {geometrySettings.type === "sphere" ? (
+        <mesh>
+          <PrimitiveGeometry primitiveType={geometrySettings.primitiveType || "sphere"} />
+          <MatcapMaterialWithEffects 
+            matcap={matcapTextureLoaded}
+            normalMap={matcapNormalMap}
+            normalIntensity={matcapSettings?.normalIntensity || 1}
+            rimIntensity={matcapSettings?.rimIntensity || 0}
+            rimPower={matcapSettings?.rimPower || 3}
+            rimColor={matcapSettings?.rimColor || "#ffffff"}
+          />
+        </mesh>
+      ) : geometrySettings.type === "model" ? (
+        geometrySettings.modelUrl && (
+          <ModelMesh
+            modelUrl={geometrySettings.modelUrl}
+            materialSettings={materialSettings}
+            onError={onModelLoadError}
+            renderMode={renderMode}
+            matcapTexture={matcapTextureLoaded}
+            matcapNormalMap={matcapNormalMap}
+            matcapSettings={matcapSettings}
+            gradientSettings={gradientSettings}
+            inflationAmount={geometrySettings.inflationAmount || 0}
+            inflateSphereEnabled={geometrySettings.inflateSphereEnabled || true}
+            inflateSpherePosition={geometrySettings.inflateSpherePosition || [0, 0, 0]}
+            inflateSphereRadius={geometrySettings.inflateSphereRadius || 1.0}
+            flatBase={geometrySettings.flatBase || false}
+          />
+        )
+      ) : (
+        <ExtrudedSVGMesh
+          geometrySettings={geometrySettings}
+          materialSettings={materialSettings}
+          tintColor={new THREE.Color(materialSettings.colorTint)}
+          colorMap={null}
+          normalMap={null}
+          roughnessMap={null}
+          metalnessMap={null}
+          normalScaleVector={new THREE.Vector2(0, 0)}
+          envIntensity={0}
+          hueShiftedColorMap={null}
+          matcapTexture={matcapTextureLoaded}
+          useMatcap={true}
+          gradientSettings={gradientSettings}
+          matcapNormalMap={matcapNormalMap}
+          matcapSettings={matcapSettings}
+        />
+      )}
+    </>
+  ) : (
+    <>
+      <PBRMesh
+        geometrySettings={geometrySettings}
+        materialSettings={materialSettings}
+        lightingSettings={lightingSettings}
+        onModelLoadError={onModelLoadError}
+        onGeometrySettingsChange={onGeometrySettingsChange}
+        gradientSettings={gradientSettings}
+      />
+      <Environment
+        preset={lightingSettings.envMap as any}
+        environmentRotation={[0, lightingSettings.envRotation, 0]}
+      />
+    </>
+  )
+
   return (
     <>
-      {showMatcap ? (
-        <>
-          {geometrySettings.type === "sphere" ? (
-            <mesh>
-              <PrimitiveGeometry primitiveType={geometrySettings.primitiveType || "sphere"} />
-              <MatcapMaterialWithEffects 
-                matcap={matcapTextureLoaded}
-                normalMap={matcapNormalMap}
-                normalIntensity={matcapSettings?.normalIntensity || 1}
-                rimIntensity={matcapSettings?.rimIntensity || 0}
-                rimPower={matcapSettings?.rimPower || 3}
-                rimColor={matcapSettings?.rimColor || "#ffffff"}
-              />
-            </mesh>
-          ) : geometrySettings.type === "model" ? (
-            geometrySettings.modelUrl && (
-              <ModelMesh
-                modelUrl={geometrySettings.modelUrl}
-                materialSettings={materialSettings}
-                onError={onModelLoadError}
-                renderMode={renderMode}
-                matcapTexture={matcapTextureLoaded}
-                matcapNormalMap={matcapNormalMap}
-                matcapSettings={matcapSettings}
-                gradientSettings={gradientSettings}
-                inflationAmount={geometrySettings.inflationAmount || 0}
-                inflateSphereEnabled={geometrySettings.inflateSphereEnabled || true}
-                inflateSpherePosition={geometrySettings.inflateSpherePosition || [0, 0, 0]}
-                inflateSphereRadius={geometrySettings.inflateSphereRadius || 1.0}
-                flatBase={geometrySettings.flatBase || false}
-              />
-            )
-          ) : (
-            <ExtrudedSVGMesh
-              geometrySettings={geometrySettings}
-              materialSettings={materialSettings}
-              tintColor={new THREE.Color(materialSettings.colorTint)}
-              colorMap={null}
-              normalMap={null}
-              roughnessMap={null}
-              metalnessMap={null}
-              normalScaleVector={new THREE.Vector2(0, 0)}
-              envIntensity={0}
-              hueShiftedColorMap={null}
-              matcapTexture={matcapTextureLoaded}
-              useMatcap={true}
-              gradientSettings={gradientSettings}
-              matcapNormalMap={matcapNormalMap}
-              matcapSettings={matcapSettings}
-            />
-          )}
-        </>
-      ) : (
-        <>
-          <PBRMesh
-            geometrySettings={geometrySettings}
-            materialSettings={materialSettings}
-            lightingSettings={lightingSettings}
-            onModelLoadError={onModelLoadError}
-            onGeometrySettingsChange={onGeometrySettingsChange}
-            gradientSettings={gradientSettings}
-          />
-          <Environment
-            preset={lightingSettings.envMap as any}
-            environmentRotation={[0, lightingSettings.envRotation, 0]}
-          />
-        </>
-      )}
+      <group>
+        {showRotateControls ? (
+          <TransformControls mode="rotate">
+            {content}
+          </TransformControls>
+        ) : (
+          content
+        )}
+      </group>
       <GridHelper visible={showGrid} />
       {showRotateControls && <axesHelper args={[0.5]} position={[0, -1.2, 0]} />}
     </>

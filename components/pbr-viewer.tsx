@@ -1332,34 +1332,8 @@ function createLatheGeometry(
     
     normals.needsUpdate = true
     
-    // Ensure normals point outward from center, not inward
-    const positions2 = geometry.attributes.position
-    const posArray2 = positions2.array as Float32Array
-    const normalsAttr = geometry.attributes.normal
-    const normArray2 = normalsAttr.array as Float32Array
-    
-    const vertexCount = posArray2.length / 3
-    for (let i = 0; i < vertexCount; i++) {
-      const px = posArray2[i * 3]
-      const py = posArray2[i * 3 + 1]
-      const pz = posArray2[i * 3 + 2]
-      
-      const nx = normArray2[i * 3]
-      const ny = normArray2[i * 3 + 1]
-      const nz = normArray2[i * 3 + 2]
-      
-      // Check if normal points in same direction as position (outward)
-      // If dot product is negative, normal points inward
-      const dot = px * nx + py * ny + pz * nz
-      if (dot < 0) {
-        // Flip the normal to point outward
-        normArray2[i * 3] = -nx
-        normArray2[i * 3 + 1] = -ny
-        normArray2[i * 3 + 2] = -nz
-      }
-    }
-    
-    normalsAttr.needsUpdate = true
+    // Recompute normals after seam smoothing to ensure consistency
+    geometry.computeVertexNormals()
 
     return geometry
   } catch (error) {

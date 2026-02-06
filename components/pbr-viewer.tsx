@@ -1242,47 +1242,44 @@ function createLatheGeometry(
     const sizeX = maxX - minX
     const sizeY = maxY - minY
     
-    const rightSidePoints = allPoints
-      .filter(p => p.x >= centerX - 0.01)
-      .map(p => ({
-        x: p.x - centerX,
-        y: p.y - centerY
-      }))
+    const pointsWithRadius = allPoints.map(p => ({
+      x: p.x - centerX,
+      y: p.y - centerY,
+      radius: Math.sqrt((p.x - centerX) ** 2 + (p.y - centerY) ** 2)
+    }))
     
-    rightSidePoints.sort((a, b) => a.y - b.y)
+    pointsWithRadius.sort((a, b) => a.y - b.y)
     
-    const heightBuckets = 12
-    const bucketHeight = sizeY / heightBuckets
-    const simplifiedPoints: {x: number, y: number}[] = []
+    const profilePoints: {x: number, y: number}[] = []
+    const numSamples = 16
+    const yStep = sizeY / (numSamples - 1)
     
-    for (let i = 0; i < heightBuckets; i++) {
-      const bucketMinY = minY - centerY + i * bucketHeight
-      const bucketMaxY = bucketMinY + bucketHeight
+    for (let i = 0; i < numSamples; i++) {
+      const targetY = minY - centerY + i * yStep
       
-      const pointsInBucket = rightSidePoints.filter(
-        p => p.y >= bucketMinY && p.y < bucketMaxY
+      const nearbyPoints = pointsWithRadius.filter(p => 
+        Math.abs(p.y - targetY) < yStep * 1.5
       )
       
-      if (pointsInBucket.length > 0) {
-        const maxXInBucket = Math.max(...pointsInBucket.map(p => Math.abs(p.x)))
-        const avgY = pointsInBucket.reduce((sum, p) => sum + p.y, 0) / pointsInBucket.length
-        simplifiedPoints.push({ x: maxXInBucket, y: avgY })
+      if (nearbyPoints.length > 0) {
+        const maxRadius = Math.max(...nearbyPoints.map(p => p.radius))
+        profilePoints.push({ x: maxRadius, y: targetY })
       }
     }
     
-    if (simplifiedPoints.length < 2) {
-      simplifiedPoints.push({ x: 0, y: minY - centerY })
-      simplifiedPoints.push({ x: sizeX / 2, y: 0 })
-      simplifiedPoints.push({ x: 0, y: maxY - centerY })
+    if (profilePoints.length < 3) {
+      console.warn("[v0] Not enough profile points, using bounding box")
+      profilePoints.length = 0
+      profilePoints.push({ x: 0, y: minY - centerY })
+      profilePoints.push({ x: sizeX / 2, y: 0 })
+      profilePoints.push({ x: 0, y: maxY - centerY })
     }
     
-    simplifiedPoints.sort((a, b) => a.y - b.y)
-    
-    const lathePoints: THREE.Vector2[] = simplifiedPoints.map(p => 
-      new THREE.Vector2(Math.abs(p.x), p.y)
+    const lathePoints: THREE.Vector2[] = profilePoints.map(p => 
+      new THREE.Vector2(Math.max(0, p.x), p.y)
     )
     
-    console.log("[v0] Lathe profile: simplified from", rightSidePoints.length, "to", lathePoints.length, "points")
+    console.log("[v0] Lathe profile: created", lathePoints.length, "smooth envelope points from", allPoints.length, "SVG points")
 
     const geometry = new THREE.LatheGeometry(lathePoints, segments, 0, Math.PI * 2)
 

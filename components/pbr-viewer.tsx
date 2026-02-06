@@ -2169,9 +2169,9 @@ function SceneContent({
   const savedRotation = useRef(new THREE.Euler())
   const savedPosition = useRef(new THREE.Vector3())
   
-  // Apply saved transform when rotate controls are disabled
+  // Apply saved transform to group whenever it mounts
   useEffect(() => {
-    if (!showRotateControls && transformGroupRef.current) {
+    if (transformGroupRef.current) {
       console.log("[v0] Applying saved transform:", {
         rotation: [savedRotation.current.x, savedRotation.current.y, savedRotation.current.z],
         position: [savedPosition.current.x, savedPosition.current.y, savedPosition.current.z]
@@ -2179,7 +2179,7 @@ function SceneContent({
       transformGroupRef.current.rotation.copy(savedRotation.current)
       transformGroupRef.current.position.copy(savedPosition.current)
     }
-  }, [showRotateControls])
+  })
   
   // Handle transform changes from TransformControls
   const handleTransformChange = () => {

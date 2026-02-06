@@ -854,6 +854,7 @@ export default function MaterialTool() {
     deformEnabled: false, // Enable deform для extruded SVG
     usePotteryMode: false, // Pottery wheel/lathe mode
     latheSegments: 32, // Number of segments around the axis for lathe geometry
+    latheAxis: 'center' as 'center' | 'left' | 'right' | 'top' | 'bottom', // Axis position for pottery wheel mode
   })
 
   const [materialSettings, setMaterialSettings] = useState<MaterialSettings>({
@@ -1747,7 +1748,27 @@ export default function MaterialTool() {
                           </div>
 
                           {geometrySettings.usePotteryMode && (
-                            <div className="space-y-2">
+                            <div className="space-y-3">
+                              <div className="space-y-2">
+                                <Label className="text-xs text-zinc-500">Rotation Axis</Label>
+                                <div className="grid grid-cols-5 gap-2">
+                                  {(['center', 'left', 'right', 'top', 'bottom'] as const).map((axis) => (
+                                    <button
+                                      key={axis}
+                                      onClick={() =>
+                                        setGeometrySettings({ ...geometrySettings, latheAxis: axis })
+                                      }
+                                      className={`py-2 px-2 rounded text-xs font-medium transition-colors ${
+                                        geometrySettings.latheAxis === axis
+                                          ? 'bg-amber-600 text-white'
+                                          : 'bg-neutral-700 text-zinc-400 hover:bg-neutral-600'
+                                      }`}
+                                    >
+                                      {axis.charAt(0).toUpperCase() + axis.slice(1)}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
                               <div className="flex items-center justify-between">
                                 <Label className="text-xs text-zinc-500">Bevel Segments</Label>
                                 <span className="text-xs text-white font-mono">{geometrySettings.latheSegments}</span>

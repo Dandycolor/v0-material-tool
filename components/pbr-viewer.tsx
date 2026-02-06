@@ -1208,6 +1208,7 @@ function isPointInShape(x: number, y: number, points: THREE.Vector2[]): boolean 
 function createLatheGeometry(
   svgString: string,
   segments: number,
+  axis: 'center' | 'left' | 'right' | 'top' | 'bottom' = 'center',
 ): THREE.BufferGeometry | null {
   if (!svgString) return null
 
@@ -1238,11 +1239,27 @@ function createLatheGeometry(
       maxY = Math.max(maxY, p.y)
     })
     
-    const centerX = (minX + maxX) / 2
+    // Calculate rotation axis position based on user selection
+    let axisX: number
+    switch (axis) {
+      case 'left':
+        axisX = minX
+        break
+      case 'right':
+        axisX = maxX
+        break
+      case 'top':
+      case 'bottom':
+      case 'center':
+      default:
+        axisX = (minX + maxX) / 2
+        break
+    }
+    
     const centerY = (minY + maxY) / 2
     
     const lathePoints: THREE.Vector2[] = allPoints.map(p => {
-      const x = Math.abs(p.x - centerX)
+      const x = Math.abs(p.x - axisX)
       const y = -(p.y - centerY)
       return new THREE.Vector2(x, y)
     })
@@ -1558,6 +1575,7 @@ function ExtrudedSVGMesh({
       return createLatheGeometry(
         geometrySettings.svgPath,
         geometrySettings.latheSegments || 64,
+        geometrySettings.latheAxis || 'center',
       )
     }
     

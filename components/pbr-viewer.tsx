@@ -1,6 +1,6 @@
 "use client"
 
-import { Canvas, useLoader, useThree, useFrame } from "@react-three/fiber"
+import { Canvas, useLoader, useThree } from "@react-three/fiber"
 import { OrbitControls, Environment, TransformControls } from "@react-three/drei"
 import * as THREE from "three"
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
@@ -2164,41 +2164,6 @@ function SceneContent({
   backgroundColor,
 }: SceneContentProps & { onExportReady: (fn: () => void) => void, backgroundColor?: string }) {
   const { gl, scene, camera } = useThree()
-  const transformGroupRef = useRef<THREE.Group>(null)
-  const transformControlsRef = useRef<any>(null)
-  const savedRotation = useRef(new THREE.Euler())
-  const savedPosition = useRef(new THREE.Vector3())
-  
-  // Apply saved transform to group when showRotateControls is enabled
-  useEffect(() => {
-    if (showRotateControls) {
-      // Use setTimeout to ensure the group ref is available after render
-      const timer = setTimeout(() => {
-        if (transformGroupRef.current) {
-          console.log("[v0] Restoring transform on Rotate enable:", {
-            rotation: [savedRotation.current.x.toFixed(2), savedRotation.current.y.toFixed(2), savedRotation.current.z.toFixed(2)],
-            position: [savedPosition.current.x.toFixed(2), savedPosition.current.y.toFixed(2), savedPosition.current.z.toFixed(2)]
-          })
-          transformGroupRef.current.rotation.copy(savedRotation.current)
-          transformGroupRef.current.position.copy(savedPosition.current)
-        }
-      }, 0)
-      return () => clearTimeout(timer)
-    }
-  }, [showRotateControls])
-  
-  // Handle transform changes from TransformControls
-  const handleTransformChange = () => {
-    if (transformControlsRef.current?.object) {
-      const obj = transformControlsRef.current.object
-      savedRotation.current.copy(obj.rotation)
-      savedPosition.current.copy(obj.position)
-      console.log("[v0] Saving transform from user interaction:", {
-        rotation: [obj.rotation.x.toFixed(2), obj.rotation.y.toFixed(2), obj.rotation.z.toFixed(2)],
-        position: [obj.position.x.toFixed(2), obj.position.y.toFixed(2), obj.position.z.toFixed(2)]
-      })
-    }
-  }
   
   // Apply background color
   useEffect(() => {
@@ -2474,8 +2439,18 @@ function SceneContent({
     }
   }, [matcapNormalMap, matcapSettings?.normalRepeat])
 
-  const content = showMatcap ? (
+  return (
     <>
+      <group>
+        <TransformControls 
+          mode="rotate" 
+          enabled={showRotateControls}
+          showX={showRotateControls}
+          showY={showRotateControls}
+          showZ={showRotateControls}
+        >
+      {showMatcap ? (
+        <>
       {geometrySettings.type === "sphere" ? (
         <mesh>
           <PrimitiveGeometry primitiveType={geometrySettings.primitiveType || "sphere"} />
@@ -2489,79 +2464,63 @@ function SceneContent({
           />
         </mesh>
       ) : geometrySettings.type === "model" ? (
-        geometrySettings.modelUrl && (
-          <ModelMesh
-            modelUrl={geometrySettings.modelUrl}
+            geometrySettings.modelUrl && (
+            <ModelMesh
+              modelUrl={geometrySettings.modelUrl}
+              materialSettings={materialSettings}
+              onError={onModelLoadError}
+              renderMode={renderMode}
+              matcapTexture={matcapTextureLoaded}
+              matcapNormalMap={matcapNormalMap}
+              matcapSettings={matcapSettings}
+              gradientSettings={gradientSettings}
+              inflationAmount={geometrySettings.inflationAmount || 0}
+              inflateSphereEnabled={geometrySettings.inflateSphereEnabled || true}
+              inflateSpherePosition={geometrySettings.inflateSpherePosition || [0, 0, 0]}
+              inflateSphereRadius={geometrySettings.inflateSphereRadius || 1.0}
+              flatBase={geometrySettings.flatBase || false}
+            />
+            )
+          ) : (
+            <ExtrudedSVGMesh
+              geometrySettings={geometrySettings}
+              materialSettings={materialSettings}
+              tintColor={new THREE.Color(materialSettings.colorTint)}
+              colorMap={null}
+              normalMap={null}
+              roughnessMap={null}
+              metalnessMap={null}
+              normalScaleVector={new THREE.Vector2(0, 0)}
+              envIntensity={0}
+              hueShiftedColorMap={null}
+              matcapTexture={matcapTextureLoaded}
+              useMatcap={true}
+              gradientSettings={gradientSettings}
+              matcapNormalMap={matcapNormalMap}
+              matcapSettings={matcapSettings}
+            />
+          )}
+        </>
+      ) : (
+        <>
+          <PBRMesh
+            geometrySettings={geometrySettings}
             materialSettings={materialSettings}
-            onError={onModelLoadError}
-            renderMode={renderMode}
-            matcapTexture={matcapTextureLoaded}
-            matcapNormalMap={matcapNormalMap}
-            matcapSettings={matcapSettings}
+            lightingSettings={lightingSettings}
+            onModelLoadError={onModelLoadError}
+            onGeometrySettingsChange={onGeometrySettingsChange}
             gradientSettings={gradientSettings}
-            inflationAmount={geometrySettings.inflationAmount || 0}
-            inflateSphereEnabled={geometrySettings.inflateSphereEnabled || true}
-            inflateSpherePosition={geometrySettings.inflateSpherePosition || [0, 0, 0]}
-            inflateSphereRadius={geometrySettings.inflateSphereRadius || 1.0}
-            flatBase={geometrySettings.flatBase || false}
           />
-        )
-      ) : (
-        <ExtrudedSVGMesh
-          geometrySettings={geometrySettings}
-          materialSettings={materialSettings}
-          tintColor={new THREE.Color(materialSettings.colorTint)}
-          colorMap={null}
-          normalMap={null}
-          roughnessMap={null}
-          metalnessMap={null}
-          normalScaleVector={new THREE.Vector2(0, 0)}
-          envIntensity={0}
-          hueShiftedColorMap={null}
-          matcapTexture={matcapTextureLoaded}
-          useMatcap={true}
-          gradientSettings={gradientSettings}
-          matcapNormalMap={matcapNormalMap}
-          matcapSettings={matcapSettings}
-        />
+          <Environment
+            preset={lightingSettings.envMap as any}
+            environmentRotation={[0, lightingSettings.envRotation, 0]}
+          />
+        </>
       )}
-    </>
-  ) : (
-    <>
-      <PBRMesh
-        geometrySettings={geometrySettings}
-        materialSettings={materialSettings}
-        lightingSettings={lightingSettings}
-        onModelLoadError={onModelLoadError}
-        onGeometrySettingsChange={onGeometrySettingsChange}
-        gradientSettings={gradientSettings}
-      />
-      <Environment
-        preset={lightingSettings.envMap as any}
-        environmentRotation={[0, lightingSettings.envRotation, 0]}
-      />
-    </>
-  )
-
-  return (
-    <>
-      {showRotateControls ? (
-        <TransformControls 
-          ref={transformControlsRef}
-          mode="rotate" 
-          onObjectChange={handleTransformChange}
-        >
-          <group ref={transformGroupRef}>
-            {content}
-          </group>
-        </TransformControls>
-      ) : (
-        <group ref={transformGroupRef}>
-          {content}
-        </group>
-      )}
+      </TransformControls>
+      </group>
       <GridHelper visible={showGrid} />
-      {showRotateControls && <axesHelper args={[0.5]} position={[0, -1.2, 0]} />}
+      <axesHelper args={[0.5]} position={[0, -1.2, 0]} visible={showRotateControls} />
     </>
   )
 }
@@ -2660,7 +2619,6 @@ export const PBRViewer = forwardRef<
           />
         </Suspense>
         <OrbitControls 
-          makeDefault
           enabled={!showRotateControls}
           enableDamping 
           dampingFactor={0.05} 

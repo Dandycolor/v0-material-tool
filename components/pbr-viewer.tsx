@@ -2571,24 +2571,22 @@ function SceneContent({
     <>
       <group ref={modelGroupRef}>
         {showRotateControls ? (
-          <TransformControls 
-            mode="rotate"
-            onObjectChange={() => {
-              if (contentGroupRef.current) {
-                const group = contentGroupRef.current as any
-                savedTransformRef.current.quaternion.copy(group.quaternion)
-                savedTransformRef.current.position.copy(group.position)
-              }
-            }}
-          >
-            <group ref={contentGroupRef}>
+          <TransformControls mode="rotate">
+            <group 
+              ref={contentGroupRef}
+              position={savedTransformRef.current.position as any}
+              quaternion={savedTransformRef.current.quaternion as any}
+            >
               {content}
             </group>
           </TransformControls>
         ) : (
-          <SavedTransformGroup savedTransform={savedTransformRef.current}>
+          <group 
+            position={savedTransformRef.current.position as any}
+            quaternion={savedTransformRef.current.quaternion as any}
+          >
             {content}
-          </SavedTransformGroup>
+          </group>
         )}
       </group>
       <GridHelper visible={showGrid} />

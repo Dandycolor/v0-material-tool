@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useRef, useState, useMemo, useCallback, forwardRef } from "react"
+import React, { useEffect, useRef, useState, useMemo, useCallback, forwardRef, useImperativeHandle } from "react"
 import * as THREE from "three"
 import { Canvas, useFrame, useThree } from "@react-three/fiber"
 import { SVGLoader } from "three/examples/jsm/loaders/SVGLoader.js"

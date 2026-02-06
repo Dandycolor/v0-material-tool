@@ -2208,6 +2208,19 @@ function SceneContent({
     }
   })
   
+  // Сохраняем трансформацию когда режим Rotate выключается
+  useEffect(() => {
+    if (!showRotateControls && contentGroupRef.current) {
+      const group = contentGroupRef.current as any
+      console.log("[v0] Сохраняю трансформацию при выключении Rotate:", {
+        position: [group.position.x, group.position.y, group.position.z],
+        quaternion: [group.quaternion.x, group.quaternion.y, group.quaternion.z, group.quaternion.w]
+      })
+      savedTransformRef.current.quaternion.copy(group.quaternion)
+      savedTransformRef.current.position.copy(group.position)
+    }
+  }, [showRotateControls])
+  
   // Apply background color
   useEffect(() => {
     if (backgroundColor) {

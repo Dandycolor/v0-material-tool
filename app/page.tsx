@@ -1726,7 +1726,7 @@ export default function MaterialTool() {
                         </div>
 
                         <div className="pt-4 space-y-4 border-t border-[#2a2a2a]/50">
-                          <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-gradient-to-r from-amber-900/20 to-orange-900/20 border border-amber-700/30">
+                          <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-gradient-to-r from-amber-900/20 to-orange-900/20 border border-neutral-700 bg-neutral-900">
                             <div className="flex-1">
                               <Label className="text-sm font-semibold text-amber-100 block mb-1">
                                 Pottery Wheel Mode

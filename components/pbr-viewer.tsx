@@ -2156,16 +2156,13 @@ function SavedTransformGroup({
   savedTransform: { position: THREE.Vector3; quaternion: THREE.Quaternion }
   children: React.ReactNode
 }) {
-  const groupRef = useRef(null)
+  const groupRef = useRef<THREE.Group>(null)
   
   // Применяем сохранённую трансформацию при монтировании
   useEffect(() => {
     if (groupRef.current) {
-      const group = groupRef.current as any
-      console.log("[v0] Применяю трансформацию:", {
-        position: [savedTransform.position.x, savedTransform.position.y, savedTransform.position.z],
-        quaternion: [savedTransform.quaternion.x, savedTransform.quaternion.y, savedTransform.quaternion.z, savedTransform.quaternion.w]
-      })
+      const group = groupRef.current
+      console.log("[v0] Применяю трансформацию:", savedTransform)
       group.position.copy(savedTransform.position)
       group.quaternion.copy(savedTransform.quaternion)
     }
@@ -2193,31 +2190,33 @@ function SceneContent({
 }: SceneContentProps & { onExportReady: (fn: () => void) => void, backgroundColor?: string }) {
   const { gl, scene, camera } = useThree()
   const modelGroupRef = useRef(null)
-  const contentGroupRef = useRef(null)
-  const savedTransformRef = useRef({ 
-    quaternion: new THREE.Quaternion(),
-    position: new THREE.Vector3()
+  const contentGroupRef = useRef<THREE.Group>(null)
+  
+  // Используем useRef для сохранения трансформации как THREE объектов
+  const savedTransformRef = useRef({
+    position: new THREE.Vector3(0, 0, 0),
+    quaternion: new THREE.Quaternion(0, 0, 0, 1)
   })
   
   // Постоянно обновляем сохранённую трансформацию на каждом кадре когда режим Rotate активен
   useFrame(() => {
     if (showRotateControls && contentGroupRef.current) {
-      const group = contentGroupRef.current as any
-      savedTransformRef.current.quaternion.copy(group.quaternion)
+      const group = contentGroupRef.current
       savedTransformRef.current.position.copy(group.position)
+      savedTransformRef.current.quaternion.copy(group.quaternion)
     }
   })
   
   // Сохраняем трансформацию когда режим Rotate выключается
   useEffect(() => {
     if (!showRotateControls && contentGroupRef.current) {
-      const group = contentGroupRef.current as any
+      const group = contentGroupRef.current
       console.log("[v0] Сохраняю трансформацию при выключении Rotate:", {
         position: [group.position.x, group.position.y, group.position.z],
         quaternion: [group.quaternion.x, group.quaternion.y, group.quaternion.z, group.quaternion.w]
       })
-      savedTransformRef.current.quaternion.copy(group.quaternion)
       savedTransformRef.current.position.copy(group.position)
+      savedTransformRef.current.quaternion.copy(group.quaternion)
     }
   }, [showRotateControls])
   

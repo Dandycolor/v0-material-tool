@@ -1246,7 +1246,7 @@ function createLatheGeometry(
       .filter(p => p.x >= centerX - sizeX * 0.05)
       .map(p => ({
         x: Math.abs(p.x - centerX),
-        y: p.y - centerY
+        y: -(p.y - centerY)
       }))
       .sort((a, b) => a.y - b.y)
     
@@ -1257,8 +1257,9 @@ function createLatheGeometry(
     
     const numSamples = Math.min(25, rightHalfPoints.length)
     const profilePoints: {x: number, y: number}[] = []
-    const yMin = minY - centerY
-    const yMax = maxY - centerY
+    const sortedYValues = rightHalfPoints.map(p => p.y).sort((a, b) => a - b)
+    const yMin = sortedYValues[0]
+    const yMax = sortedYValues[sortedYValues.length - 1]
     const yRange = yMax - yMin
     
     for (let i = 0; i < numSamples; i++) {
@@ -1278,11 +1279,13 @@ function createLatheGeometry(
     
     profilePoints.sort((a, b) => a.y - b.y)
     
+    const minXProfile = Math.min(...profilePoints.map(p => p.x))
+    
     const lathePoints: THREE.Vector2[] = profilePoints.map(p => 
-      new THREE.Vector2(Math.max(0, p.x), p.y)
+      new THREE.Vector2(Math.max(0, p.x - minXProfile), p.y)
     )
     
-    console.log("[v0] Lathe profile: created", lathePoints.length, "points from right half, x range:", Math.min(...lathePoints.map(p => p.x)), "-", Math.max(...lathePoints.map(p => p.x)))
+    console.log("[v0] Lathe profile: created", lathePoints.length, "points (inverted Y), x range:", Math.min(...lathePoints.map(p => p.x)), "-", Math.max(...lathePoints.map(p => p.x)))
 
     const geometry = new THREE.LatheGeometry(lathePoints, segments, 0, Math.PI * 2)
 

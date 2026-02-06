@@ -2439,41 +2439,39 @@ function SceneContent({
     }
   }, [matcapNormalMap, matcapSettings?.normalRepeat])
 
-  return (
+  const content = (
     <>
-      <group>
-        <TransformControls mode="rotate" enabled={showRotateControls}>
       {showMatcap ? (
         <>
-      {geometrySettings.type === "sphere" ? (
-        <mesh>
-          <PrimitiveGeometry primitiveType={geometrySettings.primitiveType || "sphere"} />
-          <MatcapMaterialWithEffects 
-            matcap={matcapTextureLoaded}
-            normalMap={matcapNormalMap}
-            normalIntensity={matcapSettings?.normalIntensity || 1}
-            rimIntensity={matcapSettings?.rimIntensity || 0}
-            rimPower={matcapSettings?.rimPower || 3}
-            rimColor={matcapSettings?.rimColor || "#ffffff"}
-          />
-        </mesh>
-      ) : geometrySettings.type === "model" ? (
+          {geometrySettings.type === "sphere" ? (
+            <mesh>
+              <PrimitiveGeometry primitiveType={geometrySettings.primitiveType || "sphere"} />
+              <MatcapMaterialWithEffects 
+                matcap={matcapTextureLoaded}
+                normalMap={matcapNormalMap}
+                normalIntensity={matcapSettings?.normalIntensity || 1}
+                rimIntensity={matcapSettings?.rimIntensity || 0}
+                rimPower={matcapSettings?.rimPower || 3}
+                rimColor={matcapSettings?.rimColor || "#ffffff"}
+              />
+            </mesh>
+          ) : geometrySettings.type === "model" ? (
             geometrySettings.modelUrl && (
-            <ModelMesh
-              modelUrl={geometrySettings.modelUrl}
-              materialSettings={materialSettings}
-              onError={onModelLoadError}
-              renderMode={renderMode}
-              matcapTexture={matcapTextureLoaded}
-              matcapNormalMap={matcapNormalMap}
-              matcapSettings={matcapSettings}
-              gradientSettings={gradientSettings}
-              inflationAmount={geometrySettings.inflationAmount || 0}
-              inflateSphereEnabled={geometrySettings.inflateSphereEnabled || true}
-              inflateSpherePosition={geometrySettings.inflateSpherePosition || [0, 0, 0]}
-              inflateSphereRadius={geometrySettings.inflateSphereRadius || 1.0}
-              flatBase={geometrySettings.flatBase || false}
-            />
+              <ModelMesh
+                modelUrl={geometrySettings.modelUrl}
+                materialSettings={materialSettings}
+                onError={onModelLoadError}
+                renderMode={renderMode}
+                matcapTexture={matcapTextureLoaded}
+                matcapNormalMap={matcapNormalMap}
+                matcapSettings={matcapSettings}
+                gradientSettings={gradientSettings}
+                inflationAmount={geometrySettings.inflationAmount || 0}
+                inflateSphereEnabled={geometrySettings.inflateSphereEnabled || true}
+                inflateSpherePosition={geometrySettings.inflateSpherePosition || [0, 0, 0]}
+                inflateSphereRadius={geometrySettings.inflateSphereRadius || 1.0}
+                flatBase={geometrySettings.flatBase || false}
+              />
             )
           ) : (
             <ExtrudedSVGMesh
@@ -2511,7 +2509,19 @@ function SceneContent({
           />
         </>
       )}
-      </TransformControls>
+    </>
+  )
+
+  return (
+    <>
+      <group>
+        {showRotateControls ? (
+          <TransformControls mode="rotate">
+            {content}
+          </TransformControls>
+        ) : (
+          content
+        )}
       </group>
       <GridHelper visible={showGrid} />
       {showRotateControls && <axesHelper args={[0.5]} position={[0, -1.2, 0]} />}

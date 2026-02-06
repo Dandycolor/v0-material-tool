@@ -2660,6 +2660,7 @@ export const PBRViewer = forwardRef<
           />
         </Suspense>
         <OrbitControls 
+          makeDefault
           enabled={!showRotateControls}
           enableDamping 
           dampingFactor={0.05} 

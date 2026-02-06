@@ -55,6 +55,10 @@ interface ModelMeshProps {
   inflateSphereRadius?: number
   flatBase?: boolean
   onInflateSphereMove?: (position: [number, number, number]) => void
+  // Rotation
+  rotationX?: number
+  rotationY?: number
+  rotationZ?: number
 }
 
 export function ModelMesh({
@@ -81,6 +85,9 @@ export function ModelMesh({
   inflateSphereRadius = 1.0,
   flatBase = false,
   onInflateSphereMove,
+  rotationX = 0,
+  rotationY = 0,
+  rotationZ = 0,
 }: ModelMeshProps) {
   const [scene, setScene] = useState<THREE.Group | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -214,7 +221,7 @@ export function ModelMesh({
     }
   }, [modelUrl])
 
-  // Применяем inflation при изменении inflationAmount и параметров сферы
+  // Применяем inflation при изменени�� inflationAmount и параметров сферы
   useEffect(() => {
     if (!scene) return
     
@@ -591,7 +598,11 @@ export function ModelMesh({
     )
   }
 
-  return <primitive object={scene} />
+  return (
+    <group rotation={[rotationX, rotationY, rotationZ]}>
+      <primitive object={scene} />
+    </group>
+  )
 }
 
 function createPBRMaterial(

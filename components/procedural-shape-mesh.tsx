@@ -22,6 +22,9 @@ interface ProceduralShapeMeshProps {
   matcapNormalMap: THREE.Texture | null
   matcapSettings: any
   gradientSettings: any
+  rotationX?: number
+  rotationY?: number
+  rotationZ?: number
 }
 
 export function ProceduralShapeMesh({
@@ -41,6 +44,9 @@ export function ProceduralShapeMesh({
   matcapNormalMap,
   matcapSettings,
   gradientSettings,
+  rotationX = 0,
+  rotationY = 0,
+  rotationZ = 0,
 }: ProceduralShapeMeshProps) {
   const meshRef = useRef<THREE.Mesh>(null)
   const materialRef = useRef<THREE.MeshStandardMaterial>(null)
@@ -106,6 +112,6 @@ export function ProceduralShapeMesh({
   ])
 
   return (
-    <mesh ref={meshRef} geometry={geometry} material={material} scale={[1.2, 1.2, 1.2]} />
+    <mesh ref={meshRef} geometry={geometry} material={material} scale={[1.2, 1.2, 1.2]} rotation={[rotationX, rotationY, rotationZ]} />
   )
 }

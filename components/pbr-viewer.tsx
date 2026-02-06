@@ -257,6 +257,9 @@ interface GeometrySettings {
   inflateSphereRadius: number
   flatBase?: boolean
   deformEnabled?: boolean
+  rotationX?: number
+  rotationY?: number
+  rotationZ?: number
   proceduralParams?: ProceduralShapeParams
 }
 
@@ -1451,7 +1454,11 @@ function ExtrudedSVGMesh({
 
   if (geometry) {
     return (
-      <mesh ref={meshRef} geometry={geometry}>
+      <mesh 
+        ref={meshRef} 
+        geometry={geometry}
+        rotation={[geometrySettings.rotationX || 0, geometrySettings.rotationY || 0, geometrySettings.rotationZ || 0]}
+      >
         {!gradientSettings?.enabled && (
           useMatcap && matcapTexture ? (
             <MatcapMaterialWithEffects 
@@ -1657,7 +1664,11 @@ function PBRMesh({
       <directionalLight position={[5, 5, 5]} intensity={lightingSettings.directionalIntensity} />
 
       {geometrySettings.type === "sphere" ? (
-        <mesh key={fullTextureKey} ref={sphereMeshRef}>
+        <mesh 
+          key={fullTextureKey} 
+          ref={sphereMeshRef}
+          rotation={[geometrySettings.rotationX || 0, geometrySettings.rotationY || 0, geometrySettings.rotationZ || 0]}
+        >
           <PrimitiveGeometry primitiveType={geometrySettings.primitiveType || "sphere"} />
           <Material materialSettings={materialSettings} />
         </mesh>
@@ -1688,6 +1699,9 @@ function PBRMesh({
             inflateSphereRadius={geometrySettings.inflateSphereRadius || 1.0}
             flatBase={geometrySettings.flatBase || false}
             onInflateSphereMove={(pos) => onGeometrySettingsChange?.({ inflateSpherePosition: pos })}
+            rotationX={geometrySettings.rotationX || 0}
+            rotationY={geometrySettings.rotationY || 0}
+            rotationZ={geometrySettings.rotationZ || 0}
           />
         )
       ) : geometrySettings.type === "procedural" ? (
@@ -1710,6 +1724,9 @@ function PBRMesh({
             matcapNormalMap={renderMode === "matcap" ? matcapNormalMap : null}
             matcapSettings={matcapSettings}
             gradientSettings={gradientSettings}
+            rotationX={geometrySettings.rotationX || 0}
+            rotationY={geometrySettings.rotationY || 0}
+            rotationZ={geometrySettings.rotationZ || 0}
           />
         )
       ) : (

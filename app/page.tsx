@@ -854,6 +854,9 @@ export default function MaterialTool() {
     inflateSphereRadius: 0.5, // Радиус сферы влияния (меньшее значение для локального эффекта)
     flatBase: false, // Flat Base toggle
     deformEnabled: false, // Enable deform для extruded SVG
+    rotationX: 0,
+    rotationY: 0,
+    rotationZ: 0,
     proceduralParams: {
       baseRadius: 1,
       height: 2,
@@ -2776,9 +2779,57 @@ export default function MaterialTool() {
                     </>
                   )}
                   </>
-                )}
+                  )}
                 </div>
-              </TabsContent>
+
+                {/* Object Rotation Controls */}
+                <div className="border-t border-[#2a2a2a] pt-4 space-y-4">
+                  <Label className="text-xs text-zinc-500 font-semibold">Object Rotation</Label>
+                  
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs text-zinc-500">Rotation X</Label>
+                      <span className="text-xs text-white font-mono">{(geometrySettings.rotationX * 180 / Math.PI).toFixed(0)}°</span>
+                    </div>
+                    <Slider
+                      value={[geometrySettings.rotationX]}
+                      onValueChange={([value]) => setGeometrySettings({ ...geometrySettings, rotationX: value })}
+                      min={-Math.PI}
+                      max={Math.PI}
+                      step={0.01}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs text-zinc-500">Rotation Y</Label>
+                      <span className="text-xs text-white font-mono">{(geometrySettings.rotationY * 180 / Math.PI).toFixed(0)}°</span>
+                    </div>
+                    <Slider
+                      value={[geometrySettings.rotationY]}
+                      onValueChange={([value]) => setGeometrySettings({ ...geometrySettings, rotationY: value })}
+                      min={-Math.PI}
+                      max={Math.PI}
+                      step={0.01}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs text-zinc-500">Rotation Z</Label>
+                      <span className="text-xs text-white font-mono">{(geometrySettings.rotationZ * 180 / Math.PI).toFixed(0)}°</span>
+                    </div>
+                    <Slider
+                      value={[geometrySettings.rotationZ]}
+                      onValueChange={([value]) => setGeometrySettings({ ...geometrySettings, rotationZ: value })}
+                      min={-Math.PI}
+                      max={Math.PI}
+                      step={0.01}
+                    />
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
 
               <TabsContent value="lighting">
               {renderMode === "pbr" ? (

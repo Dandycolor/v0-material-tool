@@ -1,6 +1,6 @@
 "use client"
 
-import { Canvas, useLoader, useThree } from "@react-three/fiber"
+import { Canvas, useLoader, useThree, useFrame } from "@react-three/fiber"
 import { OrbitControls, Environment, TransformControls } from "@react-three/drei"
 import * as THREE from "three"
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
@@ -2164,6 +2164,17 @@ function SceneContent({
   backgroundColor,
 }: SceneContentProps & { onExportReady: (fn: () => void) => void, backgroundColor?: string }) {
   const { gl, scene, camera } = useThree()
+  const transformGroupRef = useRef<THREE.Group>(null)
+  const savedRotation = useRef(new THREE.Euler())
+  const savedPosition = useRef(new THREE.Vector3())
+  
+  // Save transform continuously when rotate controls are enabled
+  useFrame(() => {
+    if (showRotateControls && transformGroupRef.current) {
+      savedRotation.current.copy(transformGroupRef.current.rotation)
+      savedPosition.current.copy(transformGroupRef.current.position)
+    }
+  })
   
   // Apply background color
   useEffect(() => {
@@ -2510,15 +2521,21 @@ function SceneContent({
 
   return (
     <>
-      <group>
-        {showRotateControls ? (
-          <TransformControls mode="rotate">
+      {showRotateControls ? (
+        <TransformControls mode="rotate">
+          <group ref={transformGroupRef}>
             {content}
-          </TransformControls>
-        ) : (
-          content
-        )}
-      </group>
+          </group>
+        </TransformControls>
+      ) : (
+        <group 
+          ref={transformGroupRef}
+          rotation={savedRotation.current}
+          position={savedPosition.current}
+        >
+          {content}
+        </group>
+      )}
       <GridHelper visible={showGrid} />
       {showRotateControls && <axesHelper args={[0.5]} position={[0, -1.2, 0]} />}
     </>

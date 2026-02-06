@@ -1218,7 +1218,7 @@ function createLatheGeometry(
     }
 
     const shape = shapes[0]
-    const allPoints = shape.getPoints(25)
+    const allPoints = shape.getPoints(40)
 
     if (allPoints.length < 2) {
       console.warn("[v0] Not enough points for lathe geometry")
@@ -1239,56 +1239,12 @@ function createLatheGeometry(
     
     const centerX = (minX + maxX) / 2
     const centerY = (minY + maxY) / 2
-    const sizeX = maxX - minX
-    const sizeY = maxY - minY
     
-    const pointsWithRadius = allPoints.map(p => ({
-      x: Math.abs(p.x - centerX),
-      y: -(p.y - centerY),
-      dist: Math.sqrt((p.x - centerX) ** 2 + (p.y - centerY) ** 2)
-    }))
-    
-    if (pointsWithRadius.length < 3) {
-      console.warn("[v0] Not enough points for lathe profile")
-      return null
-    }
-    
-    const numSamples = Math.min(30, Math.floor(pointsWithRadius.length / 2))
-    const profilePoints: {x: number, y: number}[] = []
-    const sortedYValues = pointsWithRadius.map(p => p.y).sort((a, b) => a - b)
-    const yMin = sortedYValues[0]
-    const yMax = sortedYValues[sortedYValues.length - 1]
-    const yRange = yMax - yMin
-    
-    for (let i = 0; i < numSamples; i++) {
-      const t = i / (numSamples - 1)
-      const targetY = yMin + t * yRange
-      const tolerance = yRange / numSamples * 1.5
-      
-      const pointsAtY = pointsWithRadius.filter(p => 
-        Math.abs(p.y - targetY) < tolerance
-      )
-      
-      if (pointsAtY.length > 0) {
-        const maxDist = Math.max(...pointsAtY.map(p => p.dist))
-        profilePoints.push({ x: maxDist, y: targetY })
-      }
-    }
-    
-    profilePoints.sort((a, b) => a.y - b.y)
-    
-    if (profilePoints.length < 3) {
-      profilePoints.length = 0
-      profilePoints.push({ x: 0, y: yMin })
-      profilePoints.push({ x: sizeX / 2, y: (yMin + yMax) / 2 })
-      profilePoints.push({ x: 0, y: yMax })
-    }
-    
-    const lathePoints: THREE.Vector2[] = profilePoints.map(p => 
-      new THREE.Vector2(Math.max(0, p.x), p.y)
-    )
-    
-    console.log("[v0] Lathe profile: created", lathePoints.length, "points from all directions, x range:", Math.min(...lathePoints.map(p => p.x)), "-", Math.max(...lathePoints.map(p => p.x)))
+    const lathePoints: THREE.Vector2[] = allPoints.map(p => {
+      const x = Math.abs(p.x - centerX)
+      const y = -(p.y - centerY)
+      return new THREE.Vector2(x, y)
+    })
 
     const geometry = new THREE.LatheGeometry(lathePoints, segments, 0, Math.PI * 2)
 
@@ -1308,7 +1264,7 @@ function createLatheGeometry(
 
     geometry.computeBoundingBox()
     const bbox = geometry.boundingBox!
-    const heightRange = bbox.max.y - bbox.min.y
+    const heightRange = Math.max(bbox.max.y - bbox.min.y, 0.001)
     
     const positionArray = geometry.attributes.position.array as Float32Array
     const uvCount = positionArray.length / 3
@@ -1329,8 +1285,6 @@ function createLatheGeometry(
     
     geometry.setAttribute('uv', new THREE.BufferAttribute(newUVs, 2))
     geometry.computeVertexNormals()
-    
-    console.log("[v0] Created lathe geometry with", segments, "segments")
 
     return geometry
   } catch (error) {

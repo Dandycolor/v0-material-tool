@@ -1286,6 +1286,51 @@ function createLatheGeometry(
     }
     
     geometry.setAttribute('uv', new THREE.BufferAttribute(newUVs, 2))
+    
+    // Smooth normals across the seam to avoid artifacts
+    const positions = geometry.attributes.position
+    const posArray = positions.array as Float32Array
+    const normals = geometry.attributes.normal
+    const normArray = normals.array as Float32Array
+    
+    // Find vertices at the seam (first and last segments should have same position, different angle)
+    const posCount = posArray.length / 3
+    const profilePointCount = lathePoints.length
+    
+    // Smooth normals between corresponding seam vertices
+    for (let i = 0; i < profilePointCount; i++) {
+      const firstSeamIdx = i
+      const lastSeamIdx = (segments + 1) * profilePointCount + i
+      
+      if (lastSeamIdx < posCount) {
+        // Average the normals at the seam
+        const nx0 = normArray[firstSeamIdx * 3]
+        const ny0 = normArray[firstSeamIdx * 3 + 1]
+        const nz0 = normArray[firstSeamIdx * 3 + 2]
+        
+        const nx1 = normArray[lastSeamIdx * 3]
+        const ny1 = normArray[lastSeamIdx * 3 + 1]
+        const nz1 = normArray[lastSeamIdx * 3 + 2]
+        
+        const avgNx = (nx0 + nx1) / 2
+        const avgNy = (ny0 + ny1) / 2
+        const avgNz = (nz0 + nz1) / 2
+        
+        const len = Math.sqrt(avgNx * avgNx + avgNy * avgNy + avgNz * avgNz)
+        if (len > 0) {
+          const invLen = 1 / len
+          normArray[firstSeamIdx * 3] = avgNx * invLen
+          normArray[firstSeamIdx * 3 + 1] = avgNy * invLen
+          normArray[firstSeamIdx * 3 + 2] = avgNz * invLen
+          
+          normArray[lastSeamIdx * 3] = avgNx * invLen
+          normArray[lastSeamIdx * 3 + 1] = avgNy * invLen
+          normArray[lastSeamIdx * 3 + 2] = avgNz * invLen
+        }
+      }
+    }
+    
+    normals.needsUpdate = true
     geometry.computeVertexNormals()
 
     return geometry

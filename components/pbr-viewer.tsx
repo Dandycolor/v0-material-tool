@@ -1579,30 +1579,6 @@ function ExtrudedSVGMesh({
   return null
 }
 
-function RotateControlsHelper({ enabled }: { enabled?: boolean }) {
-  const groupRef = useRef(null)
-  const { camera } = useThree()
-  
-  if (!enabled) return null
-  
-  return (
-    <>
-      <TransformControls 
-        ref={groupRef}
-        mode="rotate"
-        position={[0, -0.8, 0]}
-        scale={0.5}
-      >
-        <mesh visible={false}>
-          <boxGeometry args={[0.1, 0.1, 0.1]} />
-          <meshBasicMaterial />
-        </mesh>
-      </TransformControls>
-      
-      <axesHelper args={[0.4]} position={[0, -0.8, 0]} />
-    </>
-  )
-}
 
 function PBRMesh({
   geometrySettings,
@@ -2465,6 +2441,8 @@ function SceneContent({
 
   return (
     <>
+      <group>
+        <TransformControls mode="rotate" enabled={showRotateControls}>
       {showMatcap ? (
         <>
       {geometrySettings.type === "sphere" ? (
@@ -2533,8 +2511,10 @@ function SceneContent({
           />
         </>
       )}
+      </TransformControls>
+      </group>
       <GridHelper visible={showGrid} />
-      <RotateControlsHelper enabled={showRotateControls} />
+      <axesHelper args={[0.5]} position={[0, -1.2, 0]} visible={showRotateControls} />
     </>
   )
 }

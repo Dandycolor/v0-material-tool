@@ -19,12 +19,12 @@ export function ProceduralShapeControls({ onShapeChange, onParamsChange }: Proce
     height: 2,
     segments: 64,
     twistAmount: 0,
-    bulgeFactor: 0.4,
-    indentFactor: 0.2,
+    bulgeFactor: 0.3, // Уменьшено для лучшего вида
+    indentFactor: 0.15, // Уменьшено
     bulgeFrequency: 4, // Количество волн по высоте
-    topSharpness: 0.5, // 0 = плоский верх, 1 = острый
-    bottomSharpness: 0.5, // 0 = плоский низ, 1 = острый
-    noiseScale: 0.3,
+    topSharpness: 0.2, // Мягкая округлая верхушка
+    bottomSharpness: 0.2, // Мягкое округлое дно
+    noiseScale: 0.1, // Уменьшено для чистоты
     randomSeed: 42,
   })
 
@@ -71,12 +71,12 @@ export function ProceduralShapeControls({ onShapeChange, onParamsChange }: Proce
       height: 2,
       segments: 64,
       twistAmount: 0,
-      bulgeFactor: 0.4,
-      indentFactor: 0.2,
+      bulgeFactor: 0.3,
+      indentFactor: 0.15,
       bulgeFrequency: 4,
-      topSharpness: 0.5,
-      bottomSharpness: 0.5,
-      noiseScale: 0.3,
+      topSharpness: 0.2,
+      bottomSharpness: 0.2,
+      noiseScale: 0.1,
       randomSeed: 42,
     })
   }

@@ -55,70 +55,38 @@ export function createProceduralShape(params: ProceduralShapeParams): THREE.Buff
     const noiseVal1 = seededRandom(randomSeed + i * 0.1) * 2 - 1
     const noiseVal2 = seededRandom(randomSeed + i * 0.2 + 100) * 2 - 1
 
-    // Fade factor для плавного затухания деформаций к верхушке и низу
-    // Это создает плавный переход вместо резкого обрыва
-    let fadeFactor = 1
-    const fadeZoneSize = 0.15 // 15% от верха и низа - зона затухания
+    // Базовая форма - синусоида для плавного булжа в центре
+    const bulgeSin = Math.sin(t * Math.PI) // Peak at center, 0 at edges
     
-    if (t > 1 - fadeZoneSize) {
-      // Затухание к верхушке
-      const fadeBlend = (1 - t) / fadeZoneSize
-      fadeFactor *= fadeBlend * fadeBlend // Квадратичное затухание для плавности
-    } else if (t < fadeZoneSize) {
-      // Затухание к низу
-      const fadeBlend = t / fadeZoneSize
-      fadeFactor *= fadeBlend * fadeBlend
-    }
-
-    // Apply bulge/indent with sinusoidal variation, но они затухают к верхушке/низу
-    const bulgeSin = Math.sin(t * Math.PI) // Peak in the middle
-    const bulgeAmount = bulgeSin * bulgeFactor * fadeFactor // fadeFactor ослабляет булж к краям
-    // Используем bulgeFrequency для контроля количества волн
-    const indentAmount = Math.sin(t * Math.PI * bulgeFrequency) * indentFactor * fadeFactor
-
-    // Combine all radius variations
+    // Волны частоты работают ВСЮ высоту, не затухая
+    const waveAmount = Math.sin(t * Math.PI * bulgeFrequency)
+    const indentAmount = waveAmount * indentFactor
+    
+    // Булж комбинируется с основной формой
+    const bulgeAmount = bulgeSin * bulgeFactor
+    
+    // Основные деформации: булж и волны
     radiusVar += (bulgeAmount - indentAmount) * 0.5
-    radiusVar += noiseVal1 * noiseScale * 0.1 * fadeFactor
-    radiusVar += noiseVal2 * noiseScale * 0.05 * fadeFactor
+    radiusVar += noiseVal1 * noiseScale * 0.1
+    radiusVar += noiseVal2 * noiseScale * 0.05
 
-    // Применяем заострение к верхушке и низу
-    // topSharpness: 0 = широкая плоская площадка, 1 = острый конус
-    // bottomSharpness: 0 = широкое плоское дно, 1 = острый низ
+    // Теперь применяем шейпнесс более мягко - расширяем волны к верхушке/дну вместо их подавления
+    // При t=0 или t=1, радиус минимален (закрыто) но волны добавляют "пузырьки"
+    // Этот эффект трансформирует волны в округлые выпуклости на верхушке/дне
     
-    // Для верхушки (t близко к 1)
-    if (t > 0.8) {
-      const topBlend = (t - 0.8) / 0.2 // 0 to 1 для последних 20%
-      
-      // При низкой остроте (0) - широкая плоская площадка
-      // При высокой остроте (1) - острый конус
-      const flatZoneSize = 1 - topSharpness // Размер плоской зоны: 0-1
-      
-      if (topBlend < flatZoneSize) {
-        // В плоской зоне - радиус не уменьшается (или уменьшается минимально)
-        const minRadius = 0.3 // Минимальный радиус для плоской площадки
-        radiusVar *= (1 - minRadius) * (1 - topBlend / flatZoneSize) + minRadius
-      } else {
-        // За пределами плоской зоны - сходимся к точке
-        const coneBlend = (topBlend - flatZoneSize) / (1 - flatZoneSize)
-        const sharpnessPower = 1 + topSharpness * 2 // 1 (пологий) до 3 (крутой)
-        radiusVar *= (1 - Math.pow(coneBlend, sharpnessPower)) * 0.3
-      }
-    }
-    
-    // Для низа (t близко к 0)
     if (t < 0.2) {
-      const bottomBlend = (0.2 - t) / 0.2 // 0 to 1 для первых 20%
-      
-      const flatZoneSize = 1 - bottomSharpness
-      
-      if (bottomBlend < flatZoneSize) {
-        const minRadius = 0.3
-        radiusVar *= (1 - minRadius) * (1 - bottomBlend / flatZoneSize) + minRadius
-      } else {
-        const coneBlend = (bottomBlend - flatZoneSize) / (1 - flatZoneSize)
-        const sharpnessPower = 1 + bottomSharpness * 2
-        radiusVar *= (1 - Math.pow(coneBlend, sharpnessPower)) * 0.3
-      }
+      // К низу: позволяем волнам создать округлые выпуклости
+      const bottomTaper = t / 0.2 // 0 to 1
+      // Используем bottomSharpness: 0 = мягкое округлое дно, 1 = острое заострение
+      // Вместо того чтобы убивать волны, мы их усиливаем в выпуклости
+      const bottomCurve = Math.pow(bottomTaper, 2 - bottomSharpness * 1.5)
+      radiusVar *= bottomCurve
+    } else if (t > 0.8) {
+      // К верхушке: позволяем волнам создать округлые выпуклости
+      const topTaper = (1 - t) / 0.2 // 0 to 1
+      // Используем topSharpness: 0 = мягкое округлое верхушка, 1 = острое заострение
+      const topCurve = Math.pow(topTaper, 2 - topSharpness * 1.5)
+      radiusVar *= topCurve
     }
 
     const radius = baseRadius * Math.max(0.001, radiusVar) // Минимальный радиус для закрытия

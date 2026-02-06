@@ -2165,12 +2165,6 @@ function SceneContent({
 }: SceneContentProps & { onExportReady: (fn: () => void) => void, backgroundColor?: string }) {
   const { gl, scene, camera } = useThree()
   const modelGroupRef = useRef(null)
-  const modelQuaternionRef = useRef(new THREE.Quaternion())
-  const transformStateRef = useRef({
-    position: new THREE.Vector3(0, 0, 0),
-    quaternion: new THREE.Quaternion(),
-    scale: new THREE.Vector3(1, 1, 1)
-  })
   
   // Apply background color
   useEffect(() => {
@@ -2519,34 +2513,12 @@ function SceneContent({
     </>
   )
 
-  useEffect(() => {
-    if (!modelGroupRef.current) return
-    
-    const group = modelGroupRef.current as any
-    
-    if (showRotateControls) {
-      // Entering rotate mode - restore saved transform
-      group.position.copy(transformStateRef.current.position)
-      group.quaternion.copy(transformStateRef.current.quaternion)
-      group.scale.copy(transformStateRef.current.scale)
-    } else {
-      // Exiting rotate mode - save current transform
-      transformStateRef.current.position.copy(group.position)
-      transformStateRef.current.quaternion.copy(group.quaternion)
-      transformStateRef.current.scale.copy(group.scale)
-    }
-  }, [showRotateControls])
-
   return (
     <>
       <group ref={modelGroupRef}>
-        {showRotateControls ? (
-          <TransformControls mode="rotate">
-            {content}
-          </TransformControls>
-        ) : (
-          content
-        )}
+        <TransformControls mode="rotate" enabled={showRotateControls}>
+          {content}
+        </TransformControls>
       </group>
       <GridHelper visible={showGrid} />
       {showRotateControls && <axesHelper args={[0.5]} position={[0, -1.2, 0]} />}

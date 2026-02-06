@@ -2175,6 +2175,10 @@ function SceneContent({
       // Use setTimeout to ensure the group ref is available after render
       const timer = setTimeout(() => {
         if (transformGroupRef.current) {
+          console.log("[v0] Restoring transform on Rotate enable:", {
+            rotation: [savedRotation.current.x.toFixed(2), savedRotation.current.y.toFixed(2), savedRotation.current.z.toFixed(2)],
+            position: [savedPosition.current.x.toFixed(2), savedPosition.current.y.toFixed(2), savedPosition.current.z.toFixed(2)]
+          })
           transformGroupRef.current.rotation.copy(savedRotation.current)
           transformGroupRef.current.position.copy(savedPosition.current)
         }
@@ -2189,6 +2193,10 @@ function SceneContent({
       const obj = transformControlsRef.current.object
       savedRotation.current.copy(obj.rotation)
       savedPosition.current.copy(obj.position)
+      console.log("[v0] Saving transform from user interaction:", {
+        rotation: [obj.rotation.x.toFixed(2), obj.rotation.y.toFixed(2), obj.rotation.z.toFixed(2)],
+        position: [obj.position.x.toFixed(2), obj.position.y.toFixed(2), obj.position.z.toFixed(2)]
+      })
     }
   }
   

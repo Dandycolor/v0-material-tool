@@ -2187,6 +2187,7 @@ function SceneContent({
 }: SceneContentProps & { onExportReady: (fn: () => void) => void, backgroundColor?: string }) {
   const { gl, scene, camera } = useThree()
   const modelGroupRef = useRef(null)
+  const contentGroupRef = useRef(null)
   const savedTransformRef = useRef({ 
     quaternion: new THREE.Quaternion(),
     position: new THREE.Vector3()
@@ -2546,14 +2547,16 @@ function SceneContent({
           <TransformControls 
             mode="rotate"
             onObjectChange={() => {
-              if (modelGroupRef.current) {
-                const group = modelGroupRef.current as any
+              if (contentGroupRef.current) {
+                const group = contentGroupRef.current as any
                 savedTransformRef.current.quaternion.copy(group.quaternion)
                 savedTransformRef.current.position.copy(group.position)
               }
             }}
           >
-            {content}
+            <group ref={contentGroupRef}>
+              {content}
+            </group>
           </TransformControls>
         ) : (
           <SavedTransformGroup savedTransform={savedTransformRef.current}>

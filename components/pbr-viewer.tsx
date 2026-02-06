@@ -2173,12 +2173,23 @@ function SceneContent({
     if (showRotateControls && transformGroupRef.current) {
       savedRotation.current.copy(transformGroupRef.current.rotation)
       savedPosition.current.copy(transformGroupRef.current.position)
+      console.log("[v0] Saving rotation:", {
+        x: savedRotation.current.x,
+        y: savedRotation.current.y,
+        z: savedRotation.current.z
+      })
     }
   })
   
   // Apply saved transform when rotate controls are disabled
   useEffect(() => {
+    console.log("[v0] showRotateControls changed to:", showRotateControls)
     if (!showRotateControls && transformGroupRef.current) {
+      console.log("[v0] Applying saved rotation:", {
+        x: savedRotation.current.x,
+        y: savedRotation.current.y,
+        z: savedRotation.current.z
+      })
       transformGroupRef.current.rotation.copy(savedRotation.current)
       transformGroupRef.current.position.copy(savedPosition.current)
     }

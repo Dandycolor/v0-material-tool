@@ -2165,12 +2165,17 @@ function SceneContent({
 }: SceneContentProps & { onExportReady: (fn: () => void) => void, backgroundColor?: string }) {
   const { gl, scene, camera } = useThree()
   const transformGroupRef = useRef<THREE.Group>(null)
+  const transformControlsRef = useRef<any>(null)
   const savedRotation = useRef(new THREE.Euler())
   const savedPosition = useRef(new THREE.Vector3())
   
   // Apply saved transform when rotate controls are disabled
   useEffect(() => {
     if (!showRotateControls && transformGroupRef.current) {
+      console.log("[v0] Applying saved transform:", {
+        rotation: [savedRotation.current.x, savedRotation.current.y, savedRotation.current.z],
+        position: [savedPosition.current.x, savedPosition.current.y, savedPosition.current.z]
+      })
       transformGroupRef.current.rotation.copy(savedRotation.current)
       transformGroupRef.current.position.copy(savedPosition.current)
     }
@@ -2178,9 +2183,14 @@ function SceneContent({
   
   // Handle transform changes from TransformControls
   const handleTransformChange = () => {
-    if (transformGroupRef.current) {
-      savedRotation.current.copy(transformGroupRef.current.rotation)
-      savedPosition.current.copy(transformGroupRef.current.position)
+    if (transformControlsRef.current?.object) {
+      const obj = transformControlsRef.current.object
+      savedRotation.current.copy(obj.rotation)
+      savedPosition.current.copy(obj.position)
+      console.log("[v0] Saved transform from TransformControls:", {
+        rotation: [obj.rotation.x, obj.rotation.y, obj.rotation.z],
+        position: [obj.position.x, obj.position.y, obj.position.z]
+      })
     }
   }
   
@@ -2530,7 +2540,11 @@ function SceneContent({
   return (
     <>
       {showRotateControls ? (
-        <TransformControls mode="rotate" onObjectChange={handleTransformChange}>
+        <TransformControls 
+          ref={transformControlsRef}
+          mode="rotate" 
+          onObjectChange={handleTransformChange}
+        >
           <group ref={transformGroupRef}>
             {content}
           </group>

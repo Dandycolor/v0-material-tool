@@ -21,6 +21,7 @@ export function ProceduralShapeControls({ onShapeChange, onParamsChange }: Proce
     twistAmount: 0,
     bulgeFactor: 0.4,
     indentFactor: 0.2,
+    bulgeFrequency: 4, // Количество волн по высоте
     noiseScale: 0.3,
     randomSeed: 42,
   })
@@ -53,6 +54,7 @@ export function ProceduralShapeControls({ onShapeChange, onParamsChange }: Proce
       twistAmount: (Math.random() - 0.5) * Math.PI * 2,
       bulgeFactor: Math.random() * 0.8,
       indentFactor: Math.random() * 0.5,
+      bulgeFrequency: 2 + Math.floor(Math.random() * 10), // 2-12 волн
       noiseScale: Math.random() * 0.5,
       randomSeed: Math.floor(Math.random() * 10000),
     }
@@ -67,6 +69,7 @@ export function ProceduralShapeControls({ onShapeChange, onParamsChange }: Proce
       twistAmount: 0,
       bulgeFactor: 0.4,
       indentFactor: 0.2,
+      bulgeFrequency: 4,
       noiseScale: 0.3,
       randomSeed: 42,
     })
@@ -199,6 +202,22 @@ export function ProceduralShapeControls({ onShapeChange, onParamsChange }: Proce
             step={0.05}
           />
           <p className="text-xs text-zinc-600">Inward indentation deformation</p>
+        </div>
+
+        {/* Bulge Frequency */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-zinc-500">Bulge Frequency</Label>
+            <span className="text-xs text-white font-mono">{params.bulgeFrequency}</span>
+          </div>
+          <Slider
+            value={[params.bulgeFrequency]}
+            onValueChange={([value]) => handleParamChange('bulgeFrequency', value)}
+            min={0}
+            max={20}
+            step={1}
+          />
+          <p className="text-xs text-zinc-600">Number of bulges along height</p>
         </div>
 
         {/* Noise Scale */}

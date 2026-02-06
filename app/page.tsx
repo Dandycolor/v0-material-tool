@@ -861,6 +861,7 @@ export default function MaterialTool() {
       twistAmount: 0,
       bulgeFactor: 0.4,
       indentFactor: 0.2,
+      bulgeFrequency: 4,
       noiseScale: 0.3,
       randomSeed: 42,
     } as ProceduralShapeParams,

@@ -10,6 +10,7 @@ interface ProceduralShapeParams {
   twistAmount: number
   bulgeFactor: number
   indentFactor: number
+  bulgeFrequency: number // Количество волн выпуклостей по высоте (0 = нет волн, 10 = много волн)
   noiseScale: number
   randomSeed: number
 }
@@ -25,6 +26,7 @@ export function createProceduralShape(params: ProceduralShapeParams): THREE.Buff
     twistAmount,
     bulgeFactor,
     indentFactor,
+    bulgeFrequency,
     noiseScale,
     randomSeed,
   } = params
@@ -52,7 +54,8 @@ export function createProceduralShape(params: ProceduralShapeParams): THREE.Buff
     // Apply bulge/indent with sinusoidal variation
     const bulgeSin = Math.sin(t * Math.PI) // Peak in the middle
     const bulgeAmount = bulgeSin * bulgeFactor
-    const indentAmount = Math.sin(t * Math.PI * 2) * indentFactor
+    // Используем bulgeFrequency для контроля количества волн
+    const indentAmount = Math.sin(t * Math.PI * bulgeFrequency) * indentFactor
 
     // Combine all radius variations
     radiusVar += (bulgeAmount - indentAmount) * 0.5

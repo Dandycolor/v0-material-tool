@@ -2169,20 +2169,18 @@ function SceneContent({
   const savedRotation = useRef(new THREE.Euler())
   const savedPosition = useRef(new THREE.Vector3())
   
-  // Apply saved transform to group when showRotateControls changes
+  // Apply saved transform to group when showRotateControls is enabled
   useEffect(() => {
-    // Use setTimeout to ensure the group ref is available after render
-    const timer = setTimeout(() => {
-      if (transformGroupRef.current) {
-        console.log("[v0] Applying saved transform:", {
-          rotation: [savedRotation.current.x, savedRotation.current.y, savedRotation.current.z],
-          position: [savedPosition.current.x, savedPosition.current.y, savedPosition.current.z]
-        })
-        transformGroupRef.current.rotation.copy(savedRotation.current)
-        transformGroupRef.current.position.copy(savedPosition.current)
-      }
-    }, 0)
-    return () => clearTimeout(timer)
+    if (showRotateControls) {
+      // Use setTimeout to ensure the group ref is available after render
+      const timer = setTimeout(() => {
+        if (transformGroupRef.current) {
+          transformGroupRef.current.rotation.copy(savedRotation.current)
+          transformGroupRef.current.position.copy(savedPosition.current)
+        }
+      }, 0)
+      return () => clearTimeout(timer)
+    }
   }, [showRotateControls])
   
   // Handle transform changes from TransformControls
@@ -2191,10 +2189,6 @@ function SceneContent({
       const obj = transformControlsRef.current.object
       savedRotation.current.copy(obj.rotation)
       savedPosition.current.copy(obj.position)
-      console.log("[v0] Saved transform from TransformControls:", {
-        rotation: [obj.rotation.x, obj.rotation.y, obj.rotation.z],
-        position: [obj.position.x, obj.position.y, obj.position.z]
-      })
     }
   }
   

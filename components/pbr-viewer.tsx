@@ -2599,10 +2599,9 @@ function SceneContent({
             onGeometrySettingsChange={onGeometrySettingsChange}
             gradientSettings={gradientSettings}
             renderMode={renderMode}
-            matcapTexture={matcapTexture}
+            matcapTexture={matcapTextureLoaded}
             matcapNormalMap={matcapNormalMap}
             matcapSettings={matcapSettings}
-            matcapTextureLoaded={matcapTextureLoaded}
           />
           <Environment
             preset={lightingSettings.envMap as any}

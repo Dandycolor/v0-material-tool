@@ -345,11 +345,15 @@ export function ModelMesh({
       if (child instanceof Mesh) {
         const hasOriginal = !!(child.userData.originalMaterial || child.userData.originalMaterials)
         
+        console.log("[v0] ModelMesh check - renderMode:", renderMode, "matcapTexture:", !!matcapTexture, "gradientEnabled:", gradientSettings?.enabled)
+        
         let newMaterial: THREE.Material
 
         if (renderMode === "matcap" && matcapTexture) {
+          console.log("[v0] Creating MATCAP material")
           newMaterial = createMatcapMaterial(matcapTexture, matcapNormalMap, matcapSettings)
         } else if (gradientSettings?.enabled) {
+          console.log("[v0] Gradient is enabled - skipping matcap")
         } else if (hasCustomTextures) {
           newMaterial = createPBRMaterial(
             materialSettings,

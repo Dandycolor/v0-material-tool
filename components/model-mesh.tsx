@@ -57,13 +57,6 @@ interface ModelMeshProps {
   onInflateSphereMove?: (position: [number, number, number]) => void
   // Pottery wheel mode
   usePotteryMode?: boolean
-  // Paint mode
-  paintMode?: boolean
-  paintSettings?: {
-    brushSize: number
-    brushStrength: number
-    activeLayer: string
-  }
 }
 
 export function ModelMesh({
@@ -91,45 +84,13 @@ export function ModelMesh({
   flatBase = false,
   onInflateSphereMove,
   usePotteryMode = false,
-  paintMode = false,
-  paintSettings,
 }: ModelMeshProps) {
   const [scene, setScene] = useState<THREE.Group | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [paintMaskTexture, setPaintMaskTexture] = useState<THREE.Texture | null>(null)
   const { controls } = useThree()
   const inflateControlRef = useRef<THREE.Group>(null)
   const [modelSize, setModelSize] = useState<number>(1)
-
-  useEffect(() => {
-    if (!paintMode) return
-    
-    // Инициализируем маску рисования если включен Paint Mode
-    if (!paintMaskTexture) {
-      try {
-        // Используем обычный Canvas вместо OffscreenCanvas для лучшей совместимости
-        const canvas = document.createElement('canvas')
-        canvas.width = 1024
-        canvas.height = 1024
-        const ctx = canvas.getContext('2d')
-        
-        if (ctx) {
-          // Белая маска (все видимо)
-          ctx.fillStyle = 'white'
-          ctx.fillRect(0, 0, 1024, 1024)
-          
-          // Создаем THREE.CanvasTexture
-          const texture = new THREE.CanvasTexture(canvas)
-          texture.needsUpdate = true
-          setPaintMaskTexture(texture)
-          console.log('[v0] Paint mask initialized with canvas texture')
-        }
-      } catch (err) {
-        console.error('[v0] Failed to initialize paint mask:', err)
-      }
-    }
-  }, [paintMode, paintMaskTexture])
 
   useEffect(() => {
     if (!modelUrl) {
@@ -640,22 +601,7 @@ export function ModelMesh({
     )
   }
 
-  return (
-    <primitive 
-      object={scene} 
-      onClick={paintMode ? (e) => {
-        e.stopPropagation()
-        console.log('[v0] Paint click at:', e.point)
-        console.log('[v0] Paint settings:', paintSettings)
-      } : undefined}
-      onPointerMove={paintMode ? (e) => {
-        if (e.buttons === 1) { // Left mouse button pressed
-          e.stopPropagation()
-          console.log('[v0] Paint drag at:', e.point)
-        }
-      } : undefined}
-    />
-  )
+  return <primitive object={scene} />
 }
 
 function createPBRMaterial(

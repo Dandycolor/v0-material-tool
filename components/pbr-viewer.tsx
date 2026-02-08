@@ -7,7 +7,6 @@ import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
 import { Suspense, useMemo, useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react"
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils"
 import { ModelMesh } from "./model-mesh"
-import { PaintMode } from "./paint-mode"
 import { createGradientMaterial } from "./gradient-shader"
 
 // Grid component with fade effect at edges
@@ -311,15 +310,9 @@ interface PBRViewerProps {
   matcapHueShift?: number
   showGrid?: boolean
   showRotateControls?: boolean
-  paintMode?: boolean
-  paintSettings?: {
-    brushSize: number
-    brushStrength: number
-    activeLayer: string
-  }
   onModelLoadError?: (error: string) => void
   onGeometrySettingsChange?: (settings: Partial<GeometrySettings>) => void
-  }
+}
 
 function parseSVGContent(svgContent: string): THREE.Shape[] {
   try {
@@ -1665,8 +1658,6 @@ function PBRMesh({
   matcapTexture,
   matcapNormalMap,
   matcapSettings,
-  paintMode,
-  paintSettings,
 }: {
   geometrySettings: GeometrySettings
   materialSettings: MaterialSettings
@@ -1695,12 +1686,6 @@ function PBRMesh({
     rimIntensity: number
     rimPower: number
     rimColor: string
-  }
-  paintMode?: boolean
-  paintSettings?: {
-    brushSize: number
-    brushStrength: number
-    activeLayer: string
   }
 }) {
   const texturesToLoad = useMemo(() => {
@@ -1875,12 +1860,10 @@ function PBRMesh({
             inflateSphereEnabled={geometrySettings.inflateSphereEnabled || true}
             inflateSpherePosition={geometrySettings.inflateSpherePosition || [0, 0, 0]}
             inflateSphereRadius={geometrySettings.inflateSphereRadius || 1.0}
-  flatBase={geometrySettings.flatBase || false}
-  usePotteryMode={geometrySettings.usePotteryMode || false}
-  paintMode={paintMode}
-  paintSettings={paintSettings}
-  onInflateSphereMove={(pos) => onGeometrySettingsChange?.({ inflateSpherePosition: pos })}
-  />
+            flatBase={geometrySettings.flatBase || false}
+            usePotteryMode={geometrySettings.usePotteryMode || false}
+            onInflateSphereMove={(pos) => onGeometrySettingsChange?.({ inflateSpherePosition: pos })}
+          />
         )
       ) : (
         <ExtrudedSVGMesh
@@ -2229,12 +2212,6 @@ interface SceneContentProps {
   }
   onModelLoadError?: (error: string) => void
   onGeometrySettingsChange?: (settings: Partial<GeometrySettings>) => void
-  paintMode?: boolean
-  paintSettings?: {
-    brushSize: number
-    brushStrength: number
-    activeLayer: string
-  }
 }
 
 function SceneContent({
@@ -2253,8 +2230,6 @@ function SceneContent({
   onModelLoadError,
   onGeometrySettingsChange,
   backgroundColor,
-  paintMode,
-  paintSettings,
 }: SceneContentProps & { onExportReady: (fn: () => void) => void, backgroundColor?: string }) {
   const { gl, scene, camera } = useThree()
   
@@ -2573,9 +2548,8 @@ function SceneContent({
               inflateSphereRadius={geometrySettings.inflateSphereRadius || 1.0}
               flatBase={geometrySettings.flatBase || false}
               usePotteryMode={geometrySettings.usePotteryMode || false}
-              paintMode={paintMode}
-              paintSettings={paintSettings}
             />
+            )
           ) : (
             <ExtrudedSVGMesh
               geometrySettings={geometrySettings}
@@ -2605,8 +2579,6 @@ function SceneContent({
             onModelLoadError={onModelLoadError}
             onGeometrySettingsChange={onGeometrySettingsChange}
             gradientSettings={gradientSettings}
-            paintMode={paintMode}
-            paintSettings={paintSettings}
           />
           <Environment
             preset={lightingSettings.envMap as any}
@@ -2646,12 +2618,6 @@ export const PBRViewer = forwardRef<
   backgroundColor?: string
   showGrid?: boolean
   showRotateControls?: boolean
-  paintMode?: boolean
-  paintSettings?: {
-    brushSize: number
-    brushStrength: number
-    activeLayer: string
-  }
   gradientSettings?: {
     enabled: boolean
     type: "radial" | "linear"
@@ -2672,16 +2638,10 @@ export const PBRViewer = forwardRef<
   onGeometrySettingsChange?: (settings: Partial<GeometrySettings>) => void
   }
 >(function PBRViewer(
-  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, showGrid, showRotateControls, paintMode, paintSettings, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
+  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, showGrid, showRotateControls, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
   ref,
   ) {
   const exportFnRef = useRef<(() => void) | null>(null)
-  const modelRef = useRef<THREE.Object3D | null>(null)
-  const meshRef = useRef<THREE.Mesh | null>(null)
-
-  const handleExportReady = (exportFn: () => void) => {
-    exportFnRef.current = exportFn
-  }
 
   useImperativeHandle(ref, () => ({
     exportPNG: () => {
@@ -2691,35 +2651,14 @@ export const PBRViewer = forwardRef<
     },
   }))
 
-  const handlePaint = (event: any) => {
-    if (!paintMode || !modelRef.current) return
-    
-    console.log('[v0] Paint event triggered')
-    console.log('[v0] Paint settings:', paintSettings)
-    console.log('[v0] Event:', event)
-  }
-
-  const handleMaskUpdate = (layer: string, maskTexture: THREE.Texture) => {
-    console.log('[v0] Mask updated for layer:', layer)
-    // Применяем маску к материалу
+  const handleExportReady = (fn: () => void) => {
+    exportFnRef.current = fn
   }
 
   return (
-    <div className="w-full h-full" style={{ cursor: paintMode ? 'crosshair' : 'default' }}>
+    <div className="w-full h-full">
       <Canvas
         camera={{ position: [0, 0, 3], fov: 50 }}
-        onPointerDown={(e) => {
-          if (paintMode) {
-            console.log('[v0] Canvas pointer down, paintMode active')
-            handlePaint(e)
-          }
-        }}
-        onPointerMove={(e) => {
-          if (paintMode && e.buttons === 1) {
-            console.log('[v0] Canvas pointer move while dragging')
-            handlePaint(e)
-          }
-        }}
         gl={{
           antialias: true,
           toneMapping: THREE.ACESFilmicToneMapping,
@@ -2746,14 +2685,12 @@ export const PBRViewer = forwardRef<
             customMaterial={customMaterial}
             onModelLoadError={onModelLoadError}
             onGeometrySettingsChange={onGeometrySettingsChange}
-            paintMode={paintMode}
-            paintSettings={paintSettings}
           />
         </Suspense>
-        <OrbitControls
-          enabled={!showRotateControls && !paintMode}
-          enableDamping
-          dampingFactor={0.05}
+        <OrbitControls 
+          enabled={!showRotateControls}
+          enableDamping 
+          dampingFactor={0.05} 
         />
       </Canvas>
     </div>

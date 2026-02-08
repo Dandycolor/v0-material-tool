@@ -987,6 +987,8 @@ export default function MaterialTool() {
     if (activeTab === "material") {
       if (materialTypeTab === "matcap") {
         setRenderMode("matcap")
+        // Disable gradient when switching to matcap
+        setGradientSettings((prev) => ({ ...prev, enabled: false }))
       } else {
         setRenderMode("pbr")
       }

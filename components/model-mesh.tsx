@@ -97,6 +97,7 @@ export function ModelMesh({
   const [scene, setScene] = useState<THREE.Group | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [paintMaskTexture, setPaintMaskTexture] = useState<THREE.Texture | null>(null)
   const { controls } = useThree()
   const inflateControlRef = useRef<THREE.Group>(null)
   const [modelSize, setModelSize] = useState<number>(1)
@@ -105,6 +106,25 @@ export function ModelMesh({
     if (!modelUrl) {
       setLoading(false)
       return
+    }
+
+    // Инициализируем маску рисования если включен Paint Mode
+    if (paintMode && !paintMaskTexture) {
+      const canvas = new OffscreenCanvas(1024, 1024)
+      const ctx = canvas.getContext('2d')
+      if (ctx) {
+        // Белая маска (все видимо)
+        ctx.fillStyle = 'white'
+        ctx.fillRect(0, 0, 1024, 1024)
+        
+        // Конвертируем в THREE.Texture
+        const bitmap = canvas.convertToBlob().then(blob => {
+          const url = URL.createObjectURL(blob)
+          const texture = new THREE.TextureLoader().load(url)
+          setPaintMaskTexture(texture)
+          console.log('[v0] Paint mask initialized')
+        })
+      }
     }
 
     setLoading(true)

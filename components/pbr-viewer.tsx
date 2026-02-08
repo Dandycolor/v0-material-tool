@@ -1664,6 +1664,8 @@ function PBRMesh({
   matcapTexture,
   matcapNormalMap,
   matcapSettings,
+  paintMode,
+  paintSettings,
 }: {
   geometrySettings: GeometrySettings
   materialSettings: MaterialSettings
@@ -1692,6 +1694,12 @@ function PBRMesh({
     rimIntensity: number
     rimPower: number
     rimColor: string
+  }
+  paintMode?: boolean
+  paintSettings?: {
+    brushSize: number
+    brushStrength: number
+    activeLayer: string
   }
 }) {
   const texturesToLoad = useMemo(() => {
@@ -1866,10 +1874,12 @@ function PBRMesh({
             inflateSphereEnabled={geometrySettings.inflateSphereEnabled || true}
             inflateSpherePosition={geometrySettings.inflateSpherePosition || [0, 0, 0]}
             inflateSphereRadius={geometrySettings.inflateSphereRadius || 1.0}
-            flatBase={geometrySettings.flatBase || false}
-            usePotteryMode={geometrySettings.usePotteryMode || false}
-            onInflateSphereMove={(pos) => onGeometrySettingsChange?.({ inflateSpherePosition: pos })}
-          />
+  flatBase={geometrySettings.flatBase || false}
+  usePotteryMode={geometrySettings.usePotteryMode || false}
+  paintMode={paintMode}
+  paintSettings={paintSettings}
+  onInflateSphereMove={(pos) => onGeometrySettingsChange?.({ inflateSpherePosition: pos })}
+  />
         )
       ) : (
         <ExtrudedSVGMesh
@@ -2218,6 +2228,12 @@ interface SceneContentProps {
   }
   onModelLoadError?: (error: string) => void
   onGeometrySettingsChange?: (settings: Partial<GeometrySettings>) => void
+  paintMode?: boolean
+  paintSettings?: {
+    brushSize: number
+    brushStrength: number
+    activeLayer: string
+  }
 }
 
 function SceneContent({
@@ -2236,6 +2252,8 @@ function SceneContent({
   onModelLoadError,
   onGeometrySettingsChange,
   backgroundColor,
+  paintMode,
+  paintSettings,
 }: SceneContentProps & { onExportReady: (fn: () => void) => void, backgroundColor?: string }) {
   const { gl, scene, camera } = useThree()
   
@@ -2585,6 +2603,8 @@ function SceneContent({
             onModelLoadError={onModelLoadError}
             onGeometrySettingsChange={onGeometrySettingsChange}
             gradientSettings={gradientSettings}
+            paintMode={paintMode}
+            paintSettings={paintSettings}
           />
           <Environment
             preset={lightingSettings.envMap as any}
@@ -2697,6 +2717,8 @@ export const PBRViewer = forwardRef<
             customMaterial={customMaterial}
             onModelLoadError={onModelLoadError}
             onGeometrySettingsChange={onGeometrySettingsChange}
+            paintMode={paintMode}
+            paintSettings={paintSettings}
           />
         </Suspense>
         <OrbitControls

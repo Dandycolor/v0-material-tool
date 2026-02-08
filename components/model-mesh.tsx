@@ -57,6 +57,13 @@ interface ModelMeshProps {
   onInflateSphereMove?: (position: [number, number, number]) => void
   // Pottery wheel mode
   usePotteryMode?: boolean
+  // Paint mode
+  paintMode?: boolean
+  paintSettings?: {
+    brushSize: number
+    brushStrength: number
+    activeLayer: string
+  }
 }
 
 export function ModelMesh({
@@ -84,6 +91,8 @@ export function ModelMesh({
   flatBase = false,
   onInflateSphereMove,
   usePotteryMode = false,
+  paintMode = false,
+  paintSettings,
 }: ModelMeshProps) {
   const [scene, setScene] = useState<THREE.Group | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -601,7 +610,22 @@ export function ModelMesh({
     )
   }
 
-  return <primitive object={scene} />
+  return (
+    <primitive 
+      object={scene} 
+      onClick={paintMode ? (e) => {
+        e.stopPropagation()
+        console.log('[v0] Paint click at:', e.point)
+        console.log('[v0] Paint settings:', paintSettings)
+      } : undefined}
+      onPointerMove={paintMode ? (e) => {
+        if (e.buttons === 1) { // Left mouse button pressed
+          e.stopPropagation()
+          console.log('[v0] Paint drag at:', e.point)
+        }
+      } : undefined}
+    />
+  )
 }
 
 function createPBRMaterial(

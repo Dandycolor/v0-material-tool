@@ -941,6 +941,12 @@ export default function MaterialTool() {
   const [backgroundColor, setBackgroundColor] = useState("#1a1a1a")
   const [showGrid, setShowGrid] = useState(false)
   const [showRotateControls, setShowRotateControls] = useState(false)
+  const [paintMode, setPaintMode] = useState(false)
+  const [paintSettings, setPaintSettings] = useState({
+    brushSize: 50,
+    brushStrength: 0.5,
+    activeLayer: "pbr" as "pbr" | "custom" | "gradient" | "matcap"
+  })
   
   // Custom material selections
   const [customMaterial, setCustomMaterial] = useState({
@@ -1795,6 +1801,67 @@ export default function MaterialTool() {
 
               <TabsContent value="material">
                 <div className="space-y-4 px-4">
+                  {/* Paint Mode Settings */}
+                  {paintMode && (
+                    <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-3 h-3 bg-blue-500 rounded-full" />
+                        <Label className="text-sm text-blue-400">Paint Mode Active</Label>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        <div>
+                          <Label className="text-xs text-zinc-400 mb-2 block">Active Layer</Label>
+                          <Select 
+                            value={paintSettings.activeLayer}
+                            onValueChange={(value) => setPaintSettings(prev => ({ ...prev, activeLayer: value as any }))}
+                          >
+                            <SelectTrigger className="bg-[#2a2a2a] border-[#404040] text-white text-sm">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pbr">PBR Layer</SelectItem>
+                              <SelectItem value="custom">Custom Layer</SelectItem>
+                              <SelectItem value="gradient">Gradient Layer</SelectItem>
+                              <SelectItem value="matcap">Matcap Layer</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-[10px] text-zinc-500 mt-1">Paint holes to reveal layer below</p>
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between items-center mb-2">
+                            <Label className="text-xs text-zinc-400">Brush Size</Label>
+                            <span className="text-xs text-zinc-500">{paintSettings.brushSize}px</span>
+                          </div>
+                          <Slider
+                            value={[paintSettings.brushSize]}
+                            onValueChange={(value) => setPaintSettings(prev => ({ ...prev, brushSize: value[0] }))}
+                            min={10}
+                            max={200}
+                            step={5}
+                            className="w-full"
+                          />
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between items-center mb-2">
+                            <Label className="text-xs text-zinc-400">Brush Strength</Label>
+                            <span className="text-xs text-zinc-500">{(paintSettings.brushStrength * 100).toFixed(0)}%</span>
+                          </div>
+                          <Slider
+                            value={[paintSettings.brushStrength * 100]}
+                            onValueChange={(value) => setPaintSettings(prev => ({ ...prev, brushStrength: value[0] / 100 }))}
+                            min={10}
+                            max={100}
+                            step={5}
+                            className="w-full"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
                   {/* Material Type Tabs */}
                   <Tabs value={materialTypeTab} onValueChange={setMaterialTypeTab} className="w-full">
                   <TabsList className="flex w-full bg-transparent p-0 gap-1 mb-4 border-b border-[#2a2a2a]">
@@ -3104,6 +3171,19 @@ export default function MaterialTool() {
             type="checkbox"
             checked={showRotateControls}
             onChange={(e) => setShowRotateControls(e.target.checked)}
+            className="hidden"
+          />
+        </label>
+
+        <label className="flex items-center gap-2 px-3 py-2 bg-[#2a2a2a] hover:bg-[#353535] text-white text-sm rounded-lg border border-[#404040] transition-all cursor-pointer">
+          <div 
+            className={`w-4 h-4 rounded border border-[#505050] flex-shrink-0 transition-all ${paintMode ? 'bg-blue-500' : 'bg-transparent'}`}
+          />
+          <span>Paint</span>
+          <input
+            type="checkbox"
+            checked={paintMode}
+            onChange={(e) => setPaintMode(e.target.checked)}
             className="hidden"
           />
         </label>

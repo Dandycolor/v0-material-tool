@@ -1658,6 +1658,7 @@ function PBRMesh({
   matcapTexture,
   matcapNormalMap,
   matcapSettings,
+  matcapTextureLoaded,
 }: {
   geometrySettings: GeometrySettings
   materialSettings: MaterialSettings
@@ -1687,6 +1688,7 @@ function PBRMesh({
     rimPower: number
     rimColor: string
   }
+  matcapTextureLoaded?: THREE.Texture | null
 }) {
   const texturesToLoad = useMemo(() => {
     const paths: string[] = []
@@ -1852,7 +1854,7 @@ function PBRMesh({
             envIntensity={lightingSettings.envIntensity}
             tintColor={tintColor}
             textureScale={materialSettings.textureScale}
-            matcapTexture={renderMode === "matcap" ? matcapTexture : null}
+            matcapTexture={renderMode === "matcap" ? matcapTextureLoaded : null}
             matcapNormalMap={renderMode === "matcap" ? matcapNormalMap : null}
             matcapSettings={matcapSettings}
             gradientSettings={gradientSettings}
@@ -2596,6 +2598,11 @@ function SceneContent({
             onModelLoadError={onModelLoadError}
             onGeometrySettingsChange={onGeometrySettingsChange}
             gradientSettings={gradientSettings}
+            renderMode={renderMode}
+            matcapTexture={matcapTexture}
+            matcapNormalMap={matcapNormalMap}
+            matcapSettings={matcapSettings}
+            matcapTextureLoaded={matcapTextureLoaded}
           />
           <Environment
             preset={lightingSettings.envMap as any}

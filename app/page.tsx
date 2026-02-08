@@ -1366,69 +1366,6 @@ export default function MaterialTool() {
             <img src="/logo-polya.png" alt="pólya" className="h-24 mx-[30px]" />
           </div>
 
-          {/* Paint Mode Settings - Always Visible */}
-          {paintMode && (
-            <div className="px-4 mb-4">
-              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse" />
-                  <Label className="text-sm text-blue-400 font-medium">Paint Mode Active</Label>
-                </div>
-                
-                <div className="space-y-3">
-                  <div>
-                    <Label className="text-xs text-zinc-400 mb-2 block">Active Layer</Label>
-                    <Select 
-                      value={paintSettings.activeLayer}
-                      onValueChange={(value) => setPaintSettings(prev => ({ ...prev, activeLayer: value as any }))}
-                    >
-                      <SelectTrigger className="bg-[#2a2a2a] border-[#404040] text-white text-sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pbr">PBR Layer</SelectItem>
-                        <SelectItem value="custom">Custom Layer</SelectItem>
-                        <SelectItem value="gradient">Gradient Layer</SelectItem>
-                        <SelectItem value="matcap">Matcap Layer</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-[10px] text-zinc-500 mt-1">Click and drag on model to paint mask</p>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <Label className="text-xs text-zinc-400">Brush Size</Label>
-                      <span className="text-xs text-zinc-500">{paintSettings.brushSize}px</span>
-                    </div>
-                    <Slider
-                      value={[paintSettings.brushSize]}
-                      onValueChange={(value) => setPaintSettings(prev => ({ ...prev, brushSize: value[0] }))}
-                      min={10}
-                      max={200}
-                      step={5}
-                      className="w-full"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <Label className="text-xs text-zinc-400">Brush Strength</Label>
-                      <span className="text-xs text-zinc-500">{(paintSettings.brushStrength * 100).toFixed(0)}%</span>
-                    </div>
-                    <Slider
-                      value={[paintSettings.brushStrength * 100]}
-                      onValueChange={(value) => setPaintSettings(prev => ({ ...prev, brushStrength: value[0] / 100 }))}
-                      min={10}
-                      max={100}
-                      step={5}
-                      className="w-full"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value)}>
             <TabsList className="flex w-full bg-transparent p-0 px-4 mb-5 gap-1">
               <TabsTrigger
@@ -1864,6 +1801,73 @@ export default function MaterialTool() {
 
               <TabsContent value="material">
                 <div className="space-y-4 px-4">
+                  {/* Paint Mode Settings */}
+                  {paintMode && (
+                    <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse" />
+                        <Label className="text-sm font-medium text-blue-400">Paint Mode Active</Label>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        <div>
+                          <Label className="text-xs text-zinc-400 mb-2 block">Active Layer to Paint</Label>
+                          <Select 
+                            value={paintSettings.activeLayer}
+                            onValueChange={(value) => setPaintSettings(prev => ({ ...prev, activeLayer: value as any }))}
+                          >
+                            <SelectTrigger className="bg-[#2a2a2a] border-[#404040] text-white text-sm h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="bg-[#2a2a2a] border-[#404040]">
+                              <SelectItem value="pbr" className="text-white">PBR Layer</SelectItem>
+                              <SelectItem value="custom" className="text-white">Custom PBR Layer</SelectItem>
+                              <SelectItem value="gradient" className="text-white">Gradient Layer</SelectItem>
+                              <SelectItem value="matcap" className="text-white">Matcap Layer</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-[10px] text-zinc-500 mt-1">Click and drag on model to paint holes revealing layer below</p>
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between items-center mb-2">
+                            <Label className="text-xs text-zinc-400">Brush Size</Label>
+                            <span className="text-xs text-zinc-500 font-mono">{paintSettings.brushSize}px</span>
+                          </div>
+                          <Slider
+                            value={[paintSettings.brushSize]}
+                            onValueChange={(value) => setPaintSettings(prev => ({ ...prev, brushSize: value[0] }))}
+                            min={10}
+                            max={200}
+                            step={5}
+                            className="w-full"
+                          />
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between items-center mb-2">
+                            <Label className="text-xs text-zinc-400">Brush Strength</Label>
+                            <span className="text-xs text-zinc-500 font-mono">{(paintSettings.brushStrength * 100).toFixed(0)}%</span>
+                          </div>
+                          <Slider
+                            value={[paintSettings.brushStrength * 100]}
+                            onValueChange={(value) => setPaintSettings(prev => ({ ...prev, brushStrength: value[0] / 100 }))}
+                            min={10}
+                            max={100}
+                            step={5}
+                            className="w-full"
+                          />
+                        </div>
+
+                        <div className="pt-2 border-t border-blue-500/20">
+                          <p className="text-[10px] text-blue-400/70">
+                            Tip: Switch to Material tab to see paint effects on different layers
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Material Type Tabs */}
                   <Tabs value={materialTypeTab} onValueChange={setMaterialTypeTab} className="w-full">
                   <TabsList className="flex w-full bg-transparent p-0 gap-1 mb-4 border-b border-[#2a2a2a]">

@@ -310,9 +310,15 @@ interface PBRViewerProps {
   matcapHueShift?: number
   showGrid?: boolean
   showRotateControls?: boolean
+  paintMode?: boolean
+  paintSettings?: {
+    brushSize: number
+    brushStrength: number
+    activeLayer: string
+  }
   onModelLoadError?: (error: string) => void
   onGeometrySettingsChange?: (settings: Partial<GeometrySettings>) => void
-}
+  }
 
 function parseSVGContent(svgContent: string): THREE.Shape[] {
   try {
@@ -2618,6 +2624,12 @@ export const PBRViewer = forwardRef<
   backgroundColor?: string
   showGrid?: boolean
   showRotateControls?: boolean
+  paintMode?: boolean
+  paintSettings?: {
+    brushSize: number
+    brushStrength: number
+    activeLayer: string
+  }
   gradientSettings?: {
     enabled: boolean
     type: "radial" | "linear"
@@ -2638,7 +2650,7 @@ export const PBRViewer = forwardRef<
   onGeometrySettingsChange?: (settings: Partial<GeometrySettings>) => void
   }
 >(function PBRViewer(
-  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, showGrid, showRotateControls, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
+  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, showGrid, showRotateControls, paintMode, paintSettings, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
   ref,
   ) {
   const exportFnRef = useRef<(() => void) | null>(null)
@@ -2656,7 +2668,7 @@ export const PBRViewer = forwardRef<
   }
 
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full" style={{ cursor: paintMode ? 'crosshair' : 'default' }}>
       <Canvas
         camera={{ position: [0, 0, 3], fov: 50 }}
         gl={{
@@ -2687,10 +2699,10 @@ export const PBRViewer = forwardRef<
             onGeometrySettingsChange={onGeometrySettingsChange}
           />
         </Suspense>
-        <OrbitControls 
-          enabled={!showRotateControls}
-          enableDamping 
-          dampingFactor={0.05} 
+        <OrbitControls
+          enabled={!showRotateControls && !paintMode}
+          enableDamping
+          dampingFactor={0.05}
         />
       </Canvas>
     </div>

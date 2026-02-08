@@ -1330,22 +1330,24 @@ export default function MaterialTool() {
   return (
     <div className="h-screen w-full bg-[#121212]">
       <div className="w-full h-full">
-        <PBRViewer
-          ref={viewerRef}
-          geometrySettings={geometrySettings}
-          materialSettings={materialSettings}
-          lightingSettings={lightingSettings}
-          renderMode={renderMode}
-          matcapTexture={renderMode === "matcap" ? MATCAP_PRESETS[selectedMatcap]?.matcap : undefined}
-                matcapHueShift={matcapHueShift}
-                matcapSettings={matcapSettings}
-                backgroundColor={backgroundColor}
-          showGrid={showGrid}
-          showRotateControls={showRotateControls}
-          gradientSettings={gradientSettings}
-          customMaterial={customMaterial}
-          onModelLoadError={setModelLoadError}
-          onGeometrySettingsChange={(updates) => 
+            <PBRViewer
+              ref={viewerRef}
+              geometrySettings={geometrySettings}
+              materialSettings={materialSettings}
+              lightingSettings={lightingSettings}
+              renderMode={renderMode}
+              matcapTexture={renderMode === "matcap" ? MATCAP_PRESETS[selectedMatcap]?.matcap : undefined}
+              matcapHueShift={matcapHueShift}
+              matcapSettings={matcapSettings}
+              backgroundColor={backgroundColor}
+              showGrid={showGrid}
+              showRotateControls={showRotateControls}
+              paintMode={paintMode}
+              paintSettings={paintSettings}
+              gradientSettings={gradientSettings}
+              customMaterial={customMaterial}
+              onModelLoadError={setModelLoadError}
+              onGeometrySettingsChange={(updates) =>
             setGeometrySettings({ ...geometrySettings, ...updates })
           }
         />
@@ -1805,34 +1807,34 @@ export default function MaterialTool() {
                   {paintMode && (
                     <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-4">
                       <div className="flex items-center gap-2 mb-3">
-                        <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse" />
-                        <Label className="text-sm font-medium text-blue-400">Paint Mode Active</Label>
+                        <div className="w-3 h-3 bg-blue-500 rounded-full" />
+                        <Label className="text-sm text-blue-400">Paint Mode Active</Label>
                       </div>
                       
                       <div className="space-y-3">
                         <div>
-                          <Label className="text-xs text-zinc-400 mb-2 block">Active Layer to Paint</Label>
+                          <Label className="text-xs text-zinc-400 mb-2 block">Active Layer</Label>
                           <Select 
                             value={paintSettings.activeLayer}
                             onValueChange={(value) => setPaintSettings(prev => ({ ...prev, activeLayer: value as any }))}
                           >
-                            <SelectTrigger className="bg-[#2a2a2a] border-[#404040] text-white text-sm h-9">
+                            <SelectTrigger className="bg-[#2a2a2a] border-[#404040] text-white text-sm">
                               <SelectValue />
                             </SelectTrigger>
-                            <SelectContent className="bg-[#2a2a2a] border-[#404040]">
-                              <SelectItem value="pbr" className="text-white">PBR Layer</SelectItem>
-                              <SelectItem value="custom" className="text-white">Custom PBR Layer</SelectItem>
-                              <SelectItem value="gradient" className="text-white">Gradient Layer</SelectItem>
-                              <SelectItem value="matcap" className="text-white">Matcap Layer</SelectItem>
+                            <SelectContent>
+                              <SelectItem value="pbr">PBR Layer</SelectItem>
+                              <SelectItem value="custom">Custom Layer</SelectItem>
+                              <SelectItem value="gradient">Gradient Layer</SelectItem>
+                              <SelectItem value="matcap">Matcap Layer</SelectItem>
                             </SelectContent>
                           </Select>
-                          <p className="text-[10px] text-zinc-500 mt-1">Click and drag on model to paint holes revealing layer below</p>
+                          <p className="text-[10px] text-zinc-500 mt-1">Paint holes to reveal layer below</p>
                         </div>
 
                         <div>
                           <div className="flex justify-between items-center mb-2">
                             <Label className="text-xs text-zinc-400">Brush Size</Label>
-                            <span className="text-xs text-zinc-500 font-mono">{paintSettings.brushSize}px</span>
+                            <span className="text-xs text-zinc-500">{paintSettings.brushSize}px</span>
                           </div>
                           <Slider
                             value={[paintSettings.brushSize]}
@@ -1847,7 +1849,7 @@ export default function MaterialTool() {
                         <div>
                           <div className="flex justify-between items-center mb-2">
                             <Label className="text-xs text-zinc-400">Brush Strength</Label>
-                            <span className="text-xs text-zinc-500 font-mono">{(paintSettings.brushStrength * 100).toFixed(0)}%</span>
+                            <span className="text-xs text-zinc-500">{(paintSettings.brushStrength * 100).toFixed(0)}%</span>
                           </div>
                           <Slider
                             value={[paintSettings.brushStrength * 100]}
@@ -1858,16 +1860,10 @@ export default function MaterialTool() {
                             className="w-full"
                           />
                         </div>
-
-                        <div className="pt-2 border-t border-blue-500/20">
-                          <p className="text-[10px] text-blue-400/70">
-                            Tip: Switch to Material tab to see paint effects on different layers
-                          </p>
-                        </div>
                       </div>
                     </div>
                   )}
-
+                  
                   {/* Material Type Tabs */}
                   <Tabs value={materialTypeTab} onValueChange={setMaterialTypeTab} className="w-full">
                   <TabsList className="flex w-full bg-transparent p-0 gap-1 mb-4 border-b border-[#2a2a2a]">

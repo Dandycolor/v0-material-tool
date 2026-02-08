@@ -2674,6 +2674,7 @@ export const PBRViewer = forwardRef<
   ref,
   ) {
   const exportFnRef = useRef<(() => void) | null>(null)
+  const modelRef = useRef<THREE.Object3D | null>(null)
 
   useImperativeHandle(ref, () => ({
     exportPNG: () => {
@@ -2687,10 +2688,30 @@ export const PBRViewer = forwardRef<
     exportFnRef.current = fn
   }
 
+  const handlePaint = (event: any) => {
+    if (!paintMode || !modelRef.current) return
+    
+    console.log('[v0] Paint event triggered')
+    console.log('[v0] Paint settings:', paintSettings)
+    console.log('[v0] Event:', event)
+  }
+
   return (
     <div className="w-full h-full" style={{ cursor: paintMode ? 'crosshair' : 'default' }}>
       <Canvas
         camera={{ position: [0, 0, 3], fov: 50 }}
+        onPointerDown={(e) => {
+          if (paintMode) {
+            console.log('[v0] Canvas pointer down, paintMode active')
+            handlePaint(e)
+          }
+        }}
+        onPointerMove={(e) => {
+          if (paintMode && e.buttons === 1) {
+            console.log('[v0] Canvas pointer move while dragging')
+            handlePaint(e)
+          }
+        }}
         gl={{
           antialias: true,
           toneMapping: THREE.ACESFilmicToneMapping,

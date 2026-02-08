@@ -1485,7 +1485,7 @@ export default function MaterialTool() {
                   {geometrySettings.type === "extruded" && (
                     <>
                       <div className="pt-4 space-y-3">
-                        <Label className="text-xs text-zinc-500">Search Icons (Lucide + Iconify)</Label>
+                        <Label className="text-xs text-zinc-500">Search Icons (Iconify)</Label>
                         <div className="relative">
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                           <Input
@@ -1539,7 +1539,7 @@ export default function MaterialTool() {
                               ))}
                             </div>
                             <p className="text-xs text-zinc-500 text-center">
-                              Icons from Lucide & Iconify ({iconSearchResults.total} found)
+                              Icons from Iconify ({iconSearchResults.total} found)
                             </p>
                           </div>
                         )}

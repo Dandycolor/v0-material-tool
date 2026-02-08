@@ -12,9 +12,12 @@ export async function GET(request: Request) {
     let svg: string
 
     if (icon.startsWith("lucide:")) {
-      // Fetch from Lucide
+      // Fetch from Lucide GitHub raw repository (no redirects)
       const iconName = icon.replace("lucide:", "")
-      const response = await fetch(`https://unpkg.com/lucide-static@latest/icons/${iconName}.svg`)
+      const response = await fetch(
+        `https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/${iconName}.svg`,
+        { redirect: "error" }
+      )
 
       if (!response.ok) {
         throw new Error(`Failed to fetch Lucide SVG: ${response.status}`)

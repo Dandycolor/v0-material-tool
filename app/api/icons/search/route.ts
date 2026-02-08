@@ -36,7 +36,7 @@ export async function GET(request: Request) {
         id: `lucide:${iconName}`,
         prefix: "lucide",
         name: iconName,
-        preview_url: `https://unpkg.com/lucide-static@latest/icons/${iconName}.svg`,
+        preview_url: `https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/${iconName}.svg`,
         source: "lucide",
       })
     }

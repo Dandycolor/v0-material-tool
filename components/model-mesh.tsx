@@ -103,28 +103,38 @@ export function ModelMesh({
   const [modelSize, setModelSize] = useState<number>(1)
 
   useEffect(() => {
+    if (!paintMode) return
+    
+    // Инициализируем маску рисования если включен Paint Mode
+    if (!paintMaskTexture) {
+      try {
+        // Используем обычный Canvas вместо OffscreenCanvas для лучшей совместимости
+        const canvas = document.createElement('canvas')
+        canvas.width = 1024
+        canvas.height = 1024
+        const ctx = canvas.getContext('2d')
+        
+        if (ctx) {
+          // Белая маска (все видимо)
+          ctx.fillStyle = 'white'
+          ctx.fillRect(0, 0, 1024, 1024)
+          
+          // Создаем THREE.CanvasTexture
+          const texture = new THREE.CanvasTexture(canvas)
+          texture.needsUpdate = true
+          setPaintMaskTexture(texture)
+          console.log('[v0] Paint mask initialized with canvas texture')
+        }
+      } catch (err) {
+        console.error('[v0] Failed to initialize paint mask:', err)
+      }
+    }
+  }, [paintMode, paintMaskTexture])
+
+  useEffect(() => {
     if (!modelUrl) {
       setLoading(false)
       return
-    }
-
-    // Инициализируем маску рисования если включен Paint Mode
-    if (paintMode && !paintMaskTexture) {
-      const canvas = new OffscreenCanvas(1024, 1024)
-      const ctx = canvas.getContext('2d')
-      if (ctx) {
-        // Белая маска (все видимо)
-        ctx.fillStyle = 'white'
-        ctx.fillRect(0, 0, 1024, 1024)
-        
-        // Конвертируем в THREE.Texture
-        const bitmap = canvas.convertToBlob().then(blob => {
-          const url = URL.createObjectURL(blob)
-          const texture = new THREE.TextureLoader().load(url)
-          setPaintMaskTexture(texture)
-          console.log('[v0] Paint mask initialized')
-        })
-      }
     }
 
     setLoading(true)

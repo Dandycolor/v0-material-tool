@@ -1485,12 +1485,12 @@ export default function MaterialTool() {
                   {geometrySettings.type === "extruded" && (
                     <>
                       <div className="pt-4 space-y-3">
-                        <Label className="text-xs text-zinc-500">Search Icons (Iconify)</Label>
+                        <Label className="text-xs text-zinc-500">Search Icons (Lucide + Iconify)</Label>
                         <div className="relative">
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                           <Input
                             type="text"
-                            placeholder="flower"
+                            placeholder="search icons..."
                             value={iconSearchInput}
                             onChange={(e) => handleIconSearch(e.target.value)}
                             className="pl-10 bg-[#2a2a2a] border-[#3a3a3a] text-white placeholder:text-zinc-600 rounded-lg w-full"
@@ -1522,12 +1522,12 @@ export default function MaterialTool() {
                                 <button
                                   key={icon.id}
                                   onClick={() => handleSelectIcon(icon)}
-                                  className={`aspect-square rounded-lg p-2 flex items-center justify-center transition-all hover:scale-105 ${
+                                  className={`aspect-square rounded-lg p-2 flex items-center justify-center transition-all hover:scale-105 relative group ${
                                     selectedIcon?.id === icon.id
                                       ? "bg-[#00b8c4] ring-2 ring-[#00d4e0]"
                                       : "bg-[#2a2a2a] hover:bg-[#353535]"
                                   }`}
-                                  title={icon.name}
+                                  title={`${icon.name} (${icon.source})`}
                                 >
                                   <img
                                     src={icon.preview_url || "/placeholder.svg"}
@@ -1539,7 +1539,7 @@ export default function MaterialTool() {
                               ))}
                             </div>
                             <p className="text-xs text-zinc-500 text-center">
-                              Icons from Iconify ({iconSearchResults.total} found)
+                              Icons from Lucide & Iconify ({iconSearchResults.total} found)
                             </p>
                           </div>
                         )}

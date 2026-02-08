@@ -2,28 +2,42 @@ import { NextResponse } from "next/server"
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
-  const icon = searchParams.get("icon") // format: "prefix:name" e.g. "mdi:flower"
+  const icon = searchParams.get("icon") // format: "prefix:name" e.g. "mdi:flower" or "lucide:flower"
 
   if (!icon) {
     return NextResponse.json({ error: "Icon parameter is required" }, { status: 400 })
   }
 
   try {
-    // Fetch SVG directly from Iconify
-    const response = await fetch(`https://api.iconify.design/${icon.replace(":", "/")}.svg`)
+    let svg: string
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch SVG: ${response.status}`)
+    if (icon.startsWith("lucide:")) {
+      // Fetch from Lucide
+      const iconName = icon.replace("lucide:", "")
+      const response = await fetch(`https://unpkg.com/lucide-static@latest/icons/${iconName}.svg`)
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch Lucide SVG: ${response.status}`)
+      }
+
+      svg = await response.text()
+    } else {
+      // Fetch from Iconify
+      const response = await fetch(`https://api.iconify.design/${icon.replace(":", "/")}.svg`)
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch Iconify SVG: ${response.status}`)
+      }
+
+      svg = await response.text()
     }
 
-    let svg = await response.text()
-
-    // Convert stroke-based icons to filled versions
+    // Preprocess SVG for extrusion
     svg = preprocessSVGForExtrusion(svg)
 
     return NextResponse.json({ svg, icon })
   } catch (error) {
-    console.error("Iconify SVG fetch error:", error)
+    console.error("Icon SVG fetch error:", error)
     return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to fetch SVG" }, { status: 500 })
   }
 }

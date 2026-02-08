@@ -2386,6 +2386,7 @@ function SceneContent({
   }, [gl, scene, camera, onExportReady])
 
   const [matcapTextureLoaded, setMatcapTextureLoaded] = useState<THREE.Texture | null>(null)
+  const showMatcap = renderMode === "matcap" && matcapTexture
 
   useEffect(() => {
     if (!renderMode || renderMode !== "matcap" || !matcapTexture) {
@@ -2607,7 +2608,7 @@ function SceneContent({
       <GridHelper visible={showGrid} />
       <axesHelper args={[0.5]} position={[0, -1.2, 0]} visible={showRotateControls} />
     </>
-  )\
+  )
 }
 
 export interface PBRViewerRef {

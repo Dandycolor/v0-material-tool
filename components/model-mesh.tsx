@@ -475,6 +475,7 @@ export function ModelMesh({
     tintColor,
     textureScale,
     usePotteryMode,
+    gradientSettings,
   ])
 
 

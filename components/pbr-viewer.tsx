@@ -7,6 +7,7 @@ import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
 import { Suspense, useMemo, useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react"
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils"
 import { ModelMesh } from "./model-mesh"
+import { PaintMode } from "./paint-mode"
 import { createGradientMaterial } from "./gradient-shader"
 
 // Grid component with fade effect at edges
@@ -2572,8 +2573,9 @@ function SceneContent({
               inflateSphereRadius={geometrySettings.inflateSphereRadius || 1.0}
               flatBase={geometrySettings.flatBase || false}
               usePotteryMode={geometrySettings.usePotteryMode || false}
+              paintMode={paintMode}
+              paintSettings={paintSettings}
             />
-            )
           ) : (
             <ExtrudedSVGMesh
               geometrySettings={geometrySettings}
@@ -2675,6 +2677,11 @@ export const PBRViewer = forwardRef<
   ) {
   const exportFnRef = useRef<(() => void) | null>(null)
   const modelRef = useRef<THREE.Object3D | null>(null)
+  const meshRef = useRef<THREE.Mesh | null>(null)
+
+  const handleExportReady = (exportFn: () => void) => {
+    exportFnRef.current = exportFn
+  }
 
   useImperativeHandle(ref, () => ({
     exportPNG: () => {
@@ -2684,16 +2691,17 @@ export const PBRViewer = forwardRef<
     },
   }))
 
-  const handleExportReady = (fn: () => void) => {
-    exportFnRef.current = fn
-  }
-
   const handlePaint = (event: any) => {
     if (!paintMode || !modelRef.current) return
     
     console.log('[v0] Paint event triggered')
     console.log('[v0] Paint settings:', paintSettings)
     console.log('[v0] Event:', event)
+  }
+
+  const handleMaskUpdate = (layer: string, maskTexture: THREE.Texture) => {
+    console.log('[v0] Mask updated for layer:', layer)
+    // Применяем маску к материалу
   }
 
   return (

@@ -2104,9 +2104,11 @@ export default function MaterialTool() {
                                 matcapUrl={customMatcap.url}
                                 isSelected={selectedMatcap === "custom"}
                                 onClick={() => {
+                                  console.log("[v0] Custom matcap clicked, url:", customMatcap.url)
                                   setMatcapTexture(customMatcap.url)
                                   setSelectedMatcap("custom")
                                   setRenderMode("matcap")
+                                  console.log("[v0] Set renderMode to matcap")
                                 }}
                                 name={customMatcap.name}
                               />

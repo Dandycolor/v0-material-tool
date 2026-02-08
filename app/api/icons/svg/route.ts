@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
-  const icon = searchParams.get("icon") // format: "prefix:name" e.g. "mdi:flower" or "lucide:flower"
+  const icon = searchParams.get("icon") // format: "prefix:name" e.g. "mdi:flower"
 
   if (!icon) {
     return NextResponse.json({ error: "Icon parameter is required" }, { status: 400 })
@@ -10,36 +10,26 @@ export async function GET(request: Request) {
 
   try {
     let svg: string
+    const [prefix, iconName] = icon.includes(":") ? icon.split(":") : ["", icon]
 
-    if (icon.startsWith("lucide:")) {
-      // Fetch from Lucide GitHub raw repository (no redirects)
-      const iconName = icon.replace("lucide:", "")
-      const response = await fetch(
-        `https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/${iconName}.svg`,
-        { redirect: "error" }
-      )
+    // Fetch from Iconify - supports: mdi, fa, tabler, ph, bi, eva, and many others
+    const response = await fetch(`https://api.iconify.design/${prefix}/${iconName}.svg`)
 
-      if (!response.ok) {
-        // If Lucide icon not found, try Iconify as fallback
-        console.warn(`[v0] Lucide icon not found (${response.status}), trying Iconify fallback`)
-        const iconifyResponse = await fetch(`https://api.iconify.design/mdi/${iconName}.svg`)
+    if (!response.ok) {
+      // Fallback: try to find similar icon in Material Design Icons
+      if (prefix !== "mdi") {
+        console.warn(`[v0] Icon ${icon} not found, trying Material Design Icons fallback`)
+        const fallbackResponse = await fetch(`https://api.iconify.design/mdi/${iconName}.svg`)
         
-        if (!iconifyResponse.ok) {
-          throw new Error(`Icon not found in either Lucide or Iconify`)
+        if (!fallbackResponse.ok) {
+          throw new Error(`Icon not found in ${prefix} or Material Design Icons`)
         }
         
-        svg = await iconifyResponse.text()
+        svg = await fallbackResponse.text()
       } else {
-        svg = await response.text()
+        throw new Error(`Failed to fetch icon: ${response.status}`)
       }
     } else {
-      // Fetch from Iconify
-      const response = await fetch(`https://api.iconify.design/${icon.replace(":", "/")}.svg`)
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch Iconify SVG: ${response.status}`)
-      }
-
       svg = await response.text()
     }
 
@@ -82,7 +72,6 @@ function preprocessSVGForExtrusion(svg: string): string {
         pathData += `${cmd}${pointsArray[i]},${pointsArray[i + 1]} `
       }
 
-      // Add a closing path with stroke width to create a filled shape
       return `<path d="${pathData}" fill="${strokeColor}" stroke="none"/>`
     })
 

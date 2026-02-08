@@ -10,24 +10,67 @@ export async function GET(request: Request) {
   }
 
   try {
-    const searchQueries = [`${query} solid`, `${query} filled`, query]
+    // Priority order: prefer filled/solid variants from best libraries for extrusion
+    // Best for extrusion: filled icons from mdi, fa, tabler, phosphor, bi
+    const preferredLibraries = ["mdi", "fa", "tabler", "ph", "bi", "eva"]
+    const searchQueries = [
+      `${query} solid`,
+      `${query} filled`,
+      query
+    ]
 
     const allIcons: string[] = []
     const seenIcons = new Set<string>()
+    const iconsByLibrary: { [key: string]: string[] } = {}
+
+    // Initialize library arrays
+    for (const lib of preferredLibraries) {
+      iconsByLibrary[lib] = []
+    }
 
     for (const searchQuery of searchQueries) {
       if (allIcons.length >= Number.parseInt(limit)) break
 
       const response = await fetch(
-        `https://api.iconify.design/search?query=${encodeURIComponent(searchQuery)}&limit=${limit}`,
+        `https://api.iconify.design/search?query=${encodeURIComponent(searchQuery)}&limit=${limit * 2}`,
       )
 
       if (response.ok) {
         const data = await response.json()
         for (const iconName of data.icons || []) {
           if (!seenIcons.has(iconName) && allIcons.length < Number.parseInt(limit)) {
-            seenIcons.add(iconName)
-            allIcons.push(iconName)
+            const prefix = iconName.split(":")[0]
+            
+            // Prioritize preferred libraries
+            if (preferredLibraries.includes(prefix)) {
+              seenIcons.add(iconName)
+              allIcons.push(iconName)
+              if (iconsByLibrary[prefix]) {
+                iconsByLibrary[prefix].push(iconName)
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // If we don't have enough icons from preferred libraries, add others
+    if (allIcons.length < Number.parseInt(limit)) {
+      for (const searchQuery of searchQueries) {
+        if (allIcons.length >= Number.parseInt(limit)) break
+
+        const response = await fetch(
+          `https://api.iconify.design/search?query=${encodeURIComponent(searchQuery)}&limit=${limit}`,
+        )
+
+        if (response.ok) {
+          const data = await response.json()
+          for (const iconName of data.icons || []) {
+            const prefix = iconName.split(":")[0]
+            if (!seenIcons.has(iconName) && !preferredLibraries.includes(prefix) && allIcons.length < Number.parseInt(limit)) {
+              seenIcons.add(iconName)
+              allIcons.push(iconName)
+            }
           }
         }
       }

@@ -20,10 +20,18 @@ export async function GET(request: Request) {
       )
 
       if (!response.ok) {
-        throw new Error(`Failed to fetch Lucide SVG: ${response.status}`)
+        // If Lucide icon not found, try Iconify as fallback
+        console.warn(`[v0] Lucide icon not found (${response.status}), trying Iconify fallback`)
+        const iconifyResponse = await fetch(`https://api.iconify.design/mdi/${iconName}.svg`)
+        
+        if (!iconifyResponse.ok) {
+          throw new Error(`Icon not found in either Lucide or Iconify`)
+        }
+        
+        svg = await iconifyResponse.text()
+      } else {
+        svg = await response.text()
       }
-
-      svg = await response.text()
     } else {
       // Fetch from Iconify
       const response = await fetch(`https://api.iconify.design/${icon.replace(":", "/")}.svg`)

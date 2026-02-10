@@ -344,18 +344,14 @@ export function ModelMesh({
     scene.traverse((child) => {
       if (child instanceof Mesh) {
         const hasOriginal = !!(child.userData.originalMaterial || child.userData.originalMaterials)
-        console.log("[v0] Mesh found, hasOriginal:", hasOriginal)
         
         let newMaterial: THREE.Material
 
         if (renderMode === "matcap" && matcapTexture) {
-          console.log("[v0] Using matcap material with effects")
           newMaterial = createMatcapMaterial(matcapTexture, matcapNormalMap, matcapSettings)
         } else if (gradientSettings?.enabled) {
-          console.log("[v0] Using gradient material")
           newMaterial = createGradientMaterial(gradientSettings)
         } else if (hasCustomTextures) {
-          console.log("[v0] Using custom PBR textures")
           newMaterial = createPBRMaterial(
             materialSettings,
             colorMap,
@@ -776,5 +772,6 @@ function createMatcapMaterial(
     vertexShader,
     fragmentShader,
     extensions: { derivatives: true },
+    side: THREE.DoubleSide,
   })
 }

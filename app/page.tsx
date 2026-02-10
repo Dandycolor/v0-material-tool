@@ -1750,23 +1750,30 @@ export default function MaterialTool() {
                           {geometrySettings.usePotteryMode && (
                             <div className="space-y-3">
                               <div className="space-y-2">
-                                <Label className="text-xs text-zinc-500">Rotation Axis</Label>
-                                <div className="grid grid-cols-5 gap-2">
-                                  {(['center', 'left', 'right', 'top', 'bottom'] as const).map((axis) => (
-                                    <button
-                                      key={axis}
-                                      onClick={() =>
-                                        setGeometrySettings({ ...geometrySettings, latheAxis: axis })
-                                      }
-                                      className={`py-2 px-2 rounded text-xs font-medium transition-colors ${
-                                        geometrySettings.latheAxis === axis
-                                          ? 'bg-amber-600 text-white'
-                                          : 'bg-neutral-700 text-zinc-400 hover:bg-neutral-600'
-                                      }`}
-                                    >
-                                      {axis.charAt(0).toUpperCase() + axis.slice(1)}
-                                    </button>
-                                  ))}
+                                <Label className="text-xs text-zinc-500">Axis</Label>
+                                <div className="grid grid-cols-3 gap-2">
+                                  {(['center', 'right', 'bottom'] as const).map((axis) => {
+                                    const axisLabels: Record<string, string> = {
+                                      center: 'Center',
+                                      right: 'Position 1',
+                                      bottom: 'Position 2',
+                                    }
+                                    return (
+                                      <button
+                                        key={axis}
+                                        onClick={() =>
+                                          setGeometrySettings({ ...geometrySettings, latheAxis: axis })
+                                        }
+                                        className={`py-2 px-2 rounded text-xs font-medium transition-colors ${
+                                          geometrySettings.latheAxis === axis
+                                            ? 'bg-amber-600 text-white'
+                                            : 'bg-neutral-700 text-zinc-400 hover:bg-neutral-600'
+                                        }`}
+                                      >
+                                        {axisLabels[axis]}
+                                      </button>
+                                    )
+                                  })}
                                 </div>
                               </div>
                               <div className="flex items-center justify-between">

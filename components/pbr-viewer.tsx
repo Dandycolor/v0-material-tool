@@ -1240,7 +1240,6 @@ function createLatheGeometry(
     })
     
     // Calculate rotation axis position based on user selection
-    let axisX: number
     const centerX = (minX + maxX) / 2
     const centerY = (minY + maxY) / 2
     const width = maxX - minX
@@ -1249,15 +1248,10 @@ function createLatheGeometry(
     // Use larger offset to ensure clean geometry
     const offset = 0.01
     
+    let axisX: number
     switch (axis) {
-      case 'left':
-        axisX = minX - width * offset
-        break
       case 'right':
         axisX = maxX + width * offset
-        break
-      case 'top':
-        axisX = minY - height * offset
         break
       case 'bottom':
         axisX = maxY + height * offset
@@ -1272,12 +1266,12 @@ function createLatheGeometry(
       let radius: number
       let height: number
       
-      if (axis === 'top' || axis === 'bottom') {
-        // For top/bottom, use Y as radius axis
+      if (axis === 'bottom') {
+        // For bottom, use Y as radius axis
         radius = Math.abs(p.y - axisX)
         height = p.x - centerX
       } else {
-        // For left/right/center, use X as radius axis
+        // For right/center, use X as radius axis
         radius = Math.abs(p.x - axisX)
         height = -(p.y - centerY)
       }
@@ -1292,7 +1286,7 @@ function createLatheGeometry(
     const geometry = new THREE.LatheGeometry(lathePoints, segments, 0, Math.PI * 2)
 
     // For top/bottom axes, rotate geometry 90 degrees since LatheGeometry always rotates around Y-axis
-    if (axis === 'top' || axis === 'bottom') {
+    if (axis === 'bottom') {
       geometry.rotateZ(Math.PI / 2)
     }
 

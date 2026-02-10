@@ -1064,7 +1064,7 @@ export default function MaterialTool() {
       const reader = new FileReader()
       reader.onload = (e) => {
         const svgContent = e.target?.result as string
-        setGeometrySettings({ ...geometrySettings, svgPath: svgContent, type: "extruded", selectedShape: "custom" }) // Set selectedShape to custom
+        setGeometrySettings({ ...geometrySettings, svgPath: svgContent, svgSource: "upload", type: "extruded", selectedShape: "custom" }) // Set selectedShape to custom
         setMaterialSettings((prev) => ({ ...prev, useDisplacementMap: false, displacementScale: 0 }))
       }
       reader.readAsText(file)
@@ -1178,6 +1178,7 @@ export default function MaterialTool() {
         setGeometrySettings((prev) => ({
           ...prev,
           svgPath: svgContent,
+          svgSource: "iconify",
           selectedShape: "custom", // Indicate that it's a custom shape from an external source
           type: "extruded",
         }))
@@ -2265,20 +2266,22 @@ export default function MaterialTool() {
                   <>
                     {/* Base Color Section - Only show for non-glass materials */}
                     {materialSettings.transmission === 0 && (
-                  <Collapsible defaultOpen className="rounded-lg">
-                    <CollapsibleTrigger className="w-full flex items-center justify-between p-3 hover:bg-[#252525] transition-colors rounded-lg bg-[#222222]">
-                      <Label className="text-sm font-medium text-white cursor-pointer">Base Color</Label>
-                      <div className="flex items-center gap-3">
-                        <Switch
-                          checked={materialSettings.useHueShift}
-                          onCheckedChange={(checked) =>
-                            setMaterialSettings({ ...materialSettings, useHueShift: checked })
-                          }
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                        <ChevronDown className="w-4 h-4 text-zinc-500 transition-transform duration-200 [[data-state=open]_&]:rotate-180" />
-                      </div>
-                    </CollapsibleTrigger>
+                  <Collapsible key="base-color-collapsible" defaultOpen className="rounded-lg">
+                    <div className="flex items-center justify-between p-3 hover:bg-[#252525] transition-colors rounded-lg bg-[#222222]">
+                      <CollapsibleTrigger asChild>
+                        <button type="button" className="flex-1 flex items-center justify-between text-left">
+                          <Label className="text-sm font-medium text-white cursor-pointer">Base Color</Label>
+                          <ChevronDown className="w-4 h-4 text-zinc-500 transition-transform duration-200 [[data-state=open]_&]:rotate-180" />
+                        </button>
+                      </CollapsibleTrigger>
+                      <Switch
+                        checked={materialSettings.useHueShift}
+                        onCheckedChange={(checked) =>
+                          setMaterialSettings({ ...materialSettings, useHueShift: checked })
+                        }
+                        className="ml-3"
+                      />
+                    </div>
                     <CollapsibleContent className="px-4 pb-4 space-y-3">
                       {materialSettings.useHueShift ? (
                         <>

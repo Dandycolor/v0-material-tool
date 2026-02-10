@@ -4,7 +4,7 @@
 
 Создайте новый публичный репозиторий на GitHub со следующей структурой:
 
-```
+\`\`\`
 your-3d-models-repo/
 ├── models/
 │   ├── models.json          # Каталог всех моделей
@@ -16,13 +16,13 @@ your-3d-models-repo/
 │       ├── cube.glb
 │       ├── sphere.glb
 │       └── ...
-```
+\`\`\`
 
 ## 2. Создайте файл models.json
 
 Создайте файл `models/models.json` с таким содержимым:
 
-```json
+\`\`\`json
 {
   "models": [
     {
@@ -47,7 +47,7 @@ your-3d-models-repo/
     }
   ]
 }
-```
+\`\`\`
 
 ## 3. Загрузите модели
 

@@ -404,12 +404,6 @@ function parseSVGContent(svgContent: string): THREE.Shape[] {
     // Remove mask references
     processedSVG = processedSVG.replace(/mask\s*=\s*["'][^"']*["']/gi, "")
 
-    // Split compound paths into separate sub-paths for proper hole detection.
-    // SVGs like the polya logo use a single <path> with multiple M...Z sub-paths
-    // where inner sub-paths represent holes. SVGLoader doesn't split these automatically,
-    // so we do it manually before parsing (same approach as the vectry reference project).
-    processedSVG = splitCompoundPaths(processedSVG)
-
     const loader = new SVGLoader()
     const svgData = loader.parse(processedSVG)
 
@@ -432,6 +426,13 @@ function parseSVGContent(svgContent: string): THREE.Shape[] {
               }
               if (hasVariation) {
                 allShapes.push(shape)
+                console.log("[v0] Shape added - points:", points.length, "holes:", shape.holes?.length ?? 0, "curves:", shape.curves?.length ?? 0)
+                if (shape.holes) {
+                  for (let h = 0; h < shape.holes.length; h++) {
+                    const hole = shape.holes[h]
+                    console.log("[v0]   Hole", h, "- curves:", hole.curves?.length ?? 0, "points:", hole.getPoints(12).length)
+                  }
+                }
               }
             }
           } catch (e) {

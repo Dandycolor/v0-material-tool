@@ -471,16 +471,20 @@ function parseSVGContent(svgContent: string, source: "iconify" | "upload" = "ico
 
     if (source === "upload") {
       // For uploaded SVG files: split compound paths and use toShapes(true)
-      // This is the same approach as the working vectry reference project
+      // This correctly handles compound paths where sub-paths form holes
+      console.log("[v0] Upload SVG parsing - using splitCompoundPaths + toShapes(true)")
       const splitSVG = splitCompoundPaths(processedSVG)
+      console.log("[v0] Split SVG differs from original:", splitSVG !== processedSVG)
       const loader = new SVGLoader()
       const svgData = loader.parse(splitSVG)
-      const allShapes: THREE.Shape[] = []
+      console.log("[v0] Upload SVGLoader found", svgData.paths.length, "paths")
+      const uploadShapes: THREE.Shape[] = []
       
-      for (const path of svgData.paths) {
+      for (let pi = 0; pi < svgData.paths.length; pi++) {
+        const path = svgData.paths[pi]
         try {
-          // toShapes(true) correctly handles fill-rule evenodd and holes
           const shapes = path.toShapes(true)
+          console.log("[v0] Upload path", pi, "produced", shapes.length, "shapes via toShapes(true)")
           for (const shape of shapes) {
             try {
               const points = shape.getPoints(12)
@@ -494,7 +498,13 @@ function parseSVGContent(svgContent: string, source: "iconify" | "upload" = "ico
                   }
                 }
                 if (hasVariation) {
-                  allShapes.push(shape)
+                  uploadShapes.push(shape)
+                  console.log("[v0] Upload shape added - curves:", shape.curves.length, "holes:", shape.holes?.length ?? 0)
+                  if (shape.holes) {
+                    for (let h = 0; h < shape.holes.length; h++) {
+                      console.log("[v0]   Hole", h, "curves:", shape.holes[h].curves.length)
+                    }
+                  }
                 }
               }
             } catch {
@@ -506,19 +516,21 @@ function parseSVGContent(svgContent: string, source: "iconify" | "upload" = "ico
         }
       }
       
-      if (allShapes.length > 0) {
-        // Check if toShapes already found holes
-        const anyHasHoles = allShapes.some(s => s.holes && s.holes.length > 0)
-        if (!anyHasHoles && allShapes.length > 1) {
-          return processShapesWithHoles(allShapes)
+      console.log("[v0] Upload total shapes:", uploadShapes.length)
+      if (uploadShapes.length > 0) {
+        const anyHasHoles = uploadShapes.some(s => s.holes && s.holes.length > 0)
+        console.log("[v0] Upload any shape has holes:", anyHasHoles)
+        if (!anyHasHoles && uploadShapes.length > 1) {
+          return processShapesWithHoles(uploadShapes)
         }
-        return allShapes
+        return uploadShapes
       }
-      // Fall through to standard method if upload method produced nothing
+      console.log("[v0] Upload method produced 0 shapes, falling through to Iconify method")
     }
 
     // For Iconify icons (and fallback): use standard SVGLoader.createShapes
     const allShapes = parseSVGShapes(processedSVG)
+    console.log("[v0] SVGLoader parsed", allShapes.length, "valid shapes")
 
     // If we have multiple shapes, try to detect holes
     if (allShapes.length > 1) {

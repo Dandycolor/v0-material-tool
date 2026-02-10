@@ -1241,29 +1241,46 @@ function createLatheGeometry(
     
     // Calculate rotation axis position based on user selection
     let axisX: number
+    let axisY: number
+    const centerX = (minX + maxX) / 2
+    const centerY = (minY + maxY) / 2
+    
     switch (axis) {
       case 'left':
         axisX = minX
+        axisY = centerY
         break
       case 'right':
         axisX = maxX
+        axisY = centerY
         break
       case 'top':
+        axisX = centerX
+        axisY = minY
+        break
       case 'bottom':
+        axisX = centerX
+        axisY = maxY
+        break
       case 'center':
       default:
-        axisX = (minX + maxX) / 2
+        axisX = centerX
+        axisY = centerY
         break
     }
     
-    const centerY = (minY + maxY) / 2
-    
     const lathePoints: THREE.Vector2[] = allPoints.map(p => {
-      const x = Math.abs(p.x - axisX)
-      const y = -(p.y - centerY)
-      // Ensure minimum radius to avoid degenerate geometry
-      const radius = Math.max(x, 0.001)
-      return new THREE.Vector2(radius, y)
+      // For top/bottom axis, rotate around Y (horizontal axis)
+      if (axis === 'top' || axis === 'bottom') {
+        const radius = Math.max(Math.abs(p.y - axisY), 0.001)
+        const height = p.x - centerX
+        return new THREE.Vector2(radius, height)
+      }
+      
+      // For left/right/center, rotate around X (vertical axis)
+      const radius = Math.max(Math.abs(p.x - axisX), 0.001)
+      const height = -(p.y - centerY)
+      return new THREE.Vector2(radius, height)
     })
 
     // Create lathe geometry with exact segments (no extra segment needed)

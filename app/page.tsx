@@ -2266,11 +2266,13 @@ export default function MaterialTool() {
                   <>
                     {/* Base Color Section - Only show for non-glass materials */}
                     {materialSettings.transmission === 0 && (
-                  <Collapsible defaultOpen className="rounded-lg">
+                  <Collapsible key="base-color-collapsible" defaultOpen className="rounded-lg">
                     <div className="flex items-center justify-between p-3 hover:bg-[#252525] transition-colors rounded-lg bg-[#222222]">
-                      <CollapsibleTrigger className="flex-1 flex items-center justify-between">
-                        <Label className="text-sm font-medium text-white cursor-pointer">Base Color</Label>
-                        <ChevronDown className="w-4 h-4 text-zinc-500 transition-transform duration-200 [[data-state=open]_&]:rotate-180" />
+                      <CollapsibleTrigger asChild>
+                        <button type="button" className="flex-1 flex items-center justify-between text-left">
+                          <Label className="text-sm font-medium text-white cursor-pointer">Base Color</Label>
+                          <ChevronDown className="w-4 h-4 text-zinc-500 transition-transform duration-200 [[data-state=open]_&]:rotate-180" />
+                        </button>
                       </CollapsibleTrigger>
                       <Switch
                         checked={materialSettings.useHueShift}

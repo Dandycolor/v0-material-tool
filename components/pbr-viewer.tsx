@@ -1158,23 +1158,19 @@ function processShapesWithHoles(shapes: THREE.Shape[]): THREE.Shape[] {
         const centerY = (inner.bounds.minY + inner.bounds.maxY) / 2
 
         if (isPointInShape(centerX, centerY, outer.points)) {
-          // Create hole from inner shape
+          // Create hole from inner shape by copying its curves directly
+          // This preserves Bezier curves instead of converting to line segments
           try {
             const holePath = new THREE.Path()
-            const innerPoints = inner.points
-
-            if (innerPoints && innerPoints.length > 2) {
-              holePath.moveTo(innerPoints[0].x, innerPoints[0].y)
-              for (let k = 1; k < innerPoints.length; k++) {
-                if (innerPoints[k]) {
-                  holePath.lineTo(innerPoints[k].x, innerPoints[k].y)
-                }
-              }
-              holePath.closePath()
-
+            const innerCurves = inner.shape.curves
+            
+            if (innerCurves && innerCurves.length > 0) {
+              // Copy the curves from the inner shape to preserve smooth curves
+              holePath.curves = innerCurves.map((curve: THREE.Curve<THREE.Vector2>) => curve.clone())
+              holePath.autoClose = true
+              
               newShape.holes.push(holePath)
               usedAsHole.add(inner.index)
-              console.log("[v0] Added hole to shape")
             }
           } catch (e) {
             console.warn("[v0] Failed to create hole:", e)

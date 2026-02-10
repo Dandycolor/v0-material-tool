@@ -350,7 +350,8 @@ function parseSVGContent(svgContent: string): THREE.Shape[] {
         for (const shape of shapes) {
           // Validate shape has enough points
           try {
-            const points = shape.getPoints(12) // Use more divisions for curves
+            // Use high divisions (64) for smooth circular curves
+            const points = shape.getPoints(64)
             if (points && points.length >= 3) {
               // Check shape isn't degenerate (all points same)
               let hasVariation = false
@@ -362,7 +363,21 @@ function parseSVGContent(svgContent: string): THREE.Shape[] {
                 }
               }
               if (hasVariation) {
-                allShapes.push(shape)
+                // Create new shape from high-resolution points for smoother curves
+                const newShape = new THREE.Shape()
+                newShape.setFromPoints(points)
+                
+                // Preserve holes if any
+                if (shape.holes && shape.holes.length > 0) {
+                  newShape.holes = shape.holes.map(hole => {
+                    const holePoints = hole.getPoints(64)
+                    const newHole = new THREE.Path()
+                    newHole.setFromPoints(holePoints)
+                    return newHole
+                  })
+                }
+                
+                allShapes.push(newShape)
               }
             }
           } catch (e) {

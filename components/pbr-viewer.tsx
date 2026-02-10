@@ -1407,7 +1407,6 @@ function createExtrudedGeometry(
           bevelSize: bevelSize,
           bevelSegments: Math.max(2, Math.min(bevelSegments, 64)),
           curveSegments: Math.max(12, curveSegments),
-          steps: 1,
         }
 
         const geo = new THREE.ExtrudeGeometry([shape], extrudeSettings)
@@ -1431,10 +1430,6 @@ function createExtrudedGeometry(
     } else {
       geometry = mergeGeometries(geometries)
     }
-
-    // Ensure normals are computed for smooth appearance
-    geometry.computeVertexNormals()
-    geometry.normalizeNormals()
 
     // Center the geometry
     geometry.center()

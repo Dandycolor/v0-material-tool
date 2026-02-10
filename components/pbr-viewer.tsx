@@ -379,6 +379,70 @@ function splitCompoundPaths(svgString: string): string {
   }
 }
 
+/**
+ * Check if an SVG string contains compound paths (single <path> with multiple
+ * closed sub-paths like M...Z M...Z). These need splitting for proper hole detection.
+ */
+function hasCompoundPaths(svgString: string): boolean {
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(svgString, "image/svg+xml")
+    const paths = doc.querySelectorAll("path")
+    for (const pathEl of paths) {
+      const d = pathEl.getAttribute("d")
+      if (!d) continue
+      // Count closed sub-paths (sequences ending with Z/z)
+      const closedSubPaths = d.match(/[Zz]/g)
+      if (closedSubPaths && closedSubPaths.length > 1) {
+        return true
+      }
+    }
+    return false
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Parse SVG string into shapes using SVGLoader.createShapes.
+ * Returns validated, non-degenerate shapes.
+ */
+function parseSVGShapes(processedSVG: string): THREE.Shape[] {
+  const loader = new SVGLoader()
+  const svgData = loader.parse(processedSVG)
+  const shapes: THREE.Shape[] = []
+
+  for (const path of svgData.paths) {
+    try {
+      const pathShapes = SVGLoader.createShapes(path)
+      for (const shape of pathShapes) {
+        try {
+          const points = shape.getPoints(12)
+          if (points && points.length >= 3) {
+            let hasVariation = false
+            const firstPoint = points[0]
+            for (let i = 1; i < points.length; i++) {
+              if (Math.abs(points[i].x - firstPoint.x) > 0.01 || Math.abs(points[i].y - firstPoint.y) > 0.01) {
+                hasVariation = true
+                break
+              }
+            }
+            if (hasVariation) {
+              shapes.push(shape)
+            }
+          }
+        } catch {
+          // Skip invalid shapes silently
+        }
+      }
+    } catch (e) {
+      console.warn("[v0] Error creating shapes from path:", e)
+    }
+  }
+
+  return shapes
+}
+
 function parseSVGContent(svgContent: string): THREE.Shape[] {
   try {
     // Preprocess SVG for better compatibility with Iconify icons
@@ -404,47 +468,26 @@ function parseSVGContent(svgContent: string): THREE.Shape[] {
     // Remove mask references
     processedSVG = processedSVG.replace(/mask\s*=\s*["'][^"']*["']/gi, "")
 
-    const loader = new SVGLoader()
-    const svgData = loader.parse(processedSVG)
-
-    const allShapes: THREE.Shape[] = []
-
-    for (const path of svgData.paths) {
-      try {
-        const shapes = SVGLoader.createShapes(path)
-        for (const shape of shapes) {
-          try {
-            const points = shape.getPoints(12)
-            if (points && points.length >= 3) {
-              let hasVariation = false
-              const firstPoint = points[0]
-              for (let i = 1; i < points.length; i++) {
-                if (Math.abs(points[i].x - firstPoint.x) > 0.01 || Math.abs(points[i].y - firstPoint.y) > 0.01) {
-                  hasVariation = true
-                  break
-                }
-              }
-              if (hasVariation) {
-                allShapes.push(shape)
-                console.log("[v0] Shape added - points:", points.length, "holes:", shape.holes?.length ?? 0, "curves:", shape.curves?.length ?? 0)
-                if (shape.holes) {
-                  for (let h = 0; h < shape.holes.length; h++) {
-                    const hole = shape.holes[h]
-                    console.log("[v0]   Hole", h, "- curves:", hole.curves?.length ?? 0, "points:", hole.getPoints(12).length)
-                  }
-                }
-              }
-            }
-          } catch (e) {
-            // Skip invalid shapes silently
+    // First pass: standard parsing with SVGLoader.createShapes (works for Iconify icons)
+    const allShapes = parseSVGShapes(processedSVG)
+    
+    // Check if we got a good result or if we need compound path splitting
+    // If SVG has compound paths (multiple M...Z in one <path>) and we got shapes
+    // without proper holes, try splitting compound paths and re-parsing
+    const totalHoles = allShapes.reduce((sum, s) => sum + (s.holes?.length ?? 0), 0)
+    if (totalHoles === 0 && hasCompoundPaths(processedSVG)) {
+      const splitSVG = splitCompoundPaths(processedSVG)
+      if (splitSVG !== processedSVG) {
+        const splitShapes = parseSVGShapes(splitSVG)
+        if (splitShapes.length > allShapes.length) {
+          // Splitting produced more shapes - use these with hole detection
+          if (splitShapes.length > 1) {
+            return processShapesWithHoles(splitShapes)
           }
+          return splitShapes
         }
-      } catch (e) {
-        console.warn("[v0] Error creating shapes from path:", e)
       }
     }
-
-    console.log("[v0] SVGLoader parsed", allShapes.length, "valid shapes")
 
     // If we have multiple shapes, try to detect holes
     if (allShapes.length > 1) {

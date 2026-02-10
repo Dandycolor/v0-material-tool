@@ -1241,59 +1241,60 @@ function createLatheGeometry(
     
     // Calculate rotation axis position based on user selection
     let axisX: number
-    let axisY: number
     const centerX = (minX + maxX) / 2
     const centerY = (minY + maxY) / 2
     const width = maxX - minX
     const height = maxY - minY
     
-    // Add small offset to prevent points from being exactly on the axis
-    const offset = 0.001
+    // Use larger offset to ensure clean geometry
+    const offset = 0.01
     
     switch (axis) {
       case 'left':
-        // Place axis slightly to the left of the leftmost point
-        axisX = minX - (width * offset)
-        axisY = centerY
+        axisX = minX - width * offset
         break
       case 'right':
-        // Place axis slightly to the right of the rightmost point
-        axisX = maxX + (width * offset)
-        axisY = centerY
+        axisX = maxX + width * offset
         break
       case 'top':
-        // Place axis slightly above the topmost point
-        axisX = centerX
-        axisY = minY - (height * offset)
+        axisX = minY - height * offset
         break
       case 'bottom':
-        // Place axis slightly below the bottommost point
-        axisX = centerX
-        axisY = maxY + (height * offset)
+        axisX = maxY + height * offset
         break
       case 'center':
       default:
         axisX = centerX
-        axisY = centerY
         break
     }
     
     const lathePoints: THREE.Vector2[] = allPoints.map(p => {
-      // For top/bottom axis, rotate around Y (horizontal axis)
+      let radius: number
+      let height: number
+      
       if (axis === 'top' || axis === 'bottom') {
-        const radius = Math.max(Math.abs(p.y - axisY), 0.001)
-        const height = p.x - centerX
-        return new THREE.Vector2(radius, height)
+        // For top/bottom, use Y as radius axis
+        radius = Math.abs(p.y - axisX)
+        height = p.x - centerX
+      } else {
+        // For left/right/center, use X as radius axis
+        radius = Math.abs(p.x - axisX)
+        height = -(p.y - centerY)
       }
       
-      // For left/right/center, rotate around X (vertical axis)
-      const radius = Math.max(Math.abs(p.x - axisX), 0.001)
-      const height = -(p.y - centerY)
+      // Ensure minimum radius to avoid degenerate triangles
+      radius = Math.max(radius, 0.01)
+      
       return new THREE.Vector2(radius, height)
     })
 
     // Create lathe geometry with exact segments (no extra segment needed)
     const geometry = new THREE.LatheGeometry(lathePoints, segments, 0, Math.PI * 2)
+
+    // For top/bottom axes, rotate geometry 90 degrees since LatheGeometry always rotates around Y-axis
+    if (axis === 'top' || axis === 'bottom') {
+      geometry.rotateZ(Math.PI / 2)
+    }
 
     geometry.center()
     geometry.computeBoundingBox()

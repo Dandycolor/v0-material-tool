@@ -1244,23 +1244,32 @@ function createLatheGeometry(
     let axisY: number
     const centerX = (minX + maxX) / 2
     const centerY = (minY + maxY) / 2
+    const width = maxX - minX
+    const height = maxY - minY
+    
+    // Add small offset to prevent points from being exactly on the axis
+    const offset = 0.001
     
     switch (axis) {
       case 'left':
-        axisX = minX
+        // Place axis slightly to the left of the leftmost point
+        axisX = minX - (width * offset)
         axisY = centerY
         break
       case 'right':
-        axisX = maxX
+        // Place axis slightly to the right of the rightmost point
+        axisX = maxX + (width * offset)
         axisY = centerY
         break
       case 'top':
+        // Place axis slightly above the topmost point
         axisX = centerX
-        axisY = minY
+        axisY = minY - (height * offset)
         break
       case 'bottom':
+        // Place axis slightly below the bottommost point
         axisX = centerX
-        axisY = maxY
+        axisY = maxY + (height * offset)
         break
       case 'center':
       default:

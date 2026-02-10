@@ -381,6 +381,7 @@ function splitCompoundPaths(svgString: string): string {
 }
 
 function parseSVGContent(svgContent: string, source: "iconify" | "upload" = "iconify"): THREE.Shape[] {
+  console.log("[v0] parseSVGContent called with source:", source)
   try {
     // Preprocess SVG for better compatibility
     let processedSVG = svgContent

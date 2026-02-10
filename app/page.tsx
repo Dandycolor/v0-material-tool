@@ -2267,19 +2267,19 @@ export default function MaterialTool() {
                     {/* Base Color Section - Only show for non-glass materials */}
                     {materialSettings.transmission === 0 && (
                   <Collapsible defaultOpen className="rounded-lg">
-                    <CollapsibleTrigger className="w-full flex items-center justify-between p-3 hover:bg-[#252525] transition-colors rounded-lg bg-[#222222]">
-                      <Label className="text-sm font-medium text-white cursor-pointer">Base Color</Label>
-                      <div className="flex items-center gap-3">
-                        <Switch
-                          checked={materialSettings.useHueShift}
-                          onCheckedChange={(checked) =>
-                            setMaterialSettings({ ...materialSettings, useHueShift: checked })
-                          }
-                          onClick={(e) => e.stopPropagation()}
-                        />
+                    <div className="flex items-center justify-between p-3 hover:bg-[#252525] transition-colors rounded-lg bg-[#222222]">
+                      <CollapsibleTrigger className="flex-1 flex items-center justify-between">
+                        <Label className="text-sm font-medium text-white cursor-pointer">Base Color</Label>
                         <ChevronDown className="w-4 h-4 text-zinc-500 transition-transform duration-200 [[data-state=open]_&]:rotate-180" />
-                      </div>
-                    </CollapsibleTrigger>
+                      </CollapsibleTrigger>
+                      <Switch
+                        checked={materialSettings.useHueShift}
+                        onCheckedChange={(checked) =>
+                          setMaterialSettings({ ...materialSettings, useHueShift: checked })
+                        }
+                        className="ml-3"
+                      />
+                    </div>
                     <CollapsibleContent className="px-4 pb-4 space-y-3">
                       {materialSettings.useHueShift ? (
                         <>

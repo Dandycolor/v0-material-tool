@@ -55,6 +55,8 @@ interface ModelMeshProps {
   inflateSphereRadius?: number
   flatBase?: boolean
   onInflateSphereMove?: (position: [number, number, number]) => void
+  // Pottery wheel mode
+  usePotteryMode?: boolean
 }
 
 export function ModelMesh({
@@ -81,6 +83,7 @@ export function ModelMesh({
   inflateSphereRadius = 1.0,
   flatBase = false,
   onInflateSphereMove,
+  usePotteryMode = false,
 }: ModelMeshProps) {
   const [scene, setScene] = useState<THREE.Group | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -341,18 +344,14 @@ export function ModelMesh({
     scene.traverse((child) => {
       if (child instanceof Mesh) {
         const hasOriginal = !!(child.userData.originalMaterial || child.userData.originalMaterials)
-        console.log("[v0] Mesh found, hasOriginal:", hasOriginal)
         
         let newMaterial: THREE.Material
 
         if (renderMode === "matcap" && matcapTexture) {
-          console.log("[v0] Using matcap material with effects")
           newMaterial = createMatcapMaterial(matcapTexture, matcapNormalMap, matcapSettings)
         } else if (gradientSettings?.enabled) {
-          console.log("[v0] Using gradient material")
           newMaterial = createGradientMaterial(gradientSettings)
         } else if (hasCustomTextures) {
-          console.log("[v0] Using custom PBR textures")
           newMaterial = createPBRMaterial(
             materialSettings,
             colorMap,
@@ -450,6 +449,12 @@ export function ModelMesh({
         }
 
         child.material = newMaterial
+        
+        // Enable double-sided rendering for pottery wheel mode to avoid culled faces
+        if (usePotteryMode && newMaterial instanceof THREE.Material) {
+          newMaterial.side = THREE.DoubleSide
+        }
+        
         child.userData.isOriginalMaterial = hasOriginal && !hasCustomTextures && renderMode === "pbr"
       }
     })
@@ -469,6 +474,7 @@ export function ModelMesh({
     envIntensity,
     tintColor,
     textureScale,
+    usePotteryMode,
   ])
 
 
@@ -766,5 +772,6 @@ function createMatcapMaterial(
     vertexShader,
     fragmentShader,
     extensions: { derivatives: true },
+    side: THREE.DoubleSide,
   })
 }

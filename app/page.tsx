@@ -852,6 +852,9 @@ export default function MaterialTool() {
     inflateSphereRadius: 0.5, // Радиус сферы влияния (меньшее значение для локального эффекта)
     flatBase: false, // Flat Base toggle
     deformEnabled: false, // Enable deform для extruded SVG
+    usePotteryMode: false, // Pottery wheel/lathe mode
+    latheSegments: 32, // Number of segments around the axis for lathe geometry
+    latheAxis: 'center' as 'center' | 'left' | 'right' | 'top' | 'bottom', // Axis position for pottery wheel mode
   })
 
   const [materialSettings, setMaterialSettings] = useState<MaterialSettings>({
@@ -937,6 +940,7 @@ export default function MaterialTool() {
   )
   const [backgroundColor, setBackgroundColor] = useState("#1a1a1a")
   const [showGrid, setShowGrid] = useState(false)
+  const [showRotateControls, setShowRotateControls] = useState(false)
   
   // Custom material selections
   const [customMaterial, setCustomMaterial] = useState({
@@ -1331,6 +1335,7 @@ export default function MaterialTool() {
                 matcapSettings={matcapSettings}
                 backgroundColor={backgroundColor}
           showGrid={showGrid}
+          showRotateControls={showRotateControls}
           gradientSettings={gradientSettings}
           customMaterial={customMaterial}
           onModelLoadError={setModelLoadError}
@@ -1485,7 +1490,7 @@ export default function MaterialTool() {
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                           <Input
                             type="text"
-                            placeholder="flower"
+                            placeholder="search icons..."
                             value={iconSearchInput}
                             onChange={(e) => handleIconSearch(e.target.value)}
                             className="pl-10 bg-[#2a2a2a] border-[#3a3a3a] text-white placeholder:text-zinc-600 rounded-lg w-full"
@@ -1517,12 +1522,12 @@ export default function MaterialTool() {
                                 <button
                                   key={icon.id}
                                   onClick={() => handleSelectIcon(icon)}
-                                  className={`aspect-square rounded-lg p-2 flex items-center justify-center transition-all hover:scale-105 ${
+                                  className={`aspect-square rounded-lg p-2 flex items-center justify-center transition-all hover:scale-105 relative group ${
                                     selectedIcon?.id === icon.id
                                       ? "bg-[#00b8c4] ring-2 ring-[#00d4e0]"
                                       : "bg-[#2a2a2a] hover:bg-[#353535]"
                                   }`}
-                                  title={icon.name}
+                                  title={`${icon.name} (${icon.source})`}
                                 >
                                   <img
                                     src={icon.preview_url || "/placeholder.svg"}
@@ -1719,6 +1724,75 @@ export default function MaterialTool() {
                             className=""
                           />
                           <p className="text-xs text-zinc-500">Adjusts texture tiling to fix stretching on bevels</p>
+                        </div>
+
+                        <div className="pt-4 space-y-4 border-t border-[#2a2a2a]/50">
+                          <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-neutral-800 border border-neutral-700">
+                            <div className="flex-1">
+                              <Label className="text-sm font-semibold text-neutral-100 block mb-1">
+                                Pottery Wheel Mode
+                              </Label>
+                              <p className="text-xs text-neutral-400">
+                                {geometrySettings.usePotteryMode
+                                  ? "Rotate profile around central axis"
+                                  : "Standard extrusion mode"}
+                              </p>
+                            </div>
+                            <Switch
+                              checked={geometrySettings.usePotteryMode}
+                              onCheckedChange={(checked) =>
+                                setGeometrySettings({ ...geometrySettings, usePotteryMode: checked })
+                              }
+                              className="data-[state=checked]:bg-amber-600"
+                            />
+                          </div>
+
+                          {geometrySettings.usePotteryMode && (
+                            <div className="space-y-3">
+                              <div className="space-y-2">
+                                <Label className="text-xs text-zinc-500">Axis</Label>
+                                <div className="grid grid-cols-3 gap-2">
+                                  {(['center', 'right', 'bottom'] as const).map((axis) => {
+                                    const axisLabels: Record<string, string> = {
+                                      center: 'Center',
+                                      right: 'Position 1',
+                                      bottom: 'Position 2',
+                                    }
+                                    return (
+                                      <button
+                                        key={axis}
+                                        onClick={() =>
+                                          setGeometrySettings({ ...geometrySettings, latheAxis: axis })
+                                        }
+                                        className={`py-2 px-2 rounded text-xs font-medium transition-colors ${
+                                          geometrySettings.latheAxis === axis
+                                            ? 'bg-amber-600 text-white'
+                                            : 'bg-neutral-700 text-zinc-400 hover:bg-neutral-600'
+                                        }`}
+                                      >
+                                        {axisLabels[axis]}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <Label className="text-xs text-zinc-500">Bevel Segments</Label>
+                                <span className="text-xs text-white font-mono">{geometrySettings.latheSegments}</span>
+                              </div>
+                              <Slider
+                                value={[geometrySettings.latheSegments]}
+                                onValueChange={([value]) =>
+                                  setGeometrySettings({ ...geometrySettings, latheSegments: value })
+                                }
+                                min={16}
+                                max={64}
+                                step={4}
+                                className="w-full"
+                              />
+                              <p className="text-xs text-zinc-500">Controls smoothness around the rotation axis (16-64 recommended)</p>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -2736,6 +2810,22 @@ export default function MaterialTool() {
               <TabsContent value="lighting">
               {renderMode === "pbr" ? (
                 <div className="space-y-4 px-4">
+                  {/* Warning banner for incompatible materials */}
+                  {(materialTypeTab === "gradient" || materialTypeTab === "matcap") && (
+                    <div className="border rounded-lg p-3 flex gap-3 bg-zinc-800 border-zinc-700">
+                      <Info className="w-5 h-5 flex-shrink-0 mt-0.5 text-white" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-slate-50">
+                          PBR Lighting disabled
+                        </p>
+                        <p className="text-xs mt-1 text-neutral-600">
+                          {materialTypeTab === "gradient" 
+                            ? "Gradient materials use their own shading and don't support PBR lighting."
+                            : "Matcap materials use baked lighting and don't support PBR lighting."}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   <div className="rounded-lg overflow-hidden">
                     <div className="p-4">
                       <div className="flex justify-between items-center mb-3">
@@ -3008,6 +3098,19 @@ export default function MaterialTool() {
             type="checkbox"
             checked={showGrid}
             onChange={(e) => setShowGrid(e.target.checked)}
+            className="hidden"
+          />
+        </label>
+
+        <label className="flex items-center gap-2 px-3 py-2 bg-[#2a2a2a] hover:bg-[#353535] text-white text-sm rounded-lg border border-[#404040] transition-all cursor-pointer">
+          <div 
+            className={`w-4 h-4 rounded border border-[#505050] flex-shrink-0 transition-all ${showRotateControls ? 'bg-orange-500' : 'bg-transparent'}`}
+          />
+          <span>Rotate</span>
+          <input
+            type="checkbox"
+            checked={showRotateControls}
+            onChange={(e) => setShowRotateControls(e.target.checked)}
             className="hidden"
           />
         </label>

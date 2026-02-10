@@ -1,7 +1,7 @@
 "use client"
 
 import { Canvas, useLoader, useThree } from "@react-three/fiber"
-import { OrbitControls, Environment } from "@react-three/drei"
+import { OrbitControls, Environment, TransformControls } from "@react-three/drei"
 import * as THREE from "three"
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
 import { Suspense, useMemo, useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react"
@@ -309,6 +309,7 @@ interface PBRViewerProps {
   matcapTexture?: string
   matcapHueShift?: number
   showGrid?: boolean
+  showRotateControls?: boolean
   onModelLoadError?: (error: string) => void
   onGeometrySettingsChange?: (settings: Partial<GeometrySettings>) => void
 }
@@ -345,13 +346,15 @@ function parseSVGContent(svgContent: string): THREE.Shape[] {
 
     for (const path of svgData.paths) {
       try {
-        const shapes = SVGLoader.createShapes(path)
+        // Use toShapes(true) which correctly handles fill-rule evenodd and holes
+        // This is the same approach used in the working vectry reference project
+        const shapes = path.toShapes(true)
+        let hasValidShapeWithHoles = false
+        
         for (const shape of shapes) {
-          // Validate shape has enough points
           try {
-            const points = shape.getPoints(12) // Use more divisions for curves
+            const points = shape.getPoints(12)
             if (points && points.length >= 3) {
-              // Check shape isn't degenerate (all points same)
               let hasVariation = false
               const firstPoint = points[0]
               for (let i = 1; i < points.length; i++) {
@@ -362,10 +365,43 @@ function parseSVGContent(svgContent: string): THREE.Shape[] {
               }
               if (hasVariation) {
                 allShapes.push(shape)
+                // Check if toShapes already assigned holes correctly
+                if (shape.holes && shape.holes.length > 0) {
+                  hasValidShapeWithHoles = true
+                }
               }
             }
           } catch (e) {
             // Skip invalid shapes silently
+          }
+        }
+        
+        // If toShapes didn't find holes, also try createShapes as fallback
+        if (!hasValidShapeWithHoles && shapes.length === 0) {
+          try {
+            const fallbackShapes = SVGLoader.createShapes(path)
+            for (const shape of fallbackShapes) {
+              try {
+                const points = shape.getPoints(12)
+                if (points && points.length >= 3) {
+                  let hasVariation = false
+                  const firstPoint = points[0]
+                  for (let i = 1; i < points.length; i++) {
+                    if (Math.abs(points[i].x - firstPoint.x) > 0.01 || Math.abs(points[i].y - firstPoint.y) > 0.01) {
+                      hasVariation = true
+                      break
+                    }
+                  }
+                  if (hasVariation) {
+                    allShapes.push(shape)
+                  }
+                }
+              } catch (e) {
+                // Skip
+              }
+            }
+          } catch (e) {
+            // Skip
           }
         }
       } catch (e) {
@@ -375,8 +411,9 @@ function parseSVGContent(svgContent: string): THREE.Shape[] {
 
     console.log("[v0] SVGLoader parsed", allShapes.length, "valid shapes")
 
-    // If we have multiple shapes, try to detect holes
-    if (allShapes.length > 1) {
+    // Only run processShapesWithHoles if shapes don't already have holes assigned
+    const anyShapeHasHoles = allShapes.some(s => s.holes && s.holes.length > 0)
+    if (allShapes.length > 1 && !anyShapeHasHoles) {
       return processShapesWithHoles(allShapes)
     }
 
@@ -1157,23 +1194,19 @@ function processShapesWithHoles(shapes: THREE.Shape[]): THREE.Shape[] {
         const centerY = (inner.bounds.minY + inner.bounds.maxY) / 2
 
         if (isPointInShape(centerX, centerY, outer.points)) {
-          // Create hole from inner shape
+          // Create hole from inner shape by copying its curves directly
+          // This preserves Bezier curves instead of converting to line segments
           try {
             const holePath = new THREE.Path()
-            const innerPoints = inner.points
-
-            if (innerPoints && innerPoints.length > 2) {
-              holePath.moveTo(innerPoints[0].x, innerPoints[0].y)
-              for (let k = 1; k < innerPoints.length; k++) {
-                if (innerPoints[k]) {
-                  holePath.lineTo(innerPoints[k].x, innerPoints[k].y)
-                }
-              }
-              holePath.closePath()
-
+            const innerCurves = inner.shape.curves
+            
+            if (innerCurves && innerCurves.length > 0) {
+              // Copy the curves from the inner shape to preserve smooth curves
+              holePath.curves = innerCurves.map((curve: THREE.Curve<THREE.Vector2>) => curve.clone())
+              holePath.autoClose = true
+              
               newShape.holes.push(holePath)
               usedAsHole.add(inner.index)
-              console.log("[v0] Added hole to shape")
             }
           } catch (e) {
             console.warn("[v0] Failed to create hole:", e)
@@ -1204,6 +1237,180 @@ function isPointInShape(x: number, y: number, points: THREE.Vector2[]): boolean 
   return inside
 }
 
+function createLatheGeometry(
+  svgString: string,
+  segments: number,
+  axis: 'center' | 'left' | 'right' | 'top' | 'bottom' = 'center',
+): THREE.BufferGeometry | null {
+  if (!svgString) return null
+
+  try {
+    const shapes = parseSVGContent(svgString)
+    if (shapes.length === 0) {
+      console.warn("[v0] No valid shapes found in SVG for lathe")
+      return null
+    }
+
+    const shape = shapes[0]
+    const allPoints = shape.getPoints(40)
+
+    if (allPoints.length < 2) {
+      console.warn("[v0] Not enough points for lathe geometry")
+      return null
+    }
+
+    let minX = Infinity
+    let maxX = -Infinity
+    let minY = Infinity
+    let maxY = -Infinity
+    
+    allPoints.forEach(p => {
+      minX = Math.min(minX, p.x)
+      maxX = Math.max(maxX, p.x)
+      minY = Math.min(minY, p.y)
+      maxY = Math.max(maxY, p.y)
+    })
+    
+    // Calculate rotation axis position based on user selection
+    const centerX = (minX + maxX) / 2
+    const centerY = (minY + maxY) / 2
+    const width = maxX - minX
+    const height = maxY - minY
+    
+    // Use larger offset to ensure clean geometry
+    const offset = 0.01
+    
+    let axisX: number
+    switch (axis) {
+      case 'right':
+        axisX = maxX + width * offset
+        break
+      case 'bottom':
+        axisX = maxY + height * offset
+        break
+      case 'center':
+      default:
+        axisX = centerX
+        break
+    }
+    
+    const lathePoints: THREE.Vector2[] = allPoints.map(p => {
+      let radius: number
+      let height: number
+      
+      if (axis === 'bottom') {
+        // For bottom, use Y as radius axis
+        radius = Math.abs(p.y - axisX)
+        height = p.x - centerX
+      } else {
+        // For right/center, use X as radius axis
+        radius = Math.abs(p.x - axisX)
+        height = -(p.y - centerY)
+      }
+      
+      // Ensure minimum radius to avoid degenerate triangles
+      radius = Math.max(radius, 0.01)
+      
+      return new THREE.Vector2(radius, height)
+    })
+
+    // Create lathe geometry with exact segments (no extra segment needed)
+    const geometry = new THREE.LatheGeometry(lathePoints, segments, 0, Math.PI * 2)
+
+    // For top/bottom axes, rotate geometry 90 degrees since LatheGeometry always rotates around Y-axis
+    if (axis === 'bottom') {
+      geometry.rotateZ(Math.PI / 2)
+    }
+
+    geometry.center()
+    geometry.computeBoundingBox()
+    const box = geometry.boundingBox
+    if (!box) return null
+
+    const size = new THREE.Vector3()
+    box.getSize(size)
+    const maxDim = Math.max(size.x, size.y, size.z)
+
+    if (maxDim > 0) {
+      const scale = 2 / maxDim
+      geometry.scale(scale, scale, scale)
+    }
+
+    geometry.computeBoundingBox()
+    const bbox = geometry.boundingBox!
+    const heightRange = Math.max(bbox.max.y - bbox.min.y, 0.001)
+    
+    const positionArray = geometry.attributes.position.array as Float32Array
+    const uvCount = positionArray.length / 3
+    const newUVs = new Float32Array(uvCount * 2)
+    
+    for (let i = 0; i < uvCount; i++) {
+      const x = positionArray[i * 3]
+      const y = positionArray[i * 3 + 1]
+      const z = positionArray[i * 3 + 2]
+      
+      const angle = Math.atan2(z, x)
+      const u = (angle / (Math.PI * 2) + 0.5) % 1.0
+      const v = (y - bbox.min.y) / heightRange
+      
+      newUVs[i * 2] = u
+      newUVs[i * 2 + 1] = v
+    }
+    
+    geometry.setAttribute('uv', new THREE.BufferAttribute(newUVs, 2))
+    
+    // Smooth normals across the seam to avoid artifacts
+    const positions = geometry.attributes.position
+    const posArray = positions.array as Float32Array
+    const normals = geometry.attributes.normal
+    const normArray = normals.array as Float32Array
+    
+    // Find vertices at the seam (first and last segments should have same position, different angle)
+    const posCount = posArray.length / 3
+    const profilePointCount = lathePoints.length
+    
+    // Smooth normals between corresponding seam vertices
+    for (let i = 0; i < profilePointCount; i++) {
+      const firstSeamIdx = i
+      const lastSeamIdx = segments * profilePointCount + i
+      
+      if (lastSeamIdx < posCount) {
+        // Average the normals at the seam
+        const nx0 = normArray[firstSeamIdx * 3]
+        const ny0 = normArray[firstSeamIdx * 3 + 1]
+        const nz0 = normArray[firstSeamIdx * 3 + 2]
+        
+        const nx1 = normArray[lastSeamIdx * 3]
+        const ny1 = normArray[lastSeamIdx * 3 + 1]
+        const nz1 = normArray[lastSeamIdx * 3 + 2]
+        
+        const avgNx = (nx0 + nx1) / 2
+        const avgNy = (ny0 + ny1) / 2
+        const avgNz = (nz0 + nz1) / 2
+        
+        const len = Math.sqrt(avgNx * avgNx + avgNy * avgNy + avgNz * avgNz)
+        if (len > 0) {
+          const invLen = 1 / len
+          normArray[firstSeamIdx * 3] = avgNx * invLen
+          normArray[firstSeamIdx * 3 + 1] = avgNy * invLen
+          normArray[firstSeamIdx * 3 + 2] = avgNz * invLen
+          
+          normArray[lastSeamIdx * 3] = avgNx * invLen
+          normArray[lastSeamIdx * 3 + 1] = avgNy * invLen
+          normArray[lastSeamIdx * 3 + 2] = avgNz * invLen
+        }
+      }
+    }
+    
+    normals.needsUpdate = true
+
+    return geometry
+  } catch (error) {
+    console.error("[v0] Error creating lathe geometry:", error)
+    return null
+  }
+}
+
 function createExtrudedGeometry(
   svgString: string,
   thickness: number,
@@ -1228,10 +1435,11 @@ function createExtrudedGeometry(
         const extrudeSettings: THREE.ExtrudeGeometryOptions = {
           depth: thickness,
           bevelEnabled: bevelSize > 0,
-          bevelThickness: bevelSize * 0.5,
-          bevelSize: bevelSize * 0.5,
-          bevelSegments: Math.max(1, bevelSegments),
-          curveSegments: Math.max(3, curveSegments),
+          bevelThickness: bevelSize,
+          bevelSize: bevelSize,
+          bevelSegments: Math.max(2, Math.min(bevelSegments, 64)),
+          curveSegments: Math.max(24, curveSegments),
+          steps: 1,
         }
 
         const geo = new THREE.ExtrudeGeometry([shape], extrudeSettings)
@@ -1255,6 +1463,9 @@ function createExtrudedGeometry(
     } else {
       geometry = mergeGeometries(geometries)
     }
+
+    // Recompute normals for smooth shading
+    geometry.computeVertexNormals()
 
     // Center the geometry
     geometry.center()
@@ -1415,6 +1626,15 @@ function ExtrudedSVGMesh({
 
   const geometry = useMemo(() => {
     if (!geometrySettings.svgPath) return null
+    
+    if (geometrySettings.usePotteryMode) {
+      return createLatheGeometry(
+        geometrySettings.svgPath,
+        geometrySettings.latheSegments || 64,
+        geometrySettings.latheAxis || 'center',
+      )
+    }
+    
     const baseGeometry = createExtrudedGeometry(
       geometrySettings.svgPath,
       geometrySettings.thickness,
@@ -1430,6 +1650,9 @@ function ExtrudedSVGMesh({
     geometrySettings.bevelSize,
     geometrySettings.bevelSegments,
     geometrySettings.bevelQuality,
+    geometrySettings.usePotteryMode,
+    geometrySettings.latheSegments,
+    geometrySettings.latheAxis,
   ])
 
   const meshRef = useRef<THREE.Mesh>(null)
@@ -1445,6 +1668,15 @@ function ExtrudedSVGMesh({
       }
     }
   }, [gradientSettings])
+
+  // Cleanup geometry on unmount or when dependencies change
+  useEffect(() => {
+    return () => {
+      if (geometry) {
+        geometry.dispose()
+      }
+    }
+  }, [geometry])
 
   if (geometry) {
     return (
@@ -1469,6 +1701,7 @@ function ExtrudedSVGMesh({
 
   return null
 }
+
 
 function PBRMesh({
   geometrySettings,
@@ -1684,6 +1917,7 @@ function PBRMesh({
             inflateSpherePosition={geometrySettings.inflateSpherePosition || [0, 0, 0]}
             inflateSphereRadius={geometrySettings.inflateSphereRadius || 1.0}
             flatBase={geometrySettings.flatBase || false}
+            usePotteryMode={geometrySettings.usePotteryMode || false}
             onInflateSphereMove={(pos) => onGeometrySettingsChange?.({ inflateSpherePosition: pos })}
           />
         )
@@ -2015,6 +2249,7 @@ interface SceneContentProps {
     rimColor: string
   }
   showGrid?: boolean
+  showRotateControls?: boolean
   gradientSettings?: {
     enabled: boolean
     type: "radial" | "linear"
@@ -2045,6 +2280,7 @@ function SceneContent({
   matcapHueShift = 0,
   matcapSettings,
   showGrid = true,
+  showRotateControls = false,
   gradientSettings,
   customMaterial,
   onModelLoadError,
@@ -2329,6 +2565,14 @@ function SceneContent({
 
   return (
     <>
+      <group>
+        <TransformControls 
+          mode="rotate" 
+          enabled={showRotateControls}
+          showX={showRotateControls}
+          showY={showRotateControls}
+          showZ={showRotateControls}
+        >
       {showMatcap ? (
         <>
       {geometrySettings.type === "sphere" ? (
@@ -2359,6 +2603,7 @@ function SceneContent({
               inflateSpherePosition={geometrySettings.inflateSpherePosition || [0, 0, 0]}
               inflateSphereRadius={geometrySettings.inflateSphereRadius || 1.0}
               flatBase={geometrySettings.flatBase || false}
+              usePotteryMode={geometrySettings.usePotteryMode || false}
             />
             )
           ) : (
@@ -2397,7 +2642,10 @@ function SceneContent({
           />
         </>
       )}
+      </TransformControls>
+      </group>
       <GridHelper visible={showGrid} />
+      <axesHelper args={[0.5]} position={[0, -1.2, 0]} visible={showRotateControls} />
     </>
   )
 }
@@ -2424,6 +2672,8 @@ export const PBRViewer = forwardRef<
     rimColor: string
   }
   backgroundColor?: string
+  showGrid?: boolean
+  showRotateControls?: boolean
   gradientSettings?: {
     enabled: boolean
     type: "radial" | "linear"
@@ -2444,7 +2694,7 @@ export const PBRViewer = forwardRef<
   onGeometrySettingsChange?: (settings: Partial<GeometrySettings>) => void
   }
 >(function PBRViewer(
-  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, showGrid, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
+  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, showGrid, showRotateControls, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
   ref,
   ) {
   const exportFnRef = useRef<(() => void) | null>(null)
@@ -2482,9 +2732,10 @@ export const PBRViewer = forwardRef<
             onExportReady={handleExportReady}
             renderMode={renderMode}
             matcapTexture={matcapTexture}
-              matcapHueShift={matcapHueShift}
-              matcapSettings={matcapSettings}
-              showGrid={showGrid}
+            matcapHueShift={matcapHueShift}
+            matcapSettings={matcapSettings}
+            showGrid={showGrid}
+            showRotateControls={showRotateControls}
             backgroundColor={backgroundColor}
             gradientSettings={gradientSettings}
             customMaterial={customMaterial}
@@ -2492,7 +2743,11 @@ export const PBRViewer = forwardRef<
             onGeometrySettingsChange={onGeometrySettingsChange}
           />
         </Suspense>
-        <OrbitControls enableDamping dampingFactor={0.05} />
+        <OrbitControls 
+          enabled={!showRotateControls}
+          enableDamping 
+          dampingFactor={0.05} 
+        />
       </Canvas>
     </div>
   )

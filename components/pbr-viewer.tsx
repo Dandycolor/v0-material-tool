@@ -346,13 +346,15 @@ function parseSVGContent(svgContent: string): THREE.Shape[] {
 
     for (const path of svgData.paths) {
       try {
-        const shapes = SVGLoader.createShapes(path)
+        // Use toShapes(true) which correctly handles fill-rule evenodd and holes
+        // This is the same approach used in the working vectry reference project
+        const shapes = path.toShapes(true)
+        let hasValidShapeWithHoles = false
+        
         for (const shape of shapes) {
-          // Validate shape has enough points
           try {
             const points = shape.getPoints(12)
             if (points && points.length >= 3) {
-              // Check shape isn't degenerate (all points same)
               let hasVariation = false
               const firstPoint = points[0]
               for (let i = 1; i < points.length; i++) {
@@ -363,10 +365,43 @@ function parseSVGContent(svgContent: string): THREE.Shape[] {
               }
               if (hasVariation) {
                 allShapes.push(shape)
+                // Check if toShapes already assigned holes correctly
+                if (shape.holes && shape.holes.length > 0) {
+                  hasValidShapeWithHoles = true
+                }
               }
             }
           } catch (e) {
             // Skip invalid shapes silently
+          }
+        }
+        
+        // If toShapes didn't find holes, also try createShapes as fallback
+        if (!hasValidShapeWithHoles && shapes.length === 0) {
+          try {
+            const fallbackShapes = SVGLoader.createShapes(path)
+            for (const shape of fallbackShapes) {
+              try {
+                const points = shape.getPoints(12)
+                if (points && points.length >= 3) {
+                  let hasVariation = false
+                  const firstPoint = points[0]
+                  for (let i = 1; i < points.length; i++) {
+                    if (Math.abs(points[i].x - firstPoint.x) > 0.01 || Math.abs(points[i].y - firstPoint.y) > 0.01) {
+                      hasVariation = true
+                      break
+                    }
+                  }
+                  if (hasVariation) {
+                    allShapes.push(shape)
+                  }
+                }
+              } catch (e) {
+                // Skip
+              }
+            }
+          } catch (e) {
+            // Skip
           }
         }
       } catch (e) {
@@ -376,8 +411,9 @@ function parseSVGContent(svgContent: string): THREE.Shape[] {
 
     console.log("[v0] SVGLoader parsed", allShapes.length, "valid shapes")
 
-    // If we have multiple shapes, try to detect holes
-    if (allShapes.length > 1) {
+    // Only run processShapesWithHoles if shapes don't already have holes assigned
+    const anyShapeHasHoles = allShapes.some(s => s.holes && s.holes.length > 0)
+    if (allShapes.length > 1 && !anyShapeHasHoles) {
       return processShapesWithHoles(allShapes)
     }
 

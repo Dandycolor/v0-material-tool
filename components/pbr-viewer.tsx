@@ -314,6 +314,71 @@ interface PBRViewerProps {
   onGeometrySettingsChange?: (settings: Partial<GeometrySettings>) => void
 }
 
+/**
+ * Split compound SVG paths (single <path> with multiple M...Z sub-paths) into
+ * separate <path> elements. This ensures SVGLoader creates individual shapes for
+ * each sub-path, allowing processShapesWithHoles to correctly identify holes.
+ * This is the same approach used in the working vectry reference project.
+ */
+function splitCompoundPaths(svgString: string): string {
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(svgString, "image/svg+xml")
+    const svgEl = doc.querySelector("svg")
+    if (!svgEl) return svgString
+
+    const paths = svgEl.querySelectorAll("path")
+    let didSplit = false
+
+    for (const pathEl of paths) {
+      const d = pathEl.getAttribute("d")
+      if (!d) continue
+
+      // Split on M/m commands that start new sub-paths
+      // Match each sub-path: starts with M/m, ends before the next M/m or end of string
+      const subPaths = d.match(/[Mm][^Mm]*/g)
+      if (!subPaths || subPaths.length <= 1) continue
+
+      // This path has multiple sub-paths - split it
+      didSplit = true
+      const parent = pathEl.parentNode
+      if (!parent) continue
+
+      // Copy all attributes except 'd'
+      const attrs: Record<string, string> = {}
+      for (const attr of pathEl.attributes) {
+        if (attr.name !== "d") {
+          attrs[attr.name] = attr.value
+        }
+      }
+
+      // Create new path elements for each sub-path
+      for (const subPath of subPaths) {
+        const trimmed = subPath.trim()
+        if (!trimmed) continue
+
+        const newPath = doc.createElementNS("http://www.w3.org/2000/svg", "path")
+        newPath.setAttribute("d", trimmed)
+        for (const [key, value] of Object.entries(attrs)) {
+          newPath.setAttribute(key, value)
+        }
+        // Set fill-rule to evenodd for proper rendering
+        newPath.setAttribute("fill-rule", "evenodd")
+        parent.insertBefore(newPath, pathEl)
+      }
+
+      parent.removeChild(pathEl)
+    }
+
+    if (didSplit) {
+      return new XMLSerializer().serializeToString(doc)
+    }
+    return svgString
+  } catch (e) {
+    return svgString
+  }
+}
+
 function parseSVGContent(svgContent: string): THREE.Shape[] {
   try {
     // Preprocess SVG for better compatibility with Iconify icons
@@ -339,6 +404,12 @@ function parseSVGContent(svgContent: string): THREE.Shape[] {
     // Remove mask references
     processedSVG = processedSVG.replace(/mask\s*=\s*["'][^"']*["']/gi, "")
 
+    // Split compound paths into separate sub-paths for proper hole detection.
+    // SVGs like the polya logo use a single <path> with multiple M...Z sub-paths
+    // where inner sub-paths represent holes. SVGLoader doesn't split these automatically,
+    // so we do it manually before parsing (same approach as the vectry reference project).
+    processedSVG = splitCompoundPaths(processedSVG)
+
     const loader = new SVGLoader()
     const svgData = loader.parse(processedSVG)
 
@@ -346,11 +417,7 @@ function parseSVGContent(svgContent: string): THREE.Shape[] {
 
     for (const path of svgData.paths) {
       try {
-        // Use toShapes(true) which correctly handles fill-rule evenodd and holes
-        // This is the same approach used in the working vectry reference project
-        const shapes = path.toShapes(true)
-        let hasValidShapeWithHoles = false
-        
+        const shapes = SVGLoader.createShapes(path)
         for (const shape of shapes) {
           try {
             const points = shape.getPoints(12)
@@ -365,43 +432,10 @@ function parseSVGContent(svgContent: string): THREE.Shape[] {
               }
               if (hasVariation) {
                 allShapes.push(shape)
-                // Check if toShapes already assigned holes correctly
-                if (shape.holes && shape.holes.length > 0) {
-                  hasValidShapeWithHoles = true
-                }
               }
             }
           } catch (e) {
             // Skip invalid shapes silently
-          }
-        }
-        
-        // If toShapes didn't find holes, also try createShapes as fallback
-        if (!hasValidShapeWithHoles && shapes.length === 0) {
-          try {
-            const fallbackShapes = SVGLoader.createShapes(path)
-            for (const shape of fallbackShapes) {
-              try {
-                const points = shape.getPoints(12)
-                if (points && points.length >= 3) {
-                  let hasVariation = false
-                  const firstPoint = points[0]
-                  for (let i = 1; i < points.length; i++) {
-                    if (Math.abs(points[i].x - firstPoint.x) > 0.01 || Math.abs(points[i].y - firstPoint.y) > 0.01) {
-                      hasVariation = true
-                      break
-                    }
-                  }
-                  if (hasVariation) {
-                    allShapes.push(shape)
-                  }
-                }
-              } catch (e) {
-                // Skip
-              }
-            }
-          } catch (e) {
-            // Skip
           }
         }
       } catch (e) {
@@ -411,9 +445,8 @@ function parseSVGContent(svgContent: string): THREE.Shape[] {
 
     console.log("[v0] SVGLoader parsed", allShapes.length, "valid shapes")
 
-    // Only run processShapesWithHoles if shapes don't already have holes assigned
-    const anyShapeHasHoles = allShapes.some(s => s.holes && s.holes.length > 0)
-    if (allShapes.length > 1 && !anyShapeHasHoles) {
+    // If we have multiple shapes, try to detect holes
+    if (allShapes.length > 1) {
       return processShapesWithHoles(allShapes)
     }
 

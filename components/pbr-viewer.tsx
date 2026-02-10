@@ -242,6 +242,7 @@ interface GeometrySettings {
   type: "sphere" | "extruded" | "model"
   primitiveType?: "sphere" | "cone" | "torus" | "torusKnot" | "capsule"
   svgPath: string
+  svgSource?: "iconify" | "upload"
   thickness: number
   bevelSize: number
   bevelSegments: number
@@ -443,9 +444,9 @@ function parseSVGShapes(processedSVG: string): THREE.Shape[] {
   return shapes
 }
 
-function parseSVGContent(svgContent: string): THREE.Shape[] {
+function parseSVGContent(svgContent: string, source: "iconify" | "upload" = "iconify"): THREE.Shape[] {
   try {
-    // Preprocess SVG for better compatibility with Iconify icons
+    // Preprocess SVG for better compatibility
     let processedSVG = svgContent
 
     // Replace currentColor with black for proper parsing
@@ -468,26 +469,56 @@ function parseSVGContent(svgContent: string): THREE.Shape[] {
     // Remove mask references
     processedSVG = processedSVG.replace(/mask\s*=\s*["'][^"']*["']/gi, "")
 
-    // First pass: standard parsing with SVGLoader.createShapes (works for Iconify icons)
-    const allShapes = parseSVGShapes(processedSVG)
-    
-    // Check if we got a good result or if we need compound path splitting
-    // If SVG has compound paths (multiple M...Z in one <path>) and we got shapes
-    // without proper holes, try splitting compound paths and re-parsing
-    const totalHoles = allShapes.reduce((sum, s) => sum + (s.holes?.length ?? 0), 0)
-    if (totalHoles === 0 && hasCompoundPaths(processedSVG)) {
+    if (source === "upload") {
+      // For uploaded SVG files: split compound paths and use toShapes(true)
+      // This is the same approach as the working vectry reference project
       const splitSVG = splitCompoundPaths(processedSVG)
-      if (splitSVG !== processedSVG) {
-        const splitShapes = parseSVGShapes(splitSVG)
-        if (splitShapes.length > allShapes.length) {
-          // Splitting produced more shapes - use these with hole detection
-          if (splitShapes.length > 1) {
-            return processShapesWithHoles(splitShapes)
+      const loader = new SVGLoader()
+      const svgData = loader.parse(splitSVG)
+      const allShapes: THREE.Shape[] = []
+      
+      for (const path of svgData.paths) {
+        try {
+          // toShapes(true) correctly handles fill-rule evenodd and holes
+          const shapes = path.toShapes(true)
+          for (const shape of shapes) {
+            try {
+              const points = shape.getPoints(12)
+              if (points && points.length >= 3) {
+                let hasVariation = false
+                const firstPoint = points[0]
+                for (let i = 1; i < points.length; i++) {
+                  if (Math.abs(points[i].x - firstPoint.x) > 0.01 || Math.abs(points[i].y - firstPoint.y) > 0.01) {
+                    hasVariation = true
+                    break
+                  }
+                }
+                if (hasVariation) {
+                  allShapes.push(shape)
+                }
+              }
+            } catch {
+              // Skip invalid shapes
+            }
           }
-          return splitShapes
+        } catch (e) {
+          console.warn("[v0] Error creating shapes from uploaded SVG path:", e)
         }
       }
+      
+      if (allShapes.length > 0) {
+        // Check if toShapes already found holes
+        const anyHasHoles = allShapes.some(s => s.holes && s.holes.length > 0)
+        if (!anyHasHoles && allShapes.length > 1) {
+          return processShapesWithHoles(allShapes)
+        }
+        return allShapes
+      }
+      // Fall through to standard method if upload method produced nothing
     }
+
+    // For Iconify icons (and fallback): use standard SVGLoader.createShapes
+    const allShapes = parseSVGShapes(processedSVG)
 
     // If we have multiple shapes, try to detect holes
     if (allShapes.length > 1) {
@@ -497,7 +528,6 @@ function parseSVGContent(svgContent: string): THREE.Shape[] {
     return allShapes
   } catch (error) {
     console.error("[v0] SVGLoader error, falling back to manual parser:", error)
-    // Try fallback to manual parser
     return parseSVGString(svgContent)
   }
 }
@@ -1494,11 +1524,12 @@ function createExtrudedGeometry(
   bevelSize: number,
   bevelSegments: number,
   curveSegments: number,
+  svgSource: "iconify" | "upload" = "iconify",
 ): THREE.BufferGeometry | null {
   if (!svgString) return null
 
   try {
-    const shapes = parseSVGContent(svgString)
+    const shapes = parseSVGContent(svgString, svgSource)
 
     if (shapes.length === 0) {
       console.warn("[v0] No valid shapes found in SVG")
@@ -1712,12 +1743,13 @@ function ExtrudedSVGMesh({
       )
     }
     
-    const baseGeometry = createExtrudedGeometry(
-      geometrySettings.svgPath,
-      geometrySettings.thickness,
-      geometrySettings.bevelSize,
-      geometrySettings.bevelSegments,
-      geometrySettings.bevelQuality,
+const baseGeometry = createExtrudedGeometry(
+  geometrySettings.svgPath,
+  geometrySettings.thickness,
+  geometrySettings.bevelSize,
+  geometrySettings.bevelSegments,
+  geometrySettings.bevelQuality,
+  geometrySettings.svgSource ?? "iconify",
     )
     
     return baseGeometry

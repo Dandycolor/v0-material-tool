@@ -1064,7 +1064,7 @@ export default function MaterialTool() {
       const reader = new FileReader()
       reader.onload = (e) => {
         const svgContent = e.target?.result as string
-        setGeometrySettings({ ...geometrySettings, svgPath: svgContent, type: "extruded", selectedShape: "custom" }) // Set selectedShape to custom
+        setGeometrySettings({ ...geometrySettings, svgPath: svgContent, svgSource: "upload", type: "extruded", selectedShape: "custom" }) // Set selectedShape to custom
         setMaterialSettings((prev) => ({ ...prev, useDisplacementMap: false, displacementScale: 0 }))
       }
       reader.readAsText(file)
@@ -1178,6 +1178,7 @@ export default function MaterialTool() {
         setGeometrySettings((prev) => ({
           ...prev,
           svgPath: svgContent,
+          svgSource: "iconify",
           selectedShape: "custom", // Indicate that it's a custom shape from an external source
           type: "extruded",
         }))

@@ -1261,11 +1261,13 @@ function createLatheGeometry(
     const lathePoints: THREE.Vector2[] = allPoints.map(p => {
       const x = Math.abs(p.x - axisX)
       const y = -(p.y - centerY)
-      return new THREE.Vector2(x, y)
+      // Ensure minimum radius to avoid degenerate geometry
+      const radius = Math.max(x, 0.001)
+      return new THREE.Vector2(radius, y)
     })
 
-    // Create lathe geometry - add one extra segment to ensure seamless closure
-    const geometry = new THREE.LatheGeometry(lathePoints, segments + 1, 0, Math.PI * 2)
+    // Create lathe geometry with exact segments (no extra segment needed)
+    const geometry = new THREE.LatheGeometry(lathePoints, segments, 0, Math.PI * 2)
 
     geometry.center()
     geometry.computeBoundingBox()
@@ -1317,7 +1319,7 @@ function createLatheGeometry(
     // Smooth normals between corresponding seam vertices
     for (let i = 0; i < profilePointCount; i++) {
       const firstSeamIdx = i
-      const lastSeamIdx = (segments + 1) * profilePointCount + i
+      const lastSeamIdx = segments * profilePointCount + i
       
       if (lastSeamIdx < posCount) {
         // Average the normals at the seam
@@ -1348,9 +1350,6 @@ function createLatheGeometry(
     }
     
     normals.needsUpdate = true
-    
-    // Recompute normals after seam smoothing to ensure consistency
-    geometry.computeVertexNormals()
 
     return geometry
   } catch (error) {
@@ -1658,7 +1657,6 @@ function PBRMesh({
   matcapTexture,
   matcapNormalMap,
   matcapSettings,
-  matcapTextureLoaded,
 }: {
   geometrySettings: GeometrySettings
   materialSettings: MaterialSettings
@@ -1688,7 +1686,6 @@ function PBRMesh({
     rimPower: number
     rimColor: string
   }
-  matcapTextureLoaded?: THREE.Texture | null
 }) {
   const texturesToLoad = useMemo(() => {
     const paths: string[] = []
@@ -1854,7 +1851,7 @@ function PBRMesh({
             envIntensity={lightingSettings.envIntensity}
             tintColor={tintColor}
             textureScale={materialSettings.textureScale}
-            matcapTexture={renderMode === "matcap" ? matcapTextureLoaded : null}
+            matcapTexture={renderMode === "matcap" ? matcapTexture : null}
             matcapNormalMap={renderMode === "matcap" ? matcapNormalMap : null}
             matcapSettings={matcapSettings}
             gradientSettings={gradientSettings}
@@ -2387,126 +2384,109 @@ function SceneContent({
     onExportReady(exportPNG)
   }, [gl, scene, camera, onExportReady])
 
-  const [matcapTextureLoaded, setMatcapTextureLoaded] = useState<THREE.Texture | null>(null)
   const showMatcap = renderMode === "matcap" && matcapTexture
 
-  useEffect(() => {
-    if (!renderMode || renderMode !== "matcap" || !matcapTexture) {
-      setMatcapTextureLoaded(null)
-      return
-    }
+  const matcapTextureLoaded = useMemo(() => {
+    if (!showMatcap || !matcapTexture) return null
 
     const loader = new THREE.TextureLoader()
-    let isMounted = true
+    const texture = new THREE.Texture()
+    texture.colorSpace = THREE.SRGBColorSpace
 
-    loader.load(
-      matcapTexture,
-      (loadedTexture) => {
-        if (!isMounted) return
-        console.log("[v0] Matcap texture loaded, applying hue shift:", matcapHueShift)
+    loader.load(matcapTexture, (loadedTexture) => {
+      console.log("[v0] Matcap texture loaded, applying hue shift:", matcapHueShift)
 
-        const texture = new THREE.Texture()
-        texture.colorSpace = THREE.SRGBColorSpace
+      if (matcapHueShift === 0) {
+        // No hue shift, use original texture
+        texture.image = loadedTexture.image
+        texture.needsUpdate = true
+        return
+      }
 
-        if (matcapHueShift === 0) {
-          // No hue shift, use original texture
-          texture.image = loadedTexture.image
-          texture.needsUpdate = true
-          setMatcapTextureLoaded(texture)
-          return
+      // Apply hue shift
+      const canvas = document.createElement("canvas")
+      const ctx = canvas.getContext("2d")
+      const image = loadedTexture.image
+
+      if (!ctx || !image) return
+
+      canvas.width = image.width
+      canvas.height = image.height
+
+      // Draw original image
+      ctx.drawImage(image, 0, 0)
+
+      // Get image data and apply hue shift
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const data = imageData.data
+
+      for (let i = 0; i < data.length; i += 4) {
+        // Convert RGB to HSL
+        const r = data[i] / 255
+        const g = data[i + 1] / 255
+        const b = data[i + 2] / 255
+
+        const max = Math.max(r, g, b)
+        const min = Math.min(r, g, b)
+        let h = 0
+        let s = 0
+        const l = (max + min) / 2
+
+        if (max !== min) {
+          const d = max - min
+          s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+
+          switch (max) {
+            case r:
+              h = ((g - b) / d + (g < b ? 6 : 0)) / 6
+              break
+            case g:
+              h = ((b - r) / d + 2) / 6
+              break
+            case b:
+              h = ((r - g) / d + 4) / 6
+              break
+          }
         }
 
         // Apply hue shift
-        const canvas = document.createElement("canvas")
-        const ctx = canvas.getContext("2d")
-        const image = loadedTexture.image
+        h = (h + matcapHueShift / 360) % 1
 
-        if (!ctx || !image) return
-
-        canvas.width = image.width
-        canvas.height = image.height
-
-        // Draw original image
-        ctx.drawImage(image, 0, 0)
-
-        // Get image data and apply hue shift
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-        const data = imageData.data
-
-        for (let i = 0; i < data.length; i += 4) {
-          // Convert RGB to HSL
-          const r = data[i] / 255
-          const g = data[i + 1] / 255
-          const b = data[i + 2] / 255
-
-          const max = Math.max(r, g, b)
-          const min = Math.min(r, g, b)
-          let h = 0
-          let s = 0
-          const l = (max + min) / 2
-
-          if (max !== min) {
-            const d = max - min
-            s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
-
-            switch (max) {
-              case r:
-                h = ((g - b) / d + (g < b ? 6 : 0)) / 6
-                break
-              case g:
-                h = ((b - r) / d + 2) / 6
-                break
-              case b:
-                h = ((r - g) / d + 4) / 6
-                break
-            }
+        // Convert back to RGB
+        let r2, g2, b2
+        if (s === 0) {
+          r2 = g2 = b2 = l
+        } else {
+          const hue2rgb = (p: number, q: number, t: number) => {
+            if (t < 0) t += 1
+            if (t > 1) t -= 1
+            if (t < 1 / 6) return p + (q - p) * 6 * t
+            if (t < 1 / 2) return q
+            if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6
+            return p
           }
 
-          // Apply hue shift
-          h = (h + matcapHueShift / 360) % 1
-
-          // Convert back to RGB
-          let r2, g2, b2
-          if (s === 0) {
-            r2 = g2 = b2 = l
-          } else {
-            const hue2rgb = (p: number, q: number, t: number) => {
-              if (t < 0) t += 1
-              if (t > 1) t -= 1
-              if (t < 1 / 6) return p + (q - p) * 6 * t
-              if (t < 1 / 2) return q
-              if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6
-              return p
-            }
-            const q = l < 0.5 ? l * (1 + s) : l + s - l * s
-            const p = 2 * l - q
-            r2 = hue2rgb(p, q, h + 1 / 3)
-            g2 = hue2rgb(p, q, h)
-            b2 = hue2rgb(p, q, h - 1 / 3)
-          }
-
-          data[i] = Math.round(r2 * 255)
-          data[i + 1] = Math.round(g2 * 255)
-          data[i + 2] = Math.round(b2 * 255)
+          const q = l < 0.5 ? l * (1 + s) : l + s - l * s
+          const p = 2 * l - q
+          r2 = hue2rgb(p, q, h + 1 / 3)
+          g2 = hue2rgb(p, q, h)
+          b2 = hue2rgb(p, q, h - 1 / 3)
         }
 
-        ctx.putImageData(imageData, 0, 0)
-
-        const newTexture = new THREE.CanvasTexture(canvas)
-        newTexture.colorSpace = THREE.SRGBColorSpace
-        setMatcapTextureLoaded(newTexture)
-      },
-      undefined,
-      (error) => {
-        console.error("[v0] Failed to load matcap texture:", error)
-        setMatcapTextureLoaded(null)
+        data[i] = Math.round(r2 * 255)
+        data[i + 1] = Math.round(g2 * 255)
+        data[i + 2] = Math.round(b2 * 255)
       }
-    )
 
-    return () => {
-      isMounted = false
-    }
-  }, [matcapTexture, renderMode, matcapHueShift])
+      ctx.putImageData(imageData, 0, 0)
+      texture.image = canvas
+      texture.needsUpdate = true
+
+      console.log("[v0] Hue shift applied successfully")
+    })
+
+    return texture
+  }, [matcapTexture, showMatcap, matcapHueShift])
 
   // Load normal map texture for matcap
   const matcapNormalMap = useMemo(() => {
@@ -2598,10 +2578,6 @@ function SceneContent({
             onModelLoadError={onModelLoadError}
             onGeometrySettingsChange={onGeometrySettingsChange}
             gradientSettings={gradientSettings}
-            renderMode={renderMode}
-            matcapTexture={matcapTextureLoaded}
-            matcapNormalMap={matcapNormalMap}
-            matcapSettings={matcapSettings}
           />
           <Environment
             preset={lightingSettings.envMap as any}

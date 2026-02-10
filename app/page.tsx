@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { PBRViewer, type PBRViewerRef } from "@/components/pbr-viewer"
 import { MatcapPreview } from "@/components/matcap-preview"
-import { ChevronDown, ChevronUp, Upload, Download, Search, Loader2, X, Info, Plus } from "lucide-react"
+import { ChevronDown, ChevronUp, Upload, Download, Search, Loader2, X, Info } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
@@ -906,8 +906,6 @@ export default function MaterialTool() {
   const [selectedMatcap, setSelectedMatcap] = useState("kunzite")
   const [matcapTexture, setMatcapTexture] = useState("/matcaps/kunzite.png")
   const [matcapHueShift, setMatcapHueShift] = useState(0)
-  const [customMatcap, setCustomMatcap] = useState<{url: string; name: string} | null>(null)
-  const matcapInputRef = useRef<HTMLInputElement>(null)
   
   // Matcap advanced settings - Normal Map & Rim Light
   const [matcapSettings, setMatcapSettings] = useState({
@@ -922,22 +920,6 @@ export default function MaterialTool() {
   const [showModelSearch, setShowModelSearch] = useState(false)
   const [showIconSearch, setShowIconSearch] = useState(false)
   const [modelLoadError, setModelLoadError] = useState<string | null>(null)
-
-  const handleMatcapUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const url = e.target?.result as string
-        const fileName = file.name.replace(/\.[^/.]+$/, "")
-        setCustomMatcap({ url, name: fileName })
-        setMatcapTexture(url)
-        setSelectedMatcap("custom")
-        setRenderMode("matcap")
-      }
-      reader.readAsDataURL(file)
-    }
-  }
 
   const [openSections, setOpenSections] = useState({
     geometry: true,
@@ -987,8 +969,6 @@ export default function MaterialTool() {
     if (activeTab === "material") {
       if (materialTypeTab === "matcap") {
         setRenderMode("matcap")
-        // Disable gradient when switching to matcap
-        setGradientSettings((prev) => ({ ...prev, enabled: false }))
       } else {
         setRenderMode("pbr")
       }
@@ -2101,32 +2081,6 @@ export default function MaterialTool() {
                                 name={preset.name}
                               />
                             ))}
-                            {customMatcap && (
-                              <MatcapPreview
-                                matcapUrl={customMatcap.url}
-                                isSelected={selectedMatcap === "custom"}
-                                onClick={() => {
-                                  setMatcapTexture(customMatcap.url)
-                                  setSelectedMatcap("custom")
-                                  setRenderMode("matcap")
-                                }}
-                                name={customMatcap.name}
-                              />
-                            )}
-                            <input
-                              type="file"
-                              ref={matcapInputRef}
-                              onChange={handleMatcapUpload}
-                              accept="image/*"
-                              className="hidden"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => matcapInputRef.current?.click()}
-                              className="aspect-square rounded-lg border-2 border-dashed border-zinc-600 hover:border-cyan-500 transition-colors flex items-center justify-center text-zinc-500 hover:text-cyan-500 group"
-                            >
-                              <Plus className="w-6 h-6 group-hover:scale-110 transition-transform" />
-                            </button>
                           </div>
                           {selectedMatcap && (
                             <div className="mt-3 pt-3 border-t border-[#2a2a2a]">

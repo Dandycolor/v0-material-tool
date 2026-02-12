@@ -1527,6 +1527,8 @@ function createInflatedGeometry(
     }
     pos.needsUpdate = true
 
+    console.log("[v0] Inflate: Applied Z displacement, sample Z values:", pos.getZ(0), pos.getZ(Math.floor(vertexCount/2)), pos.getZ(vertexCount-1))
+
     if (!bothSides) {
       // Single-sided: just recompute normals and finish
       shapeGeo.computeVertexNormals()
@@ -1649,6 +1651,11 @@ function createInflatedGeometry(
     // Merge front + back + side walls
     const mergedGeo = mergeGeometries([shapeGeo, backGeo, sideGeo])
     console.log("[v0] Inflate: mergedGeo:", mergedGeo ? mergedGeo.attributes.position.count + " verts" : "null")
+    
+    if (mergedGeo) {
+      const mergedPos = mergedGeo.attributes.position
+      console.log("[v0] Inflate: mergedGeo sample Z values:", mergedPos.getZ(0), mergedPos.getZ(Math.floor(mergedPos.count/2)), mergedPos.getZ(mergedPos.count-1))
+    }
     
     shapeGeo.dispose()
     backGeo.dispose()

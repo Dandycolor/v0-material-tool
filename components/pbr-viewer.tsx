@@ -1542,9 +1542,12 @@ function createInflatedGeometry(
     }
 
     if (boundarySegments.length === 0) {
+      console.error("[v0] Inflate: No boundary segments found, returning null")
       shapeGeo.dispose()
       return null
     }
+
+    console.log("[v0] Inflate: Found", boundarySegments.length, "boundary segments")
 
     // Compute SDF: minimum distance from each vertex to any boundary segment
     const dists = new Float32Array(vertexCount)
@@ -1562,9 +1565,12 @@ function createInflatedGeometry(
     }
 
     if (maxDist === 0) {
+      console.error("[v0] Inflate: maxDist is 0, all vertices on boundary, returning null")
       shapeGeo.dispose()
       return null
     }
+
+    console.log("[v0] Inflate: maxDist =", maxDist, "volumeScale will be =", (volume / 100) * 1.2)
 
     // Apply dome displacement: Z = volumeScale * hemisphereProfile(normalizedDistance)
     // Now volumeScale is in normalized space ([-1,1] range)
@@ -1683,13 +1689,18 @@ function createInflatedGeometry(
     sideGeo.computeVertexNormals()
 
     // Merge front + back + side walls
+    console.log("[v0] Inflate: Merging geometries - shapeGeo:", shapeGeo.attributes.position.count, "backGeo:", backGeo.attributes.position.count, "sideGeo:", sideGeo.attributes.position.count)
     const mergedGeo = mergeGeometries([shapeGeo, backGeo, sideGeo])
+    console.log("[v0] Inflate: mergedGeo:", mergedGeo ? mergedGeo.attributes.position.count + " verts" : "NULL!")
     
     shapeGeo.dispose()
     backGeo.dispose()
     sideGeo.dispose()
 
-    if (!mergedGeo) return null
+    if (!mergedGeo) {
+      console.error("[v0] Inflate: mergeGeometries returned null!")
+      return null
+    }
 
     // Flip Y using rotateX (correct orientation without inverting normals)
     mergedGeo.rotateX(Math.PI)

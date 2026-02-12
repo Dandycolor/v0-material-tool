@@ -256,9 +256,6 @@ interface GeometrySettings {
   inflateSphereRadius: number
   flatBase?: boolean
   deformEnabled?: boolean
-  useInflateMode?: boolean
-  inflateVolume?: number
-  inflateBothSides?: boolean
 }
 
 export interface MaterialSettings {
@@ -1447,286 +1444,6 @@ function createLatheGeometry(
   }
 }
 
-// --- Inflate Mode: ShapeGeometry + SDF vertex displacement for balloon/pillow effect ---
-
-function distToSegment2D(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
-  const dx = bx - ax, dy = by - ay
-  const lenSq = dx * dx + dy * dy
-  if (lenSq === 0) return Math.sqrt((px - ax) ** 2 + (py - ay) ** 2)
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq))
-  return Math.sqrt((px - (ax + t * dx)) ** 2 + (py - (ay + t * dy)) ** 2)
-}
-
-function minDistToShape(px: number, py: number, points: THREE.Vector2[]): number {
-  let minD = Infinity
-  for (let i = 0; i < points.length; i++) {
-    const j = (i + 1) % points.length
-    const d = distToSegment2D(px, py, points[i].x, points[i].y, points[j].x, points[j].y)
-    if (d < minD) minD = d
-  }
-  return minD
-}
-
-function createInflatedGeometry(
-  svgString: string,
-  volume: number,
-  bothSides: boolean,
-  svgSource: "iconify" | "upload" = "iconify",
-): THREE.BufferGeometry | null {
-  console.log("[v0] createInflatedGeometry called, volume:", volume, "bothSides:", bothSides)
-  if (!svgString) {
-    console.error("[v0] Inflate: no svgString")
-    return null
-  }
-
-  try {
-    const shapes = parseSVGContent(svgString, svgSource)
-    if (shapes.length === 0) {
-      console.error("[v0] Inflate: no shapes parsed")
-      return null
-    }
-
-    console.log("[v0] Inflate: Creating ShapeGeometry from", shapes.length, "shapes")
-    // Use THREE.ShapeGeometry to get exact triangulation of the SVG shape with holes
-    const shapeGeo = new THREE.ShapeGeometry(shapes, 64)
-
-    // First, center and normalize the geometry to [-1,1] range
-    shapeGeo.center()
-    shapeGeo.computeBoundingBox()
-    const box = shapeGeo.boundingBox
-    if (!box) {
-      console.error("[v0] Inflate: no bounding box after center()")
-      shapeGeo.dispose()
-      return null
-    }
-    const size = new THREE.Vector3()
-    box.getSize(size)
-    const maxDimVal = Math.max(size.x, size.y, size.z)
-    if (maxDimVal > 0) {
-      const s = 2 / maxDimVal
-      shapeGeo.scale(s, s, s)
-    }
-
-    console.log("[v0] Inflate: Normalized geometry, verts:", shapeGeo.attributes.position.count)
-
-    // Get the scale factor that was applied (for transforming shape polygons)
-    const scaleX = 2 / maxDimVal
-    const centerX = (box.min.x + box.max.x) / 2
-    const centerY = (box.min.y + box.max.y) / 2
-
-    // Transform shape polygons to normalized space for SDF computation
-    const boundarySegments: Array<[THREE.Vector2, THREE.Vector2]> = []
-    for (const shape of shapes) {
-      const pts = shape.getPoints(64)
-      for (let i = 0; i < pts.length; i++) {
-        const p0 = pts[i]
-        const p1 = pts[(i + 1) % pts.length]
-        // Transform to normalized space: first center, then scale
-        const t0 = new THREE.Vector2(
-          (p0.x - centerX) * scaleX,
-          (p0.y - centerY) * scaleX
-        )
-        const t1 = new THREE.Vector2(
-          (p1.x - centerX) * scaleX,
-          (p1.y - centerY) * scaleX
-        )
-        boundarySegments.push([t0, t1])
-      }
-      if (shape.holes) {
-        for (const hole of shape.holes) {
-          const holePts = hole.getPoints(64)
-          for (let i = 0; i < holePts.length; i++) {
-            const p0 = holePts[i]
-            const p1 = holePts[(i + 1) % holePts.length]
-            const t0 = new THREE.Vector2(
-              (p0.x - centerX) * scaleX,
-              (p0.y - centerY) * scaleX
-            )
-            const t1 = new THREE.Vector2(
-              (p1.x - centerX) * scaleX,
-              (p1.y - centerY) * scaleX
-            )
-            boundarySegments.push([t0, t1])
-          }
-        }
-      }
-    }
-
-    if (boundarySegments.length === 0) {
-      console.error("[v0] Inflate: No boundary segments found, returning null")
-      shapeGeo.dispose()
-      return null
-    }
-
-    console.log("[v0] Inflate: Found", boundarySegments.length, "boundary segments from shapes")
-
-    // Get vertex positions from normalized geometry
-    const pos = shapeGeo.attributes.position
-    const vertexCount = pos.count
-
-    // Compute SDF: minimum distance from each vertex to any boundary segment
-    const dists = new Float32Array(vertexCount)
-    let maxDist = 0
-    for (let i = 0; i < vertexCount; i++) {
-      const vx = pos.getX(i)
-      const vy = pos.getY(i)
-      let minD = Infinity
-      for (const [p0, p1] of boundarySegments) {
-        const d = distToSegment2D(vx, vy, p0.x, p0.y, p1.x, p1.y)
-        if (d < minD) minD = d
-      }
-      dists[i] = minD
-      if (minD > maxDist) maxDist = minD
-    }
-
-    if (maxDist === 0) {
-      console.error("[v0] Inflate: maxDist is 0, all vertices on boundary, returning null")
-      shapeGeo.dispose()
-      return null
-    }
-
-    console.log("[v0] Inflate: maxDist =", maxDist, "volumeScale will be =", (volume / 100) * 1.2)
-
-    // Apply dome displacement: Z = volumeScale * hemisphereProfile(normalizedDistance)
-    // Now volumeScale is in normalized space ([-1,1] range)
-    const volumeScale = (volume / 100) * 1.2 // Use fixed scale relative to normalized space
-    for (let i = 0; i < vertexCount; i++) {
-      const r = dists[i] / maxDist // Normalized distance: 0 at edge, 1 at center
-      // Smooth hemisphere profile: sqrt(2r - r^2) gives a nice dome shape
-      const z = volumeScale * Math.sqrt(Math.max(0, 2 * r - r * r))
-      pos.setZ(i, z)
-    }
-    pos.needsUpdate = true
-
-    if (!bothSides) {
-      // Single-sided: just flip Y and recompute normals
-      shapeGeo.rotateX(Math.PI)
-      shapeGeo.computeVertexNormals()
-      return shapeGeo
-    }
-
-    // Both sides: clone and mirror the geometry for back face
-    const backGeo = shapeGeo.clone()
-    const backPos = backGeo.attributes.position
-    // Mirror Z coordinates for back face
-    for (let i = 0; i < backPos.count; i++) {
-      backPos.setZ(i, -backPos.getZ(i))
-    }
-    backPos.needsUpdate = true
-
-    // Reverse winding for back face (so normals point outward)
-    const backIndex = backGeo.index
-    if (backIndex) {
-      const arr = backIndex.array
-      for (let i = 0; i < arr.length; i += 3) {
-        const tmp = arr[i + 1]
-        arr[i + 1] = arr[i + 2]
-        arr[i + 2] = tmp
-      }
-      backIndex.needsUpdate = true
-    }
-
-    // Build side walls to connect front and back edges
-    // Find boundary edges (edges that belong to only one triangle in the front face)
-    const sideEdgeMap = new Map<string, number[]>()
-    const frontIndex = shapeGeo.index
-    if (frontIndex) {
-      for (let i = 0; i < frontIndex.count; i += 3) {
-        const v0 = frontIndex.getX(i)
-        const v1 = frontIndex.getY(i)
-        const v2 = frontIndex.getZ(i)
-        const edges = [
-          [v0, v1],
-          [v1, v2],
-          [v2, v0],
-        ]
-        for (const [a, b] of edges) {
-          const key = a < b ? `${a},${b}` : `${b},${a}`
-          const existing = sideEdgeMap.get(key)
-          if (existing) {
-            existing.push(a < b ? a : b, a < b ? b : a)
-          } else {
-            sideEdgeMap.set(key, [a < b ? a : b, a < b ? b : a])
-          }
-        }
-      }
-    }
-
-    // Boundary edges: appear only once
-    const boundaryEdges: Array<[number, number]> = []
-    for (const [, verts] of sideEdgeMap) {
-      if (verts.length === 2) {
-        // This edge is on the boundary
-        boundaryEdges.push([verts[0], verts[1]])
-      }
-    }
-
-    // Build side wall geometry: quads connecting front boundary to back boundary
-    const sidePositions: number[] = []
-    const sideUvs: number[] = []
-    const sideIndices: number[] = []
-    let sideVertCount = 0
-
-    for (const [v0, v1] of boundaryEdges) {
-      const frontPos = shapeGeo.attributes.position
-      const backPos = backGeo.attributes.position
-
-      // Front edge vertices
-      const fx0 = frontPos.getX(v0), fy0 = frontPos.getY(v0), fz0 = frontPos.getZ(v0)
-      const fx1 = frontPos.getX(v1), fy1 = frontPos.getY(v1), fz1 = frontPos.getZ(v1)
-
-      // Back edge vertices (same XY, negated Z)
-      const bx0 = backPos.getX(v0), by0 = backPos.getY(v0), bz0 = backPos.getZ(v0)
-      const bx1 = backPos.getX(v1), by1 = backPos.getY(v1), bz1 = backPos.getZ(v1)
-
-      // Create quad: [front0, front1, back1, back0]
-      const i0 = sideVertCount
-      sidePositions.push(fx0, fy0, fz0)
-      sideUvs.push(0, 0)
-      sidePositions.push(fx1, fy1, fz1)
-      sideUvs.push(1, 0)
-      sidePositions.push(bx1, by1, bz1)
-      sideUvs.push(1, 1)
-      sidePositions.push(bx0, by0, bz0)
-      sideUvs.push(0, 1)
-
-      // Two triangles for quad
-      sideIndices.push(i0, i0 + 1, i0 + 2)
-      sideIndices.push(i0, i0 + 2, i0 + 3)
-      sideVertCount += 4
-    }
-
-    // Build side wall geometry
-    const sideGeo = new THREE.BufferGeometry()
-    sideGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(sidePositions), 3))
-    sideGeo.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(sideUvs), 2))
-    sideGeo.setIndex(new THREE.BufferAttribute(new Uint16Array(sideIndices), 1))
-    sideGeo.computeVertexNormals()
-
-    // Merge front + back + side walls
-    console.log("[v0] Inflate: Merging geometries - shapeGeo:", shapeGeo.attributes.position.count, "backGeo:", backGeo.attributes.position.count, "sideGeo:", sideGeo.attributes.position.count)
-    const mergedGeo = mergeGeometries([shapeGeo, backGeo, sideGeo])
-    console.log("[v0] Inflate: mergedGeo:", mergedGeo ? mergedGeo.attributes.position.count + " verts" : "NULL!")
-    
-    shapeGeo.dispose()
-    backGeo.dispose()
-    sideGeo.dispose()
-
-    if (!mergedGeo) {
-      console.error("[v0] Inflate: mergeGeometries returned null!")
-      return null
-    }
-
-    // Flip Y using rotateX (correct orientation without inverting normals)
-    mergedGeo.rotateX(Math.PI)
-    mergedGeo.computeVertexNormals()
-    return mergedGeo
-  } catch (error) {
-    console.error("[v0] Error creating inflated geometry:", error)
-    return null
-  }
-}
-
 function createExtrudedGeometry(
   svgString: string,
   thickness: number,
@@ -1944,15 +1661,6 @@ function ExtrudedSVGMesh({
   const geometry = useMemo(() => {
     if (!geometrySettings.svgPath) return null
     
-    if (geometrySettings.useInflateMode) {
-      return createInflatedGeometry(
-        geometrySettings.svgPath,
-        geometrySettings.inflateVolume ?? 100,
-        geometrySettings.inflateBothSides ?? true,
-        geometrySettings.svgSource ?? "iconify",
-      )
-    }
-
     if (geometrySettings.usePotteryMode) {
       return createLatheGeometry(
         geometrySettings.svgPath,
@@ -1978,9 +1686,6 @@ const baseGeometry = createExtrudedGeometry(
     geometrySettings.bevelSegments,
     geometrySettings.bevelQuality,
     geometrySettings.svgSource,
-    geometrySettings.useInflateMode,
-    geometrySettings.inflateVolume,
-    geometrySettings.inflateBothSides,
     geometrySettings.usePotteryMode,
     geometrySettings.latheSegments,
     geometrySettings.latheAxis,
@@ -2514,8 +2219,6 @@ function Material({
       metalness: materialSettings.metalness,
       displacementMap: effectiveDisplacementMap,
       displacementScale: effectiveDisplacementScale,
-      side: THREE.DoubleSide,
-      depthWrite: true,
     }
 
     if (isGlass) {
@@ -2531,9 +2234,8 @@ function Material({
         thickness: materialSettings.thickness,
         attenuationDistance: materialSettings.attenuationDistance,
         attenuationColor: new THREE.Color(materialSettings.attenuationColor),
-        transparent: !!(opacityMap || isGlass),
+        transparent: true,
         opacity: 1,
-        depthWrite: true,
         alphaMap: opacityMap,
         side: THREE.DoubleSide,
         envMapIntensity: materialSettings.envMapIntensity || 1.5,

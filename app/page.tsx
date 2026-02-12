@@ -852,12 +852,9 @@ export default function MaterialTool() {
     inflateSphereRadius: 0.5, // Радиус сферы влияния (меньшее значение для локального эффекта)
     flatBase: false, // Flat Base toggle
     deformEnabled: false, // Enable deform для extruded SVG
-  usePotteryMode: false, // Pottery wheel/lathe mode
-  latheSegments: 32, // Number of segments around the axis for lathe geometry
-  latheAxis: 'center' as 'center' | 'left' | 'right' | 'top' | 'bottom', // Axis position for pottery wheel mode
-  useInflateMode: false, // Inflate mode (balloon/pillow effect)
-  inflateVolume: 100, // Inflate volume 0-100
-  inflateBothSides: true, // Inflate both sides of the shape
+    usePotteryMode: false, // Pottery wheel/lathe mode
+    latheSegments: 32, // Number of segments around the axis for lathe geometry
+    latheAxis: 'center' as 'center' | 'left' | 'right' | 'top' | 'bottom', // Axis position for pottery wheel mode
   })
 
   const [materialSettings, setMaterialSettings] = useState<MaterialSettings>({
@@ -1745,7 +1742,7 @@ export default function MaterialTool() {
                             <Switch
                               checked={geometrySettings.usePotteryMode}
                               onCheckedChange={(checked) =>
-                                setGeometrySettings({ ...geometrySettings, usePotteryMode: checked, useInflateMode: checked ? false : geometrySettings.useInflateMode })
+                                setGeometrySettings({ ...geometrySettings, usePotteryMode: checked })
                               }
                               className="data-[state=checked]:bg-amber-600"
                             />
@@ -1795,57 +1792,6 @@ export default function MaterialTool() {
                                 className="w-full"
                               />
                               <p className="text-xs text-zinc-500">Controls smoothness around the rotation axis (16-64 recommended)</p>
-                            </div>
-                          )}
-
-                          <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-neutral-800 border border-neutral-700">
-                            <div className="flex-1">
-                              <Label className="text-sm font-semibold text-neutral-100 block mb-1">
-                                Inflate Mode
-                              </Label>
-                              <p className="text-xs text-neutral-400">
-                                {geometrySettings.useInflateMode
-                                  ? "Inflate shape like a balloon"
-                                  : "Standard extrusion mode"}
-                              </p>
-                            </div>
-                            <Switch
-                              checked={geometrySettings.useInflateMode ?? false}
-                              onCheckedChange={(checked) =>
-                                setGeometrySettings({ ...geometrySettings, useInflateMode: checked, usePotteryMode: checked ? false : geometrySettings.usePotteryMode })
-                              }
-                              className="data-[state=checked]:bg-cyan-600"
-                            />
-                          </div>
-
-                          {geometrySettings.useInflateMode && (
-                            <div className="space-y-3">
-                              <div className="flex items-center justify-between">
-                                <Label className="text-xs text-zinc-500">Volume</Label>
-                                <span className="text-xs text-white font-mono">{geometrySettings.inflateVolume ?? 100}</span>
-                              </div>
-                              <Slider
-                                value={[geometrySettings.inflateVolume ?? 100]}
-                                onValueChange={([value]) =>
-                                  setGeometrySettings({ ...geometrySettings, inflateVolume: value })
-                                }
-                                min={10}
-                                max={200}
-                                step={5}
-                                className="w-full"
-                              />
-                              <p className="text-xs text-zinc-500">Controls the height of the inflated dome</p>
-
-                              <div className="flex items-center justify-between gap-3 p-2 rounded-lg bg-neutral-800/50">
-                                <Label className="text-xs text-neutral-300">Inflate Both Sides</Label>
-                                <Switch
-                                  checked={geometrySettings.inflateBothSides ?? true}
-                                  onCheckedChange={(checked) =>
-                                    setGeometrySettings({ ...geometrySettings, inflateBothSides: checked })
-                                  }
-                                  className="data-[state=checked]:bg-cyan-600"
-                                />
-                              </div>
                             </div>
                           )}
                         </div>

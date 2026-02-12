@@ -1447,7 +1447,37 @@ function createLatheGeometry(
   }
 }
 
-// --- Inflate Mode: ExtrudeGeometry with high bevel to create balloon/pillow effect ---
+// --- Inflate Mode: Grid-based SDF approach for balloon/pillow effect ---
+
+function isPointInPolygon(px: number, py: number, polygon: THREE.Vector2[]): boolean {
+  let inside = false
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y
+    const xj = polygon[j].x, yj = polygon[j].y
+    if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) {
+      inside = !inside
+    }
+  }
+  return inside
+}
+
+function distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax, dy = by - ay
+  const lenSq = dx * dx + dy * dy
+  if (lenSq === 0) return Math.sqrt((px - ax) ** 2 + (py - ay) ** 2)
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq))
+  return Math.sqrt((px - (ax + t * dx)) ** 2 + (py - (ay + t * dy)) ** 2)
+}
+
+function minDistToPolygon(px: number, py: number, polygon: THREE.Vector2[]): number {
+  let minDist = Infinity
+  for (let i = 0; i < polygon.length; i++) {
+    const j = (i + 1) % polygon.length
+    const d = distToSegment(px, py, polygon[i].x, polygon[i].y, polygon[j].x, polygon[j].y)
+    if (d < minDist) minDist = d
+  }
+  return minDist
+}
 
 function createInflatedGeometry(
   svgString: string,
@@ -1461,125 +1491,190 @@ function createInflatedGeometry(
     const shapes = parseSVGContent(svgString, svgSource)
     if (shapes.length === 0) return null
 
-    // Compute bounding box to determine bevel size relative to shape
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+    // Get all shape outlines and holes as polygon arrays
+    const shapePolygons: THREE.Vector2[][] = []
+    const holePolygons: THREE.Vector2[][] = []
+
     for (const shape of shapes) {
-      const pts = shape.getPoints(64)
-      for (const p of pts) {
+      shapePolygons.push(shape.getPoints(64))
+      if (shape.holes) {
+        for (const hole of shape.holes) {
+          holePolygons.push(hole.getPoints(64))
+        }
+      }
+    }
+
+    // Bounding box
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+    for (const poly of shapePolygons) {
+      for (const p of poly) {
         if (p.x < minX) minX = p.x
         if (p.x > maxX) maxX = p.x
         if (p.y < minY) minY = p.y
         if (p.y > maxY) maxY = p.y
       }
     }
-    const shapeSize = Math.max(maxX - minX, maxY - minY)
-    if (shapeSize === 0) return null
 
-    // Volume controls the bevel size (how "inflated" it looks)
-    // At volume=100, bevel is ~15% of shape size, creating a nice dome
-    const volumeFactor = volume / 100
-    const bevelAmount = shapeSize * 0.15 * volumeFactor
+    const width = maxX - minX
+    const height = maxY - minY
+    if (width === 0 || height === 0) return null
 
-    // Use ExtrudeGeometry with:
-    // - depth near 0 (thin base)
-    // - large bevel to create the dome/balloon shape
-    const geometries: THREE.BufferGeometry[] = []
+    // Grid resolution
+    const res = 128
+    const cellW = width / res
+    const cellH = height / res
+    const gridW = res + 1
+    const gridH = res + 1
+    const totalVerts = gridW * gridH
+    const insideFlags = new Uint8Array(totalVerts)
+    const distances = new Float32Array(totalVerts)
+    let maxDist = 0
 
-    for (const shape of shapes) {
-      try {
-        const extrudeSettings: THREE.ExtrudeGeometryOptions = {
-          depth: bothSides ? bevelAmount * 0.1 : 0.01, // Thin center
-          bevelEnabled: true,
-          bevelThickness: bevelAmount, // How far the dome extends
-          bevelSize: bevelAmount * 0.8, // How far the bevel extends from edges
-          bevelSegments: 24, // Smooth dome curve
-          curveSegments: 64, // Smooth outline
-          steps: 1,
+    for (let iy = 0; iy < gridH; iy++) {
+      for (let ix = 0; ix < gridW; ix++) {
+        const idx = iy * gridW + ix
+        const px = minX + ix * cellW
+        const py = minY + iy * cellH
+
+        let inside = false
+        for (const poly of shapePolygons) {
+          if (isPointInPolygon(px, py, poly)) {
+            inside = true
+            break
+          }
         }
 
-        const geo = new THREE.ExtrudeGeometry([shape], extrudeSettings)
-        if (geo.attributes.position && geo.attributes.position.count > 0) {
-          geometries.push(geo)
+        if (inside) {
+          for (const holePoly of holePolygons) {
+            if (isPointInPolygon(px, py, holePoly)) {
+              inside = false
+              break
+            }
+          }
         }
-      } catch (e) {
-        console.warn("[v0] Failed to inflate shape, skipping:", e)
+
+        insideFlags[idx] = inside ? 1 : 0
+
+        if (inside) {
+          let d = Infinity
+          for (const poly of shapePolygons) {
+            const dd = minDistToPolygon(px, py, poly)
+            if (dd < d) d = dd
+          }
+          for (const holePoly of holePolygons) {
+            const dd = minDistToPolygon(px, py, holePoly)
+            if (dd < d) d = dd
+          }
+          distances[idx] = d
+          if (d > maxDist) maxDist = d
+        }
       }
     }
 
-    if (geometries.length === 0) return null
+    if (maxDist === 0) return null
 
-    // Merge all geometries
-    let geometry: THREE.BufferGeometry
-    if (geometries.length === 1) {
-      geometry = geometries[0]
-    } else {
-      geometry = mergeGeometries(geometries)
-    }
-
-    // Recompute normals for smooth shading
-    geometry.computeVertexNormals()
-
-    // Center the geometry
-    geometry.center()
-
-    // Flip Y axis (SVG Y is inverted) - use rotateX like ExtrudeGeometry does
-    geometry.rotateX(Math.PI)
-
-    // Scale to reasonable size
-    geometry.computeBoundingBox()
-    const box = geometry.boundingBox
-    if (!box) return null
-    const size = new THREE.Vector3()
-    box.getSize(size)
-    const maxDim = Math.max(size.x, size.y, size.z)
-    if (maxDim > 0) {
-      const s = 2 / maxDim
-      geometry.scale(s, s, s)
-    }
-
-    // Recompute UVs (box projection like extruded geometry)
-    geometry.computeBoundingBox()
-    const bbox = geometry.boundingBox!
-    const bboxSize = new THREE.Vector3()
-    bbox.getSize(bboxSize)
-
-    const positionAttribute = geometry.getAttribute("position")
-    const uvArray = new Float32Array(positionAttribute.count * 2)
-    geometry.computeVertexNormals()
-    const normalAttribute = geometry.getAttribute("normal")
-
-    for (let i = 0; i < positionAttribute.count; i++) {
-      const x = positionAttribute.getX(i)
-      const y = positionAttribute.getY(i)
-      const z = positionAttribute.getZ(i)
-      const nx = normalAttribute.getX(i)
-      const ny = normalAttribute.getY(i)
-      const nz = normalAttribute.getZ(i)
-      const absNx = Math.abs(nx)
-      const absNy = Math.abs(ny)
-      const absNz = Math.abs(nz)
-
-      let u: number, v: number
-      if (absNz >= absNx && absNz >= absNy) {
-        // Front/back face - project onto XY
-        u = bboxSize.x > 0 ? (x - bbox.min.x) / bboxSize.x : 0
-        v = bboxSize.y > 0 ? (y - bbox.min.y) / bboxSize.y : 0
-      } else if (absNx >= absNy) {
-        // Side face - project onto YZ
-        u = bboxSize.y > 0 ? (y - bbox.min.y) / bboxSize.y : 0
-        v = bboxSize.z > 0 ? (z - bbox.min.z) / bboxSize.z : 0
-      } else {
-        // Top/bottom face - project onto XZ
-        u = bboxSize.x > 0 ? (x - bbox.min.x) / bboxSize.x : 0
-        v = bboxSize.z > 0 ? (z - bbox.min.z) / bboxSize.z : 0
+    // Compute Z displacement with dome profile
+    const volumeScale = (volume / 100) * maxDist * 0.8
+    const zValues = new Float32Array(totalVerts)
+    for (let i = 0; i < totalVerts; i++) {
+      if (insideFlags[i]) {
+        const r = distances[i] / maxDist // 0 at edge, 1 at center
+        // Smooth hemisphere dome: sqrt(2r - r^2)
+        zValues[i] = volumeScale * Math.sqrt(Math.max(0, 2 * r - r * r))
       }
-      uvArray[i * 2] = u
-      uvArray[i * 2 + 1] = v
     }
-    geometry.setAttribute("uv", new THREE.BufferAttribute(uvArray, 2))
 
-    geometry.computeVertexNormals()
-    return geometry
+    // Build front face mesh from grid
+    const positions: number[] = []
+    const uvs: number[] = []
+    const indices: number[] = []
+    let vertCount = 0
+    const gridToVert = new Int32Array(totalVerts).fill(-1)
+
+    for (let iy = 0; iy < res; iy++) {
+      for (let ix = 0; ix < res; ix++) {
+        const i00 = iy * gridW + ix
+        const i10 = iy * gridW + ix + 1
+        const i01 = (iy + 1) * gridW + ix
+        const i11 = (iy + 1) * gridW + ix + 1
+
+        const tri1Inside = insideFlags[i00] && insideFlags[i10] && insideFlags[i01]
+        const tri2Inside = insideFlags[i10] && insideFlags[i11] && insideFlags[i01]
+
+        if (tri1Inside || tri2Inside) {
+          for (const idx of [i00, i10, i01, i11]) {
+            if (gridToVert[idx] === -1) {
+              const gx = idx % gridW
+              const gy = Math.floor(idx / gridW)
+              const px = minX + gx * cellW
+              const py = minY + gy * cellH
+              positions.push(px, py, zValues[idx])
+              uvs.push(gx / res, gy / res)
+              gridToVert[idx] = vertCount++
+            }
+          }
+
+          if (tri1Inside) {
+            indices.push(gridToVert[i00], gridToVert[i10], gridToVert[i01])
+          }
+          if (tri2Inside) {
+            indices.push(gridToVert[i10], gridToVert[i11], gridToVert[i01])
+          }
+        }
+      }
+    }
+
+    if (vertCount === 0) return null
+
+    // Add back face (mirrored Z) for bothSides
+    if (bothSides) {
+      const frontVertCount = vertCount
+      const frontIndexCount = indices.length
+      // Back verts: same XY, negated Z
+      for (let i = 0; i < frontVertCount; i++) {
+        positions.push(positions[i * 3], positions[i * 3 + 1], -positions[i * 3 + 2])
+        uvs.push(uvs[i * 2], uvs[i * 2 + 1])
+      }
+      // Back indices: reversed winding + offset
+      for (let i = 0; i < frontIndexCount; i += 3) {
+        indices.push(
+          indices[i] + frontVertCount,
+          indices[i + 2] + frontVertCount,
+          indices[i + 1] + frontVertCount,
+        )
+      }
+    }
+
+    // Build geometry
+    const geo = new THREE.BufferGeometry()
+    const posArray = new Float32Array(positions)
+    const uvArray = new Float32Array(uvs)
+    const idxArray = indices.length > 65535 ? new Uint32Array(indices) : new Uint16Array(indices)
+
+    geo.setAttribute("position", new THREE.BufferAttribute(posArray, 3))
+    geo.setAttribute("uv", new THREE.BufferAttribute(uvArray, 2))
+    geo.setIndex(new THREE.BufferAttribute(idxArray, 1))
+    geo.computeVertexNormals()
+
+    // Center and normalize scale
+    geo.center()
+    geo.computeBoundingBox()
+    const box = geo.boundingBox
+    if (box) {
+      const size = new THREE.Vector3()
+      box.getSize(size)
+      const maxDimVal = Math.max(size.x, size.y, size.z)
+      if (maxDimVal > 0) {
+        const s = 2 / maxDimVal
+        geo.scale(s, s, s)
+      }
+    }
+
+    // Flip Y using rotateX(PI) - correct way that doesn't invert normals
+    geo.rotateX(Math.PI)
+
+    geo.computeVertexNormals()
+    return geo
   } catch (error) {
     console.error("[v0] Error creating inflated geometry:", error)
     return null

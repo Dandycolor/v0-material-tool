@@ -1447,25 +1447,7 @@ function createLatheGeometry(
   }
 }
 
-// --- Inflate Mode: uses ShapeGeometry + vertex Z displacement via SDF ---
-
-function distToSegment2D(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
-  const dx = bx - ax, dy = by - ay
-  const lenSq = dx * dx + dy * dy
-  if (lenSq === 0) return Math.sqrt((px - ax) ** 2 + (py - ay) ** 2)
-  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq))
-  return Math.sqrt((px - (ax + t * dx)) ** 2 + (py - (ay + t * dy)) ** 2)
-}
-
-function minDistToShape(px: number, py: number, points: THREE.Vector2[]): number {
-  let minD = Infinity
-  for (let i = 0; i < points.length; i++) {
-    const j = (i + 1) % points.length
-    const d = distToSegment2D(px, py, points[i].x, points[i].y, points[j].x, points[j].y)
-    if (d < minD) minD = d
-  }
-  return minD
-}
+// --- Inflate Mode: ExtrudeGeometry with high bevel to create balloon/pillow effect ---
 
 function createInflatedGeometry(
   svgString: string,
@@ -1479,156 +1461,129 @@ function createInflatedGeometry(
     const shapes = parseSVGContent(svgString, svgSource)
     if (shapes.length === 0) return null
 
-    // Use THREE.ShapeGeometry to triangulate the exact shape (with holes)
-    // curveSegments controls the smoothness of the outline
-    const shapeGeo = new THREE.ShapeGeometry(shapes, 64)
-
-    // Collect all boundary polygons for SDF computation
-    const boundaryPolygons: THREE.Vector2[][] = []
+    // Compute bounding box to determine bevel size relative to shape
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
     for (const shape of shapes) {
-      boundaryPolygons.push(shape.getPoints(64))
-      if (shape.holes) {
-        for (const hole of shape.holes) {
-          boundaryPolygons.push(hole.getPoints(64))
+      const pts = shape.getPoints(64)
+      for (const p of pts) {
+        if (p.x < minX) minX = p.x
+        if (p.x > maxX) maxX = p.x
+        if (p.y < minY) minY = p.y
+        if (p.y > maxY) maxY = p.y
+      }
+    }
+    const shapeSize = Math.max(maxX - minX, maxY - minY)
+    if (shapeSize === 0) return null
+
+    // Volume controls the bevel size (how "inflated" it looks)
+    // At volume=100, bevel is ~15% of shape size, creating a nice dome
+    const volumeFactor = volume / 100
+    const bevelAmount = shapeSize * 0.15 * volumeFactor
+
+    // Use ExtrudeGeometry with:
+    // - depth near 0 (thin base)
+    // - large bevel to create the dome/balloon shape
+    const geometries: THREE.BufferGeometry[] = []
+
+    for (const shape of shapes) {
+      try {
+        const extrudeSettings: THREE.ExtrudeGeometryOptions = {
+          depth: bothSides ? bevelAmount * 0.1 : 0.01, // Thin center
+          bevelEnabled: true,
+          bevelThickness: bevelAmount, // How far the dome extends
+          bevelSize: bevelAmount * 0.8, // How far the bevel extends from edges
+          bevelSegments: 24, // Smooth dome curve
+          curveSegments: 64, // Smooth outline
+          steps: 1,
         }
+
+        const geo = new THREE.ExtrudeGeometry([shape], extrudeSettings)
+        if (geo.attributes.position && geo.attributes.position.count > 0) {
+          geometries.push(geo)
+        }
+      } catch (e) {
+        console.warn("[v0] Failed to inflate shape, skipping:", e)
       }
     }
 
-    // Get vertex positions from ShapeGeometry (all in XY plane, Z=0)
-    const pos = shapeGeo.attributes.position
-    const uv = shapeGeo.attributes.uv
-    const vertexCount = pos.count
+    if (geometries.length === 0) return null
 
-    // Compute SDF (min distance to any boundary) for each vertex
-    const dists = new Float32Array(vertexCount)
-    let maxDist = 0
-    for (let i = 0; i < vertexCount; i++) {
-      const vx = pos.getX(i)
-      const vy = pos.getY(i)
-      let minD = Infinity
-      for (const poly of boundaryPolygons) {
-        const d = minDistToShape(vx, vy, poly)
-        if (d < minD) minD = d
+    // Merge all geometries
+    let geometry: THREE.BufferGeometry
+    if (geometries.length === 1) {
+      geometry = geometries[0]
+    } else {
+      geometry = mergeGeometries(geometries)
+    }
+
+    // Recompute normals for smooth shading
+    geometry.computeVertexNormals()
+
+    // Center the geometry
+    geometry.center()
+
+    // Flip Y axis (SVG Y is inverted) - use rotateX like ExtrudeGeometry does
+    geometry.rotateX(Math.PI)
+
+    // Scale to reasonable size
+    geometry.computeBoundingBox()
+    const box = geometry.boundingBox
+    if (!box) return null
+    const size = new THREE.Vector3()
+    box.getSize(size)
+    const maxDim = Math.max(size.x, size.y, size.z)
+    if (maxDim > 0) {
+      const s = 2 / maxDim
+      geometry.scale(s, s, s)
+    }
+
+    // Recompute UVs (box projection like extruded geometry)
+    geometry.computeBoundingBox()
+    const bbox = geometry.boundingBox!
+    const bboxSize = new THREE.Vector3()
+    bbox.getSize(bboxSize)
+
+    const positionAttribute = geometry.getAttribute("position")
+    const uvArray = new Float32Array(positionAttribute.count * 2)
+    geometry.computeVertexNormals()
+    const normalAttribute = geometry.getAttribute("normal")
+
+    for (let i = 0; i < positionAttribute.count; i++) {
+      const x = positionAttribute.getX(i)
+      const y = positionAttribute.getY(i)
+      const z = positionAttribute.getZ(i)
+      const nx = normalAttribute.getX(i)
+      const ny = normalAttribute.getY(i)
+      const nz = normalAttribute.getZ(i)
+      const absNx = Math.abs(nx)
+      const absNy = Math.abs(ny)
+      const absNz = Math.abs(nz)
+
+      let u: number, v: number
+      if (absNz >= absNx && absNz >= absNy) {
+        // Front/back face - project onto XY
+        u = bboxSize.x > 0 ? (x - bbox.min.x) / bboxSize.x : 0
+        v = bboxSize.y > 0 ? (y - bbox.min.y) / bboxSize.y : 0
+      } else if (absNx >= absNy) {
+        // Side face - project onto YZ
+        u = bboxSize.y > 0 ? (y - bbox.min.y) / bboxSize.y : 0
+        v = bboxSize.z > 0 ? (z - bbox.min.z) / bboxSize.z : 0
+      } else {
+        // Top/bottom face - project onto XZ
+        u = bboxSize.x > 0 ? (x - bbox.min.x) / bboxSize.x : 0
+        v = bboxSize.z > 0 ? (z - bbox.min.z) / bboxSize.z : 0
       }
-      dists[i] = minD
-      if (minD > maxDist) maxDist = minD
+      uvArray[i * 2] = u
+      uvArray[i * 2 + 1] = v
     }
+    geometry.setAttribute("uv", new THREE.BufferAttribute(uvArray, 2))
 
-    if (maxDist === 0) {
-      shapeGeo.dispose()
-      return null
-    }
-
-    // Apply dome displacement: Z = volumeScale * profile(r)
-    const volumeScale = (volume / 100) * maxDist * 0.8
-    for (let i = 0; i < vertexCount; i++) {
-      const r = dists[i] / maxDist // 0 at edge, 1 at center
-      // Smooth dome profile (hemisphere)
-      const z = volumeScale * Math.sqrt(Math.max(0, 2 * r - r * r))
-      pos.setZ(i, z)
-    }
-    pos.needsUpdate = true
-
-    if (!bothSides) {
-      // Single-sided inflate: just update normals and return
-      shapeGeo.computeVertexNormals()
-      shapeGeo.center()
-      shapeGeo.computeBoundingBox()
-      const box = shapeGeo.boundingBox
-      if (box) {
-        const size = new THREE.Vector3()
-        box.getSize(size)
-        const maxDimVal = Math.max(size.x, size.y, size.z)
-        if (maxDimVal > 0) shapeGeo.scale(2 / maxDimVal, 2 / maxDimVal, 2 / maxDimVal)
-      }
-      shapeGeo.scale(1, -1, 1)
-      shapeGeo.computeVertexNormals()
-      return shapeGeo
-    }
-
-    // Both sides: merge front (dome up) + back (dome down) into one geometry
-    const backGeo = shapeGeo.clone()
-    const backPos = backGeo.attributes.position
-    // Mirror Z and flip winding for back face
-    for (let i = 0; i < backPos.count; i++) {
-      backPos.setZ(i, -backPos.getZ(i))
-    }
-    backPos.needsUpdate = true
-    // Reverse face winding for back
-    const backIndex = backGeo.index
-    if (backIndex) {
-      const arr = backIndex.array
-      for (let i = 0; i < arr.length; i += 3) {
-        const tmp = arr[i + 1]
-        arr[i + 1] = arr[i + 2]
-        arr[i + 2] = tmp
-      }
-      backIndex.needsUpdate = true
-    }
-
-    // Merge front and back
-    const mergedGeo = mergeInflateGeometries(shapeGeo, backGeo)
-    shapeGeo.dispose()
-    backGeo.dispose()
-
-    // Center and normalize
-    mergedGeo.center()
-    mergedGeo.computeBoundingBox()
-    const box = mergedGeo.boundingBox
-    if (box) {
-      const size = new THREE.Vector3()
-      box.getSize(size)
-      const maxDimVal = Math.max(size.x, size.y, size.z)
-      if (maxDimVal > 0) mergedGeo.scale(2 / maxDimVal, 2 / maxDimVal, 2 / maxDimVal)
-    }
-    mergedGeo.scale(1, -1, 1)
-    mergedGeo.computeVertexNormals()
-    return mergedGeo
+    geometry.computeVertexNormals()
+    return geometry
   } catch (error) {
     console.error("[v0] Error creating inflated geometry:", error)
     return null
   }
-}
-
-function mergeInflateGeometries(a: THREE.BufferGeometry, b: THREE.BufferGeometry): THREE.BufferGeometry {
-  const aPos = a.attributes.position
-  const bPos = b.attributes.position
-  const aUv = a.attributes.uv
-  const bUv = b.attributes.uv
-  const aIdx = a.index
-  const bIdx = b.index
-
-  const totalVerts = aPos.count + bPos.count
-  const positions = new Float32Array(totalVerts * 3)
-  const uvs = new Float32Array(totalVerts * 2)
-
-  // Copy A positions and uvs
-  for (let i = 0; i < aPos.count; i++) {
-    positions[i * 3] = aPos.getX(i)
-    positions[i * 3 + 1] = aPos.getY(i)
-    positions[i * 3 + 2] = aPos.getZ(i)
-    if (aUv) { uvs[i * 2] = aUv.getX(i); uvs[i * 2 + 1] = aUv.getY(i) }
-  }
-  // Copy B positions and uvs (offset)
-  const offset = aPos.count
-  for (let i = 0; i < bPos.count; i++) {
-    positions[(offset + i) * 3] = bPos.getX(i)
-    positions[(offset + i) * 3 + 1] = bPos.getY(i)
-    positions[(offset + i) * 3 + 2] = bPos.getZ(i)
-    if (bUv) { uvs[(offset + i) * 2] = bUv.getX(i); uvs[(offset + i) * 2 + 1] = bUv.getY(i) }
-  }
-
-  // Merge indices
-  const aIndices = aIdx ? Array.from(aIdx.array) : []
-  const bIndices = bIdx ? Array.from(bIdx.array).map((v) => v + offset) : []
-  const indices = [...aIndices, ...bIndices]
-
-  const geo = new THREE.BufferGeometry()
-  geo.setAttribute("position", new THREE.BufferAttribute(positions, 3))
-  geo.setAttribute("uv", new THREE.BufferAttribute(uvs, 2))
-  const idxArray = indices.length > 65535 ? new Uint32Array(indices) : new Uint16Array(indices)
-  geo.setIndex(new THREE.BufferAttribute(idxArray, 1))
-  return geo
 }
 
 function createExtrudedGeometry(

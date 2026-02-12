@@ -1509,47 +1509,46 @@ function createInflatedGeometry(
 
     console.log("[v0] Inflate: Normalized geometry, verts:", shapeGeo.attributes.position.count)
 
-    // Get vertex positions and find boundary edges from the normalized geometry
-    const pos = shapeGeo.attributes.position
-    const vertexCount = pos.count
-    const index = shapeGeo.index
+    // Get the scale factor that was applied (for transforming shape polygons)
+    const scaleX = 2 / maxDimVal
+    const centerX = (box.min.x + box.max.x) / 2
+    const centerY = (box.min.y + box.max.y) / 2
 
-    if (!index) {
-      console.error("[v0] Inflate: ShapeGeometry has no index!")
-      shapeGeo.dispose()
-      return null
-    }
-
-    // Build edge map to find boundary edges (edges belonging to only one triangle)
-    const edgeMap = new Map<string, number[]>()
-    for (let i = 0; i < index.count; i += 3) {
-      const v0 = index.getX(i)
-      const v1 = index.getY(i)
-      const v2 = index.getZ(i)
-      const edges = [
-        [v0, v1],
-        [v1, v2],
-        [v2, v0],
-      ]
-      for (const [a, b] of edges) {
-        const key = a < b ? `${a},${b}` : `${b},${a}`
-        const existing = edgeMap.get(key)
-        if (existing) {
-          existing.push(a, b)
-        } else {
-          edgeMap.set(key, [a, b])
-        }
-      }
-    }
-
-    // Extract boundary edges (appear only once)
+    // Transform shape polygons to normalized space for SDF computation
     const boundarySegments: Array<[THREE.Vector2, THREE.Vector2]> = []
-    for (const [, verts] of edgeMap) {
-      if (verts.length === 2) {
-        const v0 = verts[0], v1 = verts[1]
-        const p0 = new THREE.Vector2(pos.getX(v0), pos.getY(v0))
-        const p1 = new THREE.Vector2(pos.getX(v1), pos.getY(v1))
-        boundarySegments.push([p0, p1])
+    for (const shape of shapes) {
+      const pts = shape.getPoints(64)
+      for (let i = 0; i < pts.length; i++) {
+        const p0 = pts[i]
+        const p1 = pts[(i + 1) % pts.length]
+        // Transform to normalized space: first center, then scale
+        const t0 = new THREE.Vector2(
+          (p0.x - centerX) * scaleX,
+          (p0.y - centerY) * scaleX
+        )
+        const t1 = new THREE.Vector2(
+          (p1.x - centerX) * scaleX,
+          (p1.y - centerY) * scaleX
+        )
+        boundarySegments.push([t0, t1])
+      }
+      if (shape.holes) {
+        for (const hole of shape.holes) {
+          const holePts = hole.getPoints(64)
+          for (let i = 0; i < holePts.length; i++) {
+            const p0 = holePts[i]
+            const p1 = holePts[(i + 1) % holePts.length]
+            const t0 = new THREE.Vector2(
+              (p0.x - centerX) * scaleX,
+              (p0.y - centerY) * scaleX
+            )
+            const t1 = new THREE.Vector2(
+              (p1.x - centerX) * scaleX,
+              (p1.y - centerY) * scaleX
+            )
+            boundarySegments.push([t0, t1])
+          }
+        }
       }
     }
 
@@ -1559,7 +1558,11 @@ function createInflatedGeometry(
       return null
     }
 
-    console.log("[v0] Inflate: Found", boundarySegments.length, "boundary segments")
+    console.log("[v0] Inflate: Found", boundarySegments.length, "boundary segments from shapes")
+
+    // Get vertex positions from normalized geometry
+    const pos = shapeGeo.attributes.position
+    const vertexCount = pos.count
 
     // Compute SDF: minimum distance from each vertex to any boundary segment
     const dists = new Float32Array(vertexCount)

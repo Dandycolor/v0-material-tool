@@ -1482,22 +1482,53 @@ function createInflatedGeometry(
     // Use THREE.ShapeGeometry to get exact triangulation of the SVG shape with holes
     const shapeGeo = new THREE.ShapeGeometry(shapes, 64)
 
-    // Collect all boundary polygons (outlines + holes) for SDF computation
+    // First, center and normalize the geometry to [-1,1] range
+    shapeGeo.center()
+    shapeGeo.computeBoundingBox()
+    const box = shapeGeo.boundingBox
+    if (!box) {
+      shapeGeo.dispose()
+      return null
+    }
+    const size = new THREE.Vector3()
+    box.getSize(size)
+    const maxDimVal = Math.max(size.x, size.y, size.z)
+    if (maxDimVal > 0) {
+      const s = 2 / maxDimVal
+      shapeGeo.scale(s, s, s)
+    }
+
+    // Collect all boundary polygons (outlines + holes) for SDF computation IN NORMALIZED SPACE
     const boundaryPolygons: THREE.Vector2[][] = []
     for (const shape of shapes) {
-      boundaryPolygons.push(shape.getPoints(64))
+      const pts = shape.getPoints(64)
+      // Transform points to match the normalized geometry
+      const transformedPts: THREE.Vector2[] = []
+      for (const pt of pts) {
+        const tx = (pt.x - (box.min.x + box.max.x) / 2) * (2 / maxDimVal)
+        const ty = (pt.y - (box.min.y + box.max.y) / 2) * (2 / maxDimVal)
+        transformedPts.push(new THREE.Vector2(tx, ty))
+      }
+      boundaryPolygons.push(transformedPts)
       if (shape.holes) {
         for (const hole of shape.holes) {
-          boundaryPolygons.push(hole.getPoints(64))
+          const holePts = hole.getPoints(64)
+          const transformedHole: THREE.Vector2[] = []
+          for (const pt of holePts) {
+            const tx = (pt.x - (box.min.x + box.max.x) / 2) * (2 / maxDimVal)
+            const ty = (pt.y - (box.min.y + box.max.y) / 2) * (2 / maxDimVal)
+            transformedHole.push(new THREE.Vector2(tx, ty))
+          }
+          boundaryPolygons.push(transformedHole)
         }
       }
     }
 
-    // Get vertex positions from ShapeGeometry (all at Z=0 initially)
+    // Get vertex positions from ShapeGeometry (now normalized)
     const pos = shapeGeo.attributes.position
     const vertexCount = pos.count
 
-    // Compute SDF: minimum distance from each vertex to any boundary
+    // Compute SDF: minimum distance from each vertex to any boundary IN NORMALIZED SPACE
     const dists = new Float32Array(vertexCount)
     let maxDist = 0
     for (let i = 0; i < vertexCount; i++) {
@@ -1518,7 +1549,8 @@ function createInflatedGeometry(
     }
 
     // Apply dome displacement: Z = volumeScale * hemisphereProfile(normalizedDistance)
-    const volumeScale = (volume / 100) * maxDist * 0.8
+    // Now volumeScale is in normalized space ([-1,1] range)
+    const volumeScale = (volume / 100) * 1.2 // Use fixed scale relative to normalized space
     for (let i = 0; i < vertexCount; i++) {
       const r = dists[i] / maxDist // Normalized distance: 0 at edge, 1 at center
       // Smooth hemisphere profile: sqrt(2r - r^2) gives a nice dome shape
@@ -1527,21 +1559,8 @@ function createInflatedGeometry(
     }
     pos.needsUpdate = true
 
-    console.log("[v0] Inflate: Applied Z displacement, sample Z values:", pos.getZ(0), pos.getZ(Math.floor(vertexCount/2)), pos.getZ(vertexCount-1))
-
     if (!bothSides) {
-      // Single-sided: just recompute normals and finish
-      shapeGeo.computeVertexNormals()
-      shapeGeo.center()
-      shapeGeo.computeBoundingBox()
-      const box = shapeGeo.boundingBox
-      if (box) {
-        const size = new THREE.Vector3()
-        box.getSize(size)
-        const maxDimVal = Math.max(size.x, size.y, size.z)
-        if (maxDimVal > 0) shapeGeo.scale(2 / maxDimVal, 2 / maxDimVal, 2 / maxDimVal)
-      }
-      // Use rotateX instead of scale(1,-1,1) to avoid inverting normals
+      // Single-sided: just flip Y and recompute normals
       shapeGeo.rotateX(Math.PI)
       shapeGeo.computeVertexNormals()
       return shapeGeo
@@ -1645,34 +1664,14 @@ function createInflatedGeometry(
     sideGeo.setIndex(new THREE.BufferAttribute(new Uint16Array(sideIndices), 1))
     sideGeo.computeVertexNormals()
 
-    console.log("[v0] Inflate: shapeGeo verts:", shapeGeo.attributes.position.count, "backGeo verts:", backGeo.attributes.position.count, "sideGeo verts:", sideGeo.attributes.position.count)
-    console.log("[v0] Inflate: boundaryEdges count:", boundaryEdges.length)
-
     // Merge front + back + side walls
     const mergedGeo = mergeGeometries([shapeGeo, backGeo, sideGeo])
-    console.log("[v0] Inflate: mergedGeo:", mergedGeo ? mergedGeo.attributes.position.count + " verts" : "null")
-    
-    if (mergedGeo) {
-      const mergedPos = mergedGeo.attributes.position
-      console.log("[v0] Inflate: mergedGeo sample Z values:", mergedPos.getZ(0), mergedPos.getZ(Math.floor(mergedPos.count/2)), mergedPos.getZ(mergedPos.count-1))
-    }
     
     shapeGeo.dispose()
     backGeo.dispose()
     sideGeo.dispose()
 
     if (!mergedGeo) return null
-
-    // Center and normalize
-    mergedGeo.center()
-    mergedGeo.computeBoundingBox()
-    const box = mergedGeo.boundingBox
-    if (box) {
-      const size = new THREE.Vector3()
-      box.getSize(size)
-      const maxDimVal = Math.max(size.x, size.y, size.z)
-      if (maxDimVal > 0) mergedGeo.scale(2 / maxDimVal, 2 / maxDimVal, 2 / maxDimVal)
-    }
 
     // Flip Y using rotateX (correct orientation without inverting normals)
     mergedGeo.rotateX(Math.PI)

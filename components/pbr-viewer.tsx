@@ -1643,8 +1643,13 @@ function createInflatedGeometry(
     sideGeo.setIndex(new THREE.BufferAttribute(new Uint16Array(sideIndices), 1))
     sideGeo.computeVertexNormals()
 
+    console.log("[v0] Inflate: shapeGeo verts:", shapeGeo.attributes.position.count, "backGeo verts:", backGeo.attributes.position.count, "sideGeo verts:", sideGeo.attributes.position.count)
+    console.log("[v0] Inflate: boundaryEdges count:", boundaryEdges.length)
+
     // Merge front + back + side walls
     const mergedGeo = mergeGeometries([shapeGeo, backGeo, sideGeo])
+    console.log("[v0] Inflate: mergedGeo:", mergedGeo ? mergedGeo.attributes.position.count + " verts" : "null")
+    
     shapeGeo.dispose()
     backGeo.dispose()
     sideGeo.dispose()

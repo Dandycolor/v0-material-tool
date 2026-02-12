@@ -1566,10 +1566,88 @@ function createInflatedGeometry(
       backIndex.needsUpdate = true
     }
 
-    // Merge front and back using BufferGeometryUtils
-    const mergedGeo = mergeGeometries([shapeGeo, backGeo])
+    // Build side walls to connect front and back edges
+    // Find boundary edges (edges that belong to only one triangle in the front face)
+    const edgeMap = new Map<string, number[]>()
+    const frontIndex = shapeGeo.index
+    if (frontIndex) {
+      for (let i = 0; i < frontIndex.count; i += 3) {
+        const v0 = frontIndex.getX(i)
+        const v1 = frontIndex.getY(i)
+        const v2 = frontIndex.getZ(i)
+        const edges = [
+          [v0, v1],
+          [v1, v2],
+          [v2, v0],
+        ]
+        for (const [a, b] of edges) {
+          const key = a < b ? `${a},${b}` : `${b},${a}`
+          const existing = edgeMap.get(key)
+          if (existing) {
+            existing.push(a < b ? a : b, a < b ? b : a)
+          } else {
+            edgeMap.set(key, [a < b ? a : b, a < b ? b : a])
+          }
+        }
+      }
+    }
+
+    // Boundary edges: appear only once
+    const boundaryEdges: Array<[number, number]> = []
+    for (const [, verts] of edgeMap) {
+      if (verts.length === 2) {
+        // This edge is on the boundary
+        boundaryEdges.push([verts[0], verts[1]])
+      }
+    }
+
+    // Build side wall geometry: quads connecting front boundary to back boundary
+    const sidePositions: number[] = []
+    const sideUvs: number[] = []
+    const sideIndices: number[] = []
+    let sideVertCount = 0
+
+    for (const [v0, v1] of boundaryEdges) {
+      const frontPos = shapeGeo.attributes.position
+      const backPos = backGeo.attributes.position
+
+      // Front edge vertices
+      const fx0 = frontPos.getX(v0), fy0 = frontPos.getY(v0), fz0 = frontPos.getZ(v0)
+      const fx1 = frontPos.getX(v1), fy1 = frontPos.getY(v1), fz1 = frontPos.getZ(v1)
+
+      // Back edge vertices (same XY, negated Z)
+      const bx0 = backPos.getX(v0), by0 = backPos.getY(v0), bz0 = backPos.getZ(v0)
+      const bx1 = backPos.getX(v1), by1 = backPos.getY(v1), bz1 = backPos.getZ(v1)
+
+      // Create quad: [front0, front1, back1, back0]
+      const i0 = sideVertCount
+      sidePositions.push(fx0, fy0, fz0)
+      sideUvs.push(0, 0)
+      sidePositions.push(fx1, fy1, fz1)
+      sideUvs.push(1, 0)
+      sidePositions.push(bx1, by1, bz1)
+      sideUvs.push(1, 1)
+      sidePositions.push(bx0, by0, bz0)
+      sideUvs.push(0, 1)
+
+      // Two triangles for quad
+      sideIndices.push(i0, i0 + 1, i0 + 2)
+      sideIndices.push(i0, i0 + 2, i0 + 3)
+      sideVertCount += 4
+    }
+
+    // Build side wall geometry
+    const sideGeo = new THREE.BufferGeometry()
+    sideGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(sidePositions), 3))
+    sideGeo.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(sideUvs), 2))
+    sideGeo.setIndex(new THREE.BufferAttribute(new Uint16Array(sideIndices), 1))
+    sideGeo.computeVertexNormals()
+
+    // Merge front + back + side walls
+    const mergedGeo = mergeGeometries([shapeGeo, backGeo, sideGeo])
     shapeGeo.dispose()
     backGeo.dispose()
+    sideGeo.dispose()
 
     if (!mergedGeo) return null
 

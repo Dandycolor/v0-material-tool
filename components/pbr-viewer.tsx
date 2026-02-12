@@ -1498,45 +1498,63 @@ function createInflatedGeometry(
       shapeGeo.scale(s, s, s)
     }
 
-    // Collect all boundary polygons (outlines + holes) for SDF computation IN NORMALIZED SPACE
-    const boundaryPolygons: THREE.Vector2[][] = []
-    for (const shape of shapes) {
-      const pts = shape.getPoints(64)
-      // Transform points to match the normalized geometry
-      const transformedPts: THREE.Vector2[] = []
-      for (const pt of pts) {
-        const tx = (pt.x - (box.min.x + box.max.x) / 2) * (2 / maxDimVal)
-        const ty = (pt.y - (box.min.y + box.max.y) / 2) * (2 / maxDimVal)
-        transformedPts.push(new THREE.Vector2(tx, ty))
-      }
-      boundaryPolygons.push(transformedPts)
-      if (shape.holes) {
-        for (const hole of shape.holes) {
-          const holePts = hole.getPoints(64)
-          const transformedHole: THREE.Vector2[] = []
-          for (const pt of holePts) {
-            const tx = (pt.x - (box.min.x + box.max.x) / 2) * (2 / maxDimVal)
-            const ty = (pt.y - (box.min.y + box.max.y) / 2) * (2 / maxDimVal)
-            transformedHole.push(new THREE.Vector2(tx, ty))
-          }
-          boundaryPolygons.push(transformedHole)
+    // Get vertex positions and find boundary edges from the normalized geometry
+    const pos = shapeGeo.attributes.position
+    const vertexCount = pos.count
+    const index = shapeGeo.index
+
+    if (!index) {
+      shapeGeo.dispose()
+      return null
+    }
+
+    // Build edge map to find boundary edges (edges belonging to only one triangle)
+    const edgeMap = new Map<string, number[]>()
+    for (let i = 0; i < index.count; i += 3) {
+      const v0 = index.getX(i)
+      const v1 = index.getY(i)
+      const v2 = index.getZ(i)
+      const edges = [
+        [v0, v1],
+        [v1, v2],
+        [v2, v0],
+      ]
+      for (const [a, b] of edges) {
+        const key = a < b ? `${a},${b}` : `${b},${a}`
+        const existing = edgeMap.get(key)
+        if (existing) {
+          existing.push(a, b)
+        } else {
+          edgeMap.set(key, [a, b])
         }
       }
     }
 
-    // Get vertex positions from ShapeGeometry (now normalized)
-    const pos = shapeGeo.attributes.position
-    const vertexCount = pos.count
+    // Extract boundary edges (appear only once)
+    const boundarySegments: Array<[THREE.Vector2, THREE.Vector2]> = []
+    for (const [, verts] of edgeMap) {
+      if (verts.length === 2) {
+        const v0 = verts[0], v1 = verts[1]
+        const p0 = new THREE.Vector2(pos.getX(v0), pos.getY(v0))
+        const p1 = new THREE.Vector2(pos.getX(v1), pos.getY(v1))
+        boundarySegments.push([p0, p1])
+      }
+    }
 
-    // Compute SDF: minimum distance from each vertex to any boundary IN NORMALIZED SPACE
+    if (boundarySegments.length === 0) {
+      shapeGeo.dispose()
+      return null
+    }
+
+    // Compute SDF: minimum distance from each vertex to any boundary segment
     const dists = new Float32Array(vertexCount)
     let maxDist = 0
     for (let i = 0; i < vertexCount; i++) {
       const vx = pos.getX(i)
       const vy = pos.getY(i)
       let minD = Infinity
-      for (const poly of boundaryPolygons) {
-        const d = minDistToShape(vx, vy, poly)
+      for (const [p0, p1] of boundarySegments) {
+        const d = distToSegment2D(vx, vy, p0.x, p0.y, p1.x, p1.y)
         if (d < minD) minD = d
       }
       dists[i] = minD

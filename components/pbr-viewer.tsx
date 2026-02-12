@@ -1473,12 +1473,20 @@ function createInflatedGeometry(
   bothSides: boolean,
   svgSource: "iconify" | "upload" = "iconify",
 ): THREE.BufferGeometry | null {
-  if (!svgString) return null
+  console.log("[v0] createInflatedGeometry called, volume:", volume, "bothSides:", bothSides)
+  if (!svgString) {
+    console.error("[v0] Inflate: no svgString")
+    return null
+  }
 
   try {
     const shapes = parseSVGContent(svgString, svgSource)
-    if (shapes.length === 0) return null
+    if (shapes.length === 0) {
+      console.error("[v0] Inflate: no shapes parsed")
+      return null
+    }
 
+    console.log("[v0] Inflate: Creating ShapeGeometry from", shapes.length, "shapes")
     // Use THREE.ShapeGeometry to get exact triangulation of the SVG shape with holes
     const shapeGeo = new THREE.ShapeGeometry(shapes, 64)
 
@@ -1487,6 +1495,7 @@ function createInflatedGeometry(
     shapeGeo.computeBoundingBox()
     const box = shapeGeo.boundingBox
     if (!box) {
+      console.error("[v0] Inflate: no bounding box after center()")
       shapeGeo.dispose()
       return null
     }
@@ -1498,12 +1507,15 @@ function createInflatedGeometry(
       shapeGeo.scale(s, s, s)
     }
 
+    console.log("[v0] Inflate: Normalized geometry, verts:", shapeGeo.attributes.position.count)
+
     // Get vertex positions and find boundary edges from the normalized geometry
     const pos = shapeGeo.attributes.position
     const vertexCount = pos.count
     const index = shapeGeo.index
 
     if (!index) {
+      console.error("[v0] Inflate: ShapeGeometry has no index!")
       shapeGeo.dispose()
       return null
     }

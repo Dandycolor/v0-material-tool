@@ -1607,7 +1607,7 @@ function createInflatedGeometry(
 
     // Build side walls to connect front and back edges
     // Find boundary edges (edges that belong to only one triangle in the front face)
-    const edgeMap = new Map<string, number[]>()
+    const sideEdgeMap = new Map<string, number[]>()
     const frontIndex = shapeGeo.index
     if (frontIndex) {
       for (let i = 0; i < frontIndex.count; i += 3) {
@@ -1621,11 +1621,11 @@ function createInflatedGeometry(
         ]
         for (const [a, b] of edges) {
           const key = a < b ? `${a},${b}` : `${b},${a}`
-          const existing = edgeMap.get(key)
+          const existing = sideEdgeMap.get(key)
           if (existing) {
             existing.push(a < b ? a : b, a < b ? b : a)
           } else {
-            edgeMap.set(key, [a < b ? a : b, a < b ? b : a])
+            sideEdgeMap.set(key, [a < b ? a : b, a < b ? b : a])
           }
         }
       }
@@ -1633,7 +1633,7 @@ function createInflatedGeometry(
 
     // Boundary edges: appear only once
     const boundaryEdges: Array<[number, number]> = []
-    for (const [, verts] of edgeMap) {
+    for (const [, verts] of sideEdgeMap) {
       if (verts.length === 2) {
         // This edge is on the boundary
         boundaryEdges.push([verts[0], verts[1]])

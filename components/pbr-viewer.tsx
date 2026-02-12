@@ -1642,8 +1642,8 @@ function createInflatedGeometry(
     if (vertCount === 0) return null
 
     // If bothSides, add mirrored back face
-    const frontVertCount = vertCount
     if (bothSides) {
+      const frontVertCount = vertCount
       const backOffset = frontVertCount
       // Duplicate front vertices with negated Z
       for (let i = 0; i < frontVertCount; i++) {
@@ -1655,61 +1655,6 @@ function createInflatedGeometry(
       for (let i = 0; i < frontIndexCount; i += 3) {
         indices.push(indices[i] + backOffset, indices[i + 2] + backOffset, indices[i + 1] + backOffset)
       }
-      vertCount *= 2
-    }
-
-    // Build edge loop for side walls
-    // Find boundary edges (edges that belong to only one triangle)
-    const edgeMap = new Map<string, { a: number; b: number; count: number }>()
-    const frontIndexCount = bothSides ? indices.length / 2 : indices.length
-    for (let i = 0; i < frontIndexCount; i += 3) {
-      const triVerts = [indices[i], indices[i + 1], indices[i + 2]]
-      for (let e = 0; e < 3; e++) {
-        const a = triVerts[e]
-        const b = triVerts[(e + 1) % 3]
-        const key = Math.min(a, b) + "," + Math.max(a, b)
-        const existing = edgeMap.get(key)
-        if (existing) {
-          existing.count++
-        } else {
-          edgeMap.set(key, { a, b, count: 1 })
-        }
-      }
-    }
-
-    // Boundary edges = count === 1
-    const boundaryEdges: [number, number][] = []
-    for (const [, edge] of edgeMap) {
-      if (edge.count === 1) {
-        boundaryEdges.push([edge.a, edge.b])
-      }
-    }
-
-    // Add side wall quads along boundary edges
-    const wallStartVert = vertCount
-    for (const [a, b] of boundaryEdges) {
-      const ax = positions[a * 3], ay = positions[a * 3 + 1], az = positions[a * 3 + 2]
-      const bx = positions[b * 3], by = positions[b * 3 + 1], bz = positions[b * 3 + 2]
-
-      const backZ = bothSides ? -az : 0
-      const backZB = bothSides ? -bz : 0
-
-      // Front edge: a(ax,ay,az), b(bx,by,bz)
-      // Back edge: a(ax,ay,backZ), b(bx,by,backZB)
-      const vi = vertCount
-      positions.push(ax, ay, az)
-      uvs.push(0, 0)
-      positions.push(bx, by, bz)
-      uvs.push(1, 0)
-      positions.push(ax, ay, backZ)
-      uvs.push(0, 1)
-      positions.push(bx, by, backZB)
-      uvs.push(1, 1)
-
-      // Two triangles for the quad
-      indices.push(vi, vi + 1, vi + 2)
-      indices.push(vi + 1, vi + 3, vi + 2)
-      vertCount += 4
     }
 
     // Build BufferGeometry

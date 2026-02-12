@@ -1447,21 +1447,9 @@ function createLatheGeometry(
   }
 }
 
-// --- Inflate Mode: Grid-based SDF approach for balloon/pillow effect ---
+// --- Inflate Mode: ShapeGeometry + SDF vertex displacement for balloon/pillow effect ---
 
-function isPointInPolygon(px: number, py: number, polygon: THREE.Vector2[]): boolean {
-  let inside = false
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i].x, yi = polygon[i].y
-    const xj = polygon[j].x, yj = polygon[j].y
-    if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) {
-      inside = !inside
-    }
-  }
-  return inside
-}
-
-function distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+function distToSegment2D(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
   const dx = bx - ax, dy = by - ay
   const lenSq = dx * dx + dy * dy
   if (lenSq === 0) return Math.sqrt((px - ax) ** 2 + (py - ay) ** 2)
@@ -1469,14 +1457,14 @@ function distToSegment(px: number, py: number, ax: number, ay: number, bx: numbe
   return Math.sqrt((px - (ax + t * dx)) ** 2 + (py - (ay + t * dy)) ** 2)
 }
 
-function minDistToPolygon(px: number, py: number, polygon: THREE.Vector2[]): number {
-  let minDist = Infinity
-  for (let i = 0; i < polygon.length; i++) {
-    const j = (i + 1) % polygon.length
-    const d = distToSegment(px, py, polygon[i].x, polygon[i].y, polygon[j].x, polygon[j].y)
-    if (d < minDist) minDist = d
+function minDistToShape(px: number, py: number, points: THREE.Vector2[]): number {
+  let minD = Infinity
+  for (let i = 0; i < points.length; i++) {
+    const j = (i + 1) % points.length
+    const d = distToSegment2D(px, py, points[i].x, points[i].y, points[j].x, points[j].y)
+    if (d < minD) minD = d
   }
-  return minDist
+  return minD
 }
 
 function createInflatedGeometry(
@@ -1491,190 +1479,115 @@ function createInflatedGeometry(
     const shapes = parseSVGContent(svgString, svgSource)
     if (shapes.length === 0) return null
 
-    // Get all shape outlines and holes as polygon arrays
-    const shapePolygons: THREE.Vector2[][] = []
-    const holePolygons: THREE.Vector2[][] = []
+    // Use THREE.ShapeGeometry to get exact triangulation of the SVG shape with holes
+    const shapeGeo = new THREE.ShapeGeometry(shapes, 64)
 
+    // Collect all boundary polygons (outlines + holes) for SDF computation
+    const boundaryPolygons: THREE.Vector2[][] = []
     for (const shape of shapes) {
-      shapePolygons.push(shape.getPoints(64))
+      boundaryPolygons.push(shape.getPoints(64))
       if (shape.holes) {
         for (const hole of shape.holes) {
-          holePolygons.push(hole.getPoints(64))
+          boundaryPolygons.push(hole.getPoints(64))
         }
       }
     }
 
-    // Bounding box
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
-    for (const poly of shapePolygons) {
-      for (const p of poly) {
-        if (p.x < minX) minX = p.x
-        if (p.x > maxX) maxX = p.x
-        if (p.y < minY) minY = p.y
-        if (p.y > maxY) maxY = p.y
-      }
-    }
+    // Get vertex positions from ShapeGeometry (all at Z=0 initially)
+    const pos = shapeGeo.attributes.position
+    const vertexCount = pos.count
 
-    const width = maxX - minX
-    const height = maxY - minY
-    if (width === 0 || height === 0) return null
-
-    // Grid resolution
-    const res = 128
-    const cellW = width / res
-    const cellH = height / res
-    const gridW = res + 1
-    const gridH = res + 1
-    const totalVerts = gridW * gridH
-    const insideFlags = new Uint8Array(totalVerts)
-    const distances = new Float32Array(totalVerts)
+    // Compute SDF: minimum distance from each vertex to any boundary
+    const dists = new Float32Array(vertexCount)
     let maxDist = 0
-
-    for (let iy = 0; iy < gridH; iy++) {
-      for (let ix = 0; ix < gridW; ix++) {
-        const idx = iy * gridW + ix
-        const px = minX + ix * cellW
-        const py = minY + iy * cellH
-
-        let inside = false
-        for (const poly of shapePolygons) {
-          if (isPointInPolygon(px, py, poly)) {
-            inside = true
-            break
-          }
-        }
-
-        if (inside) {
-          for (const holePoly of holePolygons) {
-            if (isPointInPolygon(px, py, holePoly)) {
-              inside = false
-              break
-            }
-          }
-        }
-
-        insideFlags[idx] = inside ? 1 : 0
-
-        if (inside) {
-          let d = Infinity
-          for (const poly of shapePolygons) {
-            const dd = minDistToPolygon(px, py, poly)
-            if (dd < d) d = dd
-          }
-          for (const holePoly of holePolygons) {
-            const dd = minDistToPolygon(px, py, holePoly)
-            if (dd < d) d = dd
-          }
-          distances[idx] = d
-          if (d > maxDist) maxDist = d
-        }
+    for (let i = 0; i < vertexCount; i++) {
+      const vx = pos.getX(i)
+      const vy = pos.getY(i)
+      let minD = Infinity
+      for (const poly of boundaryPolygons) {
+        const d = minDistToShape(vx, vy, poly)
+        if (d < minD) minD = d
       }
+      dists[i] = minD
+      if (minD > maxDist) maxDist = minD
     }
 
-    if (maxDist === 0) return null
+    if (maxDist === 0) {
+      shapeGeo.dispose()
+      return null
+    }
 
-    // Compute Z displacement with dome profile
+    // Apply dome displacement: Z = volumeScale * hemisphereProfile(normalizedDistance)
     const volumeScale = (volume / 100) * maxDist * 0.8
-    const zValues = new Float32Array(totalVerts)
-    for (let i = 0; i < totalVerts; i++) {
-      if (insideFlags[i]) {
-        const r = distances[i] / maxDist // 0 at edge, 1 at center
-        // Smooth hemisphere dome: sqrt(2r - r^2)
-        zValues[i] = volumeScale * Math.sqrt(Math.max(0, 2 * r - r * r))
+    for (let i = 0; i < vertexCount; i++) {
+      const r = dists[i] / maxDist // Normalized distance: 0 at edge, 1 at center
+      // Smooth hemisphere profile: sqrt(2r - r^2) gives a nice dome shape
+      const z = volumeScale * Math.sqrt(Math.max(0, 2 * r - r * r))
+      pos.setZ(i, z)
+    }
+    pos.needsUpdate = true
+
+    if (!bothSides) {
+      // Single-sided: just recompute normals and finish
+      shapeGeo.computeVertexNormals()
+      shapeGeo.center()
+      shapeGeo.computeBoundingBox()
+      const box = shapeGeo.boundingBox
+      if (box) {
+        const size = new THREE.Vector3()
+        box.getSize(size)
+        const maxDimVal = Math.max(size.x, size.y, size.z)
+        if (maxDimVal > 0) shapeGeo.scale(2 / maxDimVal, 2 / maxDimVal, 2 / maxDimVal)
       }
+      // Use rotateX instead of scale(1,-1,1) to avoid inverting normals
+      shapeGeo.rotateX(Math.PI)
+      shapeGeo.computeVertexNormals()
+      return shapeGeo
     }
 
-    // Build front face mesh from grid
-    const positions: number[] = []
-    const uvs: number[] = []
-    const indices: number[] = []
-    let vertCount = 0
-    const gridToVert = new Int32Array(totalVerts).fill(-1)
+    // Both sides: clone and mirror the geometry for back face
+    const backGeo = shapeGeo.clone()
+    const backPos = backGeo.attributes.position
+    // Mirror Z coordinates for back face
+    for (let i = 0; i < backPos.count; i++) {
+      backPos.setZ(i, -backPos.getZ(i))
+    }
+    backPos.needsUpdate = true
 
-    for (let iy = 0; iy < res; iy++) {
-      for (let ix = 0; ix < res; ix++) {
-        const i00 = iy * gridW + ix
-        const i10 = iy * gridW + ix + 1
-        const i01 = (iy + 1) * gridW + ix
-        const i11 = (iy + 1) * gridW + ix + 1
-
-        const tri1Inside = insideFlags[i00] && insideFlags[i10] && insideFlags[i01]
-        const tri2Inside = insideFlags[i10] && insideFlags[i11] && insideFlags[i01]
-
-        if (tri1Inside || tri2Inside) {
-          for (const idx of [i00, i10, i01, i11]) {
-            if (gridToVert[idx] === -1) {
-              const gx = idx % gridW
-              const gy = Math.floor(idx / gridW)
-              const px = minX + gx * cellW
-              const py = minY + gy * cellH
-              positions.push(px, py, zValues[idx])
-              uvs.push(gx / res, gy / res)
-              gridToVert[idx] = vertCount++
-            }
-          }
-
-          if (tri1Inside) {
-            indices.push(gridToVert[i00], gridToVert[i10], gridToVert[i01])
-          }
-          if (tri2Inside) {
-            indices.push(gridToVert[i10], gridToVert[i11], gridToVert[i01])
-          }
-        }
+    // Reverse winding for back face (so normals point outward)
+    const backIndex = backGeo.index
+    if (backIndex) {
+      const arr = backIndex.array
+      for (let i = 0; i < arr.length; i += 3) {
+        const tmp = arr[i + 1]
+        arr[i + 1] = arr[i + 2]
+        arr[i + 2] = tmp
       }
+      backIndex.needsUpdate = true
     }
 
-    if (vertCount === 0) return null
+    // Merge front and back using BufferGeometryUtils
+    const mergedGeo = mergeGeometries([shapeGeo, backGeo])
+    shapeGeo.dispose()
+    backGeo.dispose()
 
-    // Add back face (mirrored Z) for bothSides
-    if (bothSides) {
-      const frontVertCount = vertCount
-      const frontIndexCount = indices.length
-      // Back verts: same XY, negated Z
-      for (let i = 0; i < frontVertCount; i++) {
-        positions.push(positions[i * 3], positions[i * 3 + 1], -positions[i * 3 + 2])
-        uvs.push(uvs[i * 2], uvs[i * 2 + 1])
-      }
-      // Back indices: reversed winding + offset
-      for (let i = 0; i < frontIndexCount; i += 3) {
-        indices.push(
-          indices[i] + frontVertCount,
-          indices[i + 2] + frontVertCount,
-          indices[i + 1] + frontVertCount,
-        )
-      }
-    }
+    if (!mergedGeo) return null
 
-    // Build geometry
-    const geo = new THREE.BufferGeometry()
-    const posArray = new Float32Array(positions)
-    const uvArray = new Float32Array(uvs)
-    const idxArray = indices.length > 65535 ? new Uint32Array(indices) : new Uint16Array(indices)
-
-    geo.setAttribute("position", new THREE.BufferAttribute(posArray, 3))
-    geo.setAttribute("uv", new THREE.BufferAttribute(uvArray, 2))
-    geo.setIndex(new THREE.BufferAttribute(idxArray, 1))
-    geo.computeVertexNormals()
-
-    // Center and normalize scale
-    geo.center()
-    geo.computeBoundingBox()
-    const box = geo.boundingBox
+    // Center and normalize
+    mergedGeo.center()
+    mergedGeo.computeBoundingBox()
+    const box = mergedGeo.boundingBox
     if (box) {
       const size = new THREE.Vector3()
       box.getSize(size)
       const maxDimVal = Math.max(size.x, size.y, size.z)
-      if (maxDimVal > 0) {
-        const s = 2 / maxDimVal
-        geo.scale(s, s, s)
-      }
+      if (maxDimVal > 0) mergedGeo.scale(2 / maxDimVal, 2 / maxDimVal, 2 / maxDimVal)
     }
 
-    // Flip Y using rotateX(PI) - correct way that doesn't invert normals
-    geo.rotateX(Math.PI)
-
-    geo.computeVertexNormals()
-    return geo
+    // Flip Y using rotateX (correct orientation without inverting normals)
+    mergedGeo.rotateX(Math.PI)
+    mergedGeo.computeVertexNormals()
+    return mergedGeo
   } catch (error) {
     console.error("[v0] Error creating inflated geometry:", error)
     return null

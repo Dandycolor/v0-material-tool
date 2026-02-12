@@ -1584,12 +1584,13 @@ function createInflatedGeometry(
 
     // Normalize distances and compute dome profile z values
     const volumeScale = (volume / 100) * maxDist * 0.8
+    const minZ = volumeScale * 0.01 // Minimum height to avoid paper-thin edges
     const zValues = new Float32Array(totalVerts)
     for (let i = 0; i < totalVerts; i++) {
       if (insideFlags[i]) {
         const r = distances[i] / maxDist // 0 at edge, 1 at center
         // Hemisphere dome profile: sqrt(1 - (1-r)^2) = sqrt(2r - r^2)
-        zValues[i] = volumeScale * Math.sqrt(Math.max(0, 2 * r - r * r))
+        zValues[i] = Math.max(minZ, volumeScale * Math.sqrt(Math.max(0, 2 * r - r * r)))
       }
     }
 
@@ -1641,13 +1642,16 @@ function createInflatedGeometry(
 
     if (vertCount === 0) return null
 
-    // If bothSides, add mirrored back face
+    // If bothSides, add mirrored back face with small offset to prevent Z-fighting at edges
     if (bothSides) {
       const frontVertCount = vertCount
       const backOffset = frontVertCount
-      // Duplicate front vertices with negated Z
+      // Small offset to prevent Z-fighting where both faces meet at z=0 on edges
+      const zEpsilon = volumeScale * 0.002
+      // Duplicate front vertices with negated Z (mirrored) minus epsilon
       for (let i = 0; i < frontVertCount; i++) {
-        positions.push(positions[i * 3], positions[i * 3 + 1], -positions[i * 3 + 2])
+        const fz = positions[i * 3 + 2]
+        positions.push(positions[i * 3], positions[i * 3 + 1], -(fz + zEpsilon))
         uvs.push(uvs[i * 2], uvs[i * 2 + 1])
       }
       // Add back face indices (reversed winding)
@@ -2495,8 +2499,9 @@ function Material({
         thickness: materialSettings.thickness,
         attenuationDistance: materialSettings.attenuationDistance,
         attenuationColor: new THREE.Color(materialSettings.attenuationColor),
-        transparent: true,
+        transparent: !!(opacityMap || isGlass),
         opacity: 1,
+        depthWrite: true,
         alphaMap: opacityMap,
         side: THREE.DoubleSide,
         envMapIntensity: materialSettings.envMapIntensity || 1.5,

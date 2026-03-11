@@ -131,6 +131,7 @@ export function inflatePolygon(polygon: Point2D[], options: Partial<InflateOptio
   if (vertices.length < 3) return null
   
   // Generate triangles from grid cells
+  // Since we flip Y in output, use CCW winding for correct front-face normals
   const triangles: number[] = []
   
   for (let row = 0; row < rows - 1; row++) {
@@ -140,20 +141,20 @@ export function inflatePolygon(polygon: Point2D[], options: Partial<InflateOptio
       const bl = grid[row + 1][col]     // bottom-left
       const br = grid[row + 1][col + 1] // bottom-right
       
-      // If all 4 corners are inside, create 2 triangles
+      // If all 4 corners are inside, create 2 triangles (CCW winding)
       if (tl >= 0 && tr >= 0 && bl >= 0 && br >= 0) {
-        triangles.push(tl, bl, tr)
-        triangles.push(tr, bl, br)
+        triangles.push(tl, tr, bl)
+        triangles.push(tr, br, bl)
       } 
-      // Partial cells - create triangle if 3 corners are inside
+      // Partial cells - create triangle if 3 corners are inside (CCW winding)
       else if (tl >= 0 && tr >= 0 && bl >= 0) {
-        triangles.push(tl, bl, tr)
+        triangles.push(tl, tr, bl)
       } else if (tl >= 0 && tr >= 0 && br >= 0) {
-        triangles.push(tl, br, tr)
+        triangles.push(tl, tr, br)
       } else if (tl >= 0 && bl >= 0 && br >= 0) {
-        triangles.push(tl, bl, br)
+        triangles.push(tl, br, bl)
       } else if (tr >= 0 && bl >= 0 && br >= 0) {
-        triangles.push(tr, bl, br)
+        triangles.push(tr, br, bl)
       }
     }
   }
@@ -215,9 +216,9 @@ export function inflatePolygon(polygon: Point2D[], options: Partial<InflateOptio
     positions.push(x, y, z)
   }
   
-  // Front triangles - reversed winding for correct outward normals
+  // Front triangles - use CCW winding directly (already set up correctly)
   for (let i = 0; i < triangles.length; i += 3) {
-    indices.push(triangles[i], triangles[i + 2], triangles[i + 1])
+    indices.push(triangles[i], triangles[i + 1], triangles[i + 2])
   }
   
   if (opts.doubleSided) {
@@ -229,12 +230,12 @@ export function inflatePolygon(polygon: Point2D[], options: Partial<InflateOptio
       positions.push(x, y, z)
     }
     
-    // Back triangles (original winding since we flipped front)
+    // Back triangles (reversed winding for back-facing normals)
     for (let i = 0; i < triangles.length; i += 3) {
       indices.push(
         triangles[i] + numVerts,
-        triangles[i + 1] + numVerts,
-        triangles[i + 2] + numVerts
+        triangles[i + 2] + numVerts,
+        triangles[i + 1] + numVerts
       )
     }
     

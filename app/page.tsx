@@ -20,6 +20,7 @@ import { ModelSearch } from "@/components/model-search"
 import { MaterialPreview } from "@/components/material-preview"
 
 import { LightRotationControl } from "@/components/light-rotation-control"
+import { InflateCanvas } from "@/components/inflate-canvas"
 
 interface IconifyIcon {
   id: string // format: "prefix:name" e.g. "mdi:flower"
@@ -855,10 +856,12 @@ export default function MaterialTool() {
     usePotteryMode: false, // Pottery wheel/lathe mode
     latheSegments: 32, // Number of segments around the axis for lathe geometry
     latheAxis: 'center' as 'center' | 'left' | 'right' | 'top' | 'bottom', // Axis position for pottery wheel mode
-    // Inflate mode (balloon/pillow effect)
-    useInflateMode: false,
-    inflateVolume: 100, // 0-100, controls the height of inflation
-    inflateBothSides: true, // inflate both front and back
+    // Inflate mode settings (for "inflate" type)
+    inflateContour: [] as { x: number; y: number }[],
+    inflateVolume: 100,
+    inflateBothSides: true,
+    inflateSmoothing: 3,
+    inflateGridResolution: 20,
   })
 
   const [materialSettings, setMaterialSettings] = useState<MaterialSettings>({
@@ -1456,6 +1459,26 @@ export default function MaterialTool() {
                       </button>
                       <span className="text-xs font-normal text-zinc-500">3D</span>
                     </div>
+
+                    <div className="flex flex-col items-center gap-3">
+                      <button
+                        onClick={() => {
+                          setGeometrySettings({ ...geometrySettings, type: "inflate" })
+                        }}
+                        className={`w-24 h-24 flex items-center justify-center rounded-lg border-2 transition-all overflow-hidden ${
+                          geometrySettings.type === "inflate"
+                            ? "border-white bg-[#1f1f1f]"
+                            : "border-[#2a2a2a] bg-[#1a1a1a] hover:border-[#3a3a3a]"
+                        }`}
+                      >
+                        <img
+                          src="/geometry-modes/inflate.jpg"
+                          alt="Inflate"
+                          className="w-full h-full object-cover"
+                        />
+                      </button>
+                      <span className="text-xs font-normal text-zinc-500">Inflate</span>
+                    </div>
                   </div>
 
                   {geometrySettings.type === "sphere" && (
@@ -1644,6 +1667,91 @@ export default function MaterialTool() {
                     </div>
                   )}
 
+                  {/* Inflate Mode - Draw or Load SVG to create balloon shapes */}
+                  {geometrySettings.type === "inflate" && (
+                    <div className="space-y-4">
+                      <InflateCanvas
+                        onContourChange={(contour) => {
+                          setGeometrySettings({ 
+                            ...geometrySettings, 
+                            inflateContour: contour 
+                          })
+                        }}
+                        width={400}
+                        height={400}
+                      />
+
+                      {/* Inflate Settings */}
+                      <div className="pt-4 space-y-4 border-t border-neutral-700">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs text-zinc-500">Volume</Label>
+                            <span className="text-xs text-white font-mono">{geometrySettings.inflateVolume ?? 100}</span>
+                          </div>
+                          <Slider
+                            value={[geometrySettings.inflateVolume ?? 100]}
+                            onValueChange={([value]) => setGeometrySettings({ ...geometrySettings, inflateVolume: value })}
+                            min={10}
+                            max={200}
+                            step={5}
+                            className="w-full"
+                          />
+                          <p className="text-xs text-zinc-500">Controls how much the shape inflates</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs text-zinc-500">Smoothing</Label>
+                            <span className="text-xs text-white font-mono">{geometrySettings.inflateSmoothing ?? 3}</span>
+                          </div>
+                          <Slider
+                            value={[geometrySettings.inflateSmoothing ?? 3]}
+                            onValueChange={([value]) => setGeometrySettings({ ...geometrySettings, inflateSmoothing: value })}
+                            min={0}
+                            max={10}
+                            step={1}
+                            className="w-full"
+                          />
+                          <p className="text-xs text-zinc-500">Laplacian smoothing iterations</p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs text-zinc-500">Grid Resolution</Label>
+                            <span className="text-xs text-white font-mono">{geometrySettings.inflateGridResolution ?? 20}</span>
+                          </div>
+                          <Slider
+                            value={[geometrySettings.inflateGridResolution ?? 20]}
+                            onValueChange={([value]) => setGeometrySettings({ ...geometrySettings, inflateGridResolution: value })}
+                            min={10}
+                            max={40}
+                            step={2}
+                            className="w-full"
+                          />
+                          <p className="text-xs text-zinc-500">Internal mesh density</p>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-neutral-800 border border-neutral-700">
+                          <div className="flex-1">
+                            <Label className="text-sm font-semibold text-neutral-100 block mb-1">
+                              Double Sided
+                            </Label>
+                            <p className="text-xs text-neutral-400">
+                              Inflate both front and back
+                            </p>
+                          </div>
+                          <Switch
+                            checked={geometrySettings.inflateBothSides ?? true}
+                            onCheckedChange={(checked) =>
+                              setGeometrySettings({ ...geometrySettings, inflateBothSides: checked })
+                            }
+                            className="data-[state=checked]:bg-cyan-600"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Extruded SVG Specific Settings */}
                   {geometrySettings.type === "extruded" && (
                       <div className="pt-4 space-y-4">
@@ -1801,63 +1909,6 @@ export default function MaterialTool() {
                                 className="w-full"
                               />
                               <p className="text-xs text-zinc-500">Controls smoothness around the rotation axis (16-64 recommended)</p>
-                            </div>
-                          )}
-
-                          {/* Inflate Mode */}
-                          <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-neutral-800 border border-neutral-700">
-                            <div className="flex-1">
-                              <Label className="text-sm font-semibold text-neutral-100 block mb-1">
-                                Inflate Mode
-                              </Label>
-                              <p className="text-xs text-neutral-400">
-                                {geometrySettings.useInflateMode
-                                  ? "Inflate shape like a balloon"
-                                  : "Standard extrusion mode"}
-                              </p>
-                            </div>
-                            <Switch
-                              checked={geometrySettings.useInflateMode}
-                              onCheckedChange={(checked) =>
-                                setGeometrySettings({ 
-                                  ...geometrySettings, 
-                                  useInflateMode: checked,
-                                  // Disable pottery mode when enabling inflate (mutually exclusive)
-                                  usePotteryMode: checked ? false : geometrySettings.usePotteryMode
-                                })
-                              }
-                              className="data-[state=checked]:bg-cyan-600"
-                            />
-                          </div>
-
-                          {geometrySettings.useInflateMode && (
-                            <div className="space-y-3">
-                              <div className="flex items-center justify-between">
-                                <Label className="text-xs text-zinc-500">Volume</Label>
-                                <span className="text-xs text-white font-mono">{geometrySettings.inflateVolume}</span>
-                              </div>
-                              <Slider
-                                value={[geometrySettings.inflateVolume ?? 100]}
-                                onValueChange={([value]) =>
-                                  setGeometrySettings({ ...geometrySettings, inflateVolume: value })
-                                }
-                                min={10}
-                                max={200}
-                                step={5}
-                                className="w-full"
-                              />
-                              <p className="text-xs text-zinc-500">Controls how much the shape inflates (10-200)</p>
-
-                              <div className="flex items-center justify-between gap-3 p-2 rounded-lg bg-neutral-900/50">
-                                <Label className="text-xs text-zinc-400">Inflate Both Sides</Label>
-                                <Switch
-                                  checked={geometrySettings.inflateBothSides ?? true}
-                                  onCheckedChange={(checked) =>
-                                    setGeometrySettings({ ...geometrySettings, inflateBothSides: checked })
-                                  }
-                                  className="data-[state=checked]:bg-cyan-600 scale-90"
-                                />
-                              </div>
                             </div>
                           )}
                         </div>

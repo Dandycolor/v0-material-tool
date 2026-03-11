@@ -1,13 +1,17 @@
 /**
  * Inflate Geometry Library
  * 
- * Creates inflated 3D meshes from 2D contours using:
- * - Custom ear-clipping triangulation
- * - Signed Distance Field (SDF) for height displacement
- * - Laplacian smoothing for soft balloon effect
+ * Creates inflated 3D meshes from 2D contours using the exact algorithm
+ * from the reference implementation:
+ * - Delaunator for triangulation
+ * - Hexagonal grid Steiner points for interior
+ * - Boundary offset Steiner points for smooth edges
+ * - Cotangent-weighted Laplacian for heat diffusion heights
+ * - Edge rings for smooth front-to-back transition
  */
 
 import * as THREE from 'three'
+import Delaunator from 'delaunator'
 
 // ============================================================================
 // Types
@@ -19,361 +23,356 @@ export interface Point2D {
 }
 
 export interface InflateOptions {
-  /** Inflation amount (0-200), controls max height */
   amount: number
-  /** Number of Steiner points to add inside the contour */
-  steinerPoints: number
-  /** Smoothing iterations for softer result */
   smoothingIterations: number
-  /** Whether to create both front and back faces */
   doubleSided: boolean
-  /** Resolution of internal grid for Steiner points */
   gridResolution: number
 }
 
 const DEFAULT_OPTIONS: InflateOptions = {
   amount: 100,
-  steinerPoints: 200,
   smoothingIterations: 5,
   doubleSided: true,
   gridResolution: 40,
 }
 
 // ============================================================================
-// Geometry Utilities
+// Core Geometry Functions (from reference)
 // ============================================================================
 
-function isPointInsideContour(px: number, py: number, contour: Point2D[]): boolean {
+// Point in polygon (ray casting) - Xs in reference
+function isPointInPolygon(p: Point2D, polygon: Point2D[]): boolean {
   let inside = false
-  const n = contour.length
-  
+  const n = polygon.length
   for (let i = 0, j = n - 1; i < n; j = i++) {
-    const xi = contour[i].x, yi = contour[i].y
-    const xj = contour[j].x, yj = contour[j].y
-    
-    if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) {
+    const xi = polygon[i].x, yi = polygon[i].y
+    const xj = polygon[j].x, yj = polygon[j].y
+    if ((yi > p.y) !== (yj > p.y) && p.x < (xj - xi) * (p.y - yi) / (yj - yi) + xi) {
       inside = !inside
     }
   }
-  
   return inside
 }
 
-function distanceToContour(px: number, py: number, contour: Point2D[]): number {
-  let minDist = Infinity
-  const n = contour.length
+// Point to segment distance - Dp in reference
+function pointToSegmentDist(p: Point2D, a: Point2D, b: Point2D): number {
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const lenSq = dx * dx + dy * dy
   
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n
-    const dist = pointToSegmentDistance(px, py, contour[i].x, contour[i].y, contour[j].x, contour[j].y)
-    if (dist < minDist) minDist = dist
+  if (lenSq === 0) {
+    const fx = p.x - a.x, fy = p.y - a.y
+    return Math.sqrt(fx * fx + fy * fy)
   }
   
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq
+  t = Math.max(0, Math.min(1, t))
+  
+  const projX = a.x + t * dx
+  const projY = a.y + t * dy
+  const ex = p.x - projX
+  const ey = p.y - projY
+  
+  return Math.sqrt(ex * ex + ey * ey)
+}
+
+// Min distance to polygon boundary - ko in reference
+function distToPolygon(p: Point2D, polygon: Point2D[]): number {
+  let minDist = Infinity
+  const n = polygon.length
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n
+    const dist = pointToSegmentDist(p, polygon[i], polygon[j])
+    if (dist < minDist) minDist = dist
+  }
   return minDist
 }
 
-function pointToSegmentDistance(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
-  const dx = x2 - x1
-  const dy = y2 - y1
-  const lengthSq = dx * dx + dy * dy
-  
-  if (lengthSq === 0) {
-    return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2)
-  }
-  
-  let t = ((px - x1) * dx + (py - y1) * dy) / lengthSq
-  t = Math.max(0, Math.min(1, t))
-  
-  const nearX = x1 + t * dx
-  const nearY = y1 + t * dy
-  
-  return Math.sqrt((px - nearX) ** 2 + (py - nearY) ** 2)
-}
-
-function getBoundingBox(contour: Point2D[]): { minX: number; maxX: number; minY: number; maxY: number } {
+// Bounding box - Np in reference
+function getBBox(polygon: Point2D[]): { minX: number; maxX: number; minY: number; maxY: number } {
   let minX = Infinity, maxX = -Infinity
   let minY = Infinity, maxY = -Infinity
-  
-  for (const p of contour) {
+  for (const p of polygon) {
     if (p.x < minX) minX = p.x
     if (p.x > maxX) maxX = p.x
     if (p.y < minY) minY = p.y
     if (p.y > maxY) maxY = p.y
   }
-  
   return { minX, maxX, minY, maxY }
 }
 
-// ============================================================================
-// Triangulation - Custom Ear Clipping with Steiner Points
-// ============================================================================
-
-function triangulatePolygon(contour: Point2D[], steinerPoints: Point2D[]): number[] {
-  // Combine all points: contour first, then steiner points
-  const allPoints = [...contour, ...steinerPoints]
-  const n = allPoints.length
-  const contourLen = contour.length
-  
-  if (n < 3) return []
-  
-  // For triangulation with steiner points, use Delaunay-like approach
-  // by creating triangles that connect boundary and interior points
-  
-  const indices: number[] = []
-  
-  // First, triangulate the boundary polygon using ear clipping
-  const boundaryIndices = earClipTriangulate(contour)
-  indices.push(...boundaryIndices)
-  
-  // Then, for each steiner point, find the triangle it falls into
-  // and subdivide that triangle
-  if (steinerPoints.length > 0) {
-    // Build triangle list from current indices
-    const triangles: Array<[number, number, number]> = []
-    for (let i = 0; i < indices.length; i += 3) {
-      triangles.push([indices[i], indices[i + 1], indices[i + 2]])
-    }
-    
-    // Clear and rebuild with steiner point insertion
-    indices.length = 0
-    
-    // For each steiner point, insert it into the mesh
-    for (let si = 0; si < steinerPoints.length; si++) {
-      const sp = steinerPoints[si]
-      const spIdx = contourLen + si
-      
-      // Find containing triangle
-      let containingTriIdx = -1
-      for (let ti = 0; ti < triangles.length; ti++) {
-        const [a, b, c] = triangles[ti]
-        if (isPointInTriangle(sp, allPoints[a], allPoints[b], allPoints[c])) {
-          containingTriIdx = ti
-          break
-        }
-      }
-      
-      if (containingTriIdx !== -1) {
-        // Replace triangle with 3 new triangles
-        const [a, b, c] = triangles[containingTriIdx]
-        triangles.splice(containingTriIdx, 1)
-        triangles.push([a, b, spIdx])
-        triangles.push([b, c, spIdx])
-        triangles.push([c, a, spIdx])
-      }
-    }
-    
-    // Convert triangles back to indices
-    for (const [a, b, c] of triangles) {
-      indices.push(a, b, c)
-    }
-  }
-  
-  return indices
-}
-
-function isPointInTriangle(p: Point2D, a: Point2D, b: Point2D, c: Point2D): boolean {
-  const sign = (p1: Point2D, p2: Point2D, p3: Point2D) =>
-    (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y)
-  
-  const d1 = sign(p, a, b)
-  const d2 = sign(p, b, c)
-  const d3 = sign(p, c, a)
-  
-  const hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0)
-  const hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0)
-  
-  return !(hasNeg && hasPos)
-}
-
-function earClipTriangulate(polygon: Point2D[]): number[] {
-  const n = polygon.length
-  if (n < 3) return []
-  if (n === 3) return [0, 1, 2]
-  
-  const indices: number[] = []
-  
-  // Create linked list of vertex indices
-  const V: number[] = []
-  
-  // Ensure counter-clockwise winding
+// Signed area - BM in reference
+function signedArea(polygon: Point2D[]): number {
   let area = 0
+  const n = polygon.length
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n
     area += polygon[i].x * polygon[j].y
     area -= polygon[j].x * polygon[i].y
   }
-  
-  if (area > 0) {
-    for (let i = 0; i < n; i++) V.push(i)
-  } else {
-    for (let i = 0; i < n; i++) V.push(n - 1 - i)
-  }
-  
-  let nv = n
-  let count = 2 * nv
-  let v = nv - 1
-  
-  while (nv > 2) {
-    if (count-- <= 0) break // Infinite loop protection
-    
-    // Get indices
-    let u = v
-    if (nv <= u) u = 0
-    v = u + 1
-    if (nv <= v) v = 0
-    let w = v + 1
-    if (nv <= w) w = 0
-    
-    if (isEar(polygon, V, u, v, w, nv)) {
-      // Output triangle
-      indices.push(V[u], V[v], V[w])
-      
-      // Remove v from polygon
-      for (let s = v, t = v + 1; t < nv; s++, t++) {
-        V[s] = V[t]
-      }
-      nv--
-      count = 2 * nv
-    }
-  }
-  
-  return indices
+  return area / 2
 }
 
-function isEar(polygon: Point2D[], V: number[], u: number, v: number, w: number, n: number): boolean {
-  const a = polygon[V[u]]
-  const b = polygon[V[v]]
-  const c = polygon[V[w]]
-  
-  // Check for valid triangle (non-degenerate and correct winding)
-  const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
-  if (cross <= 0.0000001) return false // Not convex
-  
-  // Check that no other vertex is inside this triangle
-  for (let p = 0; p < n; p++) {
-    if (p === u || p === v || p === w) continue
-    if (isPointInTriangle(polygon[V[p]], a, b, c)) return false
-  }
-  
-  return true
-}
-
-function simplifyContour(contour: Point2D[], tolerance: number): Point2D[] {
-  if (contour.length <= 4) return contour
-  
-  // Ramer-Douglas-Peucker algorithm
-  function rdp(points: Point2D[], start: number, end: number, result: Point2D[]): void {
-    if (end <= start + 1) return
-    
-    let maxDist = 0
-    let maxIdx = start
-    
-    const x1 = points[start].x, y1 = points[start].y
-    const x2 = points[end].x, y2 = points[end].y
-    
-    for (let i = start + 1; i < end; i++) {
-      const dist = pointToSegmentDistance(points[i].x, points[i].y, x1, y1, x2, y2)
-      if (dist > maxDist) {
-        maxDist = dist
-        maxIdx = i
-      }
-    }
-    
-    if (maxDist > tolerance) {
-      rdp(points, start, maxIdx, result)
-      result.push(points[maxIdx])
-      rdp(points, maxIdx, end, result)
-    }
-  }
-  
-  const result: Point2D[] = [contour[0]]
-  rdp(contour, 0, contour.length - 1, result)
-  result.push(contour[contour.length - 1])
-  
-  return result.length >= 3 ? result : contour
+// Ensure CCW - Up in reference
+function ensureCCW(polygon: Point2D[]): Point2D[] {
+  return signedArea(polygon) < 0 ? [...polygon].reverse() : polygon
 }
 
 // ============================================================================
-// Steiner Points Generation
+// Steiner Point Generation (from reference: HM, GM, Fp)
 // ============================================================================
 
-function generateSteinerPoints(
-  contour: Point2D[],
+// Hexagonal grid interior points - HM in reference
+function genInteriorSteiner(
+  polygon: Point2D[],
   bbox: { minX: number; maxX: number; minY: number; maxY: number },
-  gridResolution: number
+  spacing: number,
+  minEdgeDist: number
 ): Point2D[] {
-  const steinerPoints: Point2D[] = []
-  const width = bbox.maxX - bbox.minX
-  const height = bbox.maxY - bbox.minY
+  const rowHeight = spacing * (Math.sqrt(3) / 2)
+  const points: Point2D[] = []
+  let row = 0
   
-  const stepX = width / gridResolution
-  const stepY = height / gridResolution
-  const minEdgeDist = Math.min(stepX, stepY) * 0.4
-  
-  for (let iy = 1; iy < gridResolution; iy++) {
-    for (let ix = 1; ix < gridResolution; ix++) {
-      const x = bbox.minX + ix * stepX
-      const y = bbox.minY + iy * stepY
+  for (let y = bbox.minY; y <= bbox.maxY; y += rowHeight) {
+    const offset = row % 2 === 1 ? spacing * 0.5 : 0
+    for (let x = bbox.minX + offset; x <= bbox.maxX; x += spacing) {
+      const p = { x, y }
+      if (!isPointInPolygon(p, polygon)) continue
       
-      if (isPointInsideContour(x, y, contour)) {
-        const distToEdge = distanceToContour(x, y, contour)
-        // Only add if far enough from edge to avoid degenerate triangles
-        if (distToEdge > minEdgeDist) {
-          steinerPoints.push({ x, y })
-        }
+      const dist = distToPolygon(p, polygon)
+      if (dist > minEdgeDist) {
+        points.push(p)
+      }
+    }
+    row++
+  }
+  
+  return points
+}
+
+// Compute offset point - Fp in reference
+function computeOffsetPt(p: Point2D, polygon: Point2D[], offset: number): Point2D {
+  const n = polygon.length
+  let nearestDist = Infinity, nx1 = 0, ny1 = 0
+  let secondDist = Infinity, nx2 = 0, ny2 = 0
+  
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n
+    const dist = pointToSegmentDist(p, polygon[i], polygon[j])
+    
+    const dx = polygon[j].x - polygon[i].x
+    const dy = polygon[j].y - polygon[i].y
+    const len = Math.sqrt(dx * dx + dy * dy)
+    const normX = len > 1e-12 ? -dy / len : 0
+    const normY = len > 1e-12 ? dx / len : 0
+    
+    if (dist < nearestDist) {
+      secondDist = nearestDist; nx2 = nx1; ny2 = ny1
+      nearestDist = dist; nx1 = normX; ny1 = normY
+    } else if (dist < secondDist) {
+      secondDist = dist; nx2 = normX; ny2 = normY
+    }
+  }
+  
+  let fx: number, fy: number
+  if (secondDist - nearestDist < offset * 0.5) {
+    fx = nx1 + nx2; fy = ny1 + ny2
+    const len = Math.sqrt(fx * fx + fy * fy)
+    if (len > 1e-12) { fx /= len; fy /= len }
+    else { fx = nx1; fy = ny1 }
+  } else {
+    fx = nx1; fy = ny1
+  }
+  
+  return { x: p.x + fx * offset, y: p.y + fy * offset }
+}
+
+// Boundary offset points - GM in reference
+function genBoundarySteiner(polygon: Point2D[], spacing: number): Point2D[] {
+  const offsets = [0.15, 0.3, 0.45].map(s => s * spacing)
+  const points: Point2D[] = []
+  
+  for (const off of offsets) {
+    for (const p of polygon) {
+      const op = computeOffsetPt(p, polygon, off)
+      if (isPointInPolygon(op, polygon)) {
+        points.push(op)
       }
     }
   }
   
-  return steinerPoints
+  return points
 }
 
 // ============================================================================
-// Laplacian Smoothing
+// Laplacian System (cotangent weights) - zM, Bp, Op in reference
 // ============================================================================
 
-function laplacianSmooth(
-  positions: Float32Array,
-  indices: number[],
-  iterations: number,
-  boundaryVertices: Set<number>
-): void {
-  const vertexCount = positions.length / 3
-  
-  // Build adjacency
-  const neighbors: Set<number>[] = Array.from({ length: vertexCount }, () => new Set())
-  
-  for (let i = 0; i < indices.length; i += 3) {
-    const a = indices[i], b = indices[i + 1], c = indices[i + 2]
-    neighbors[a].add(b).add(c)
-    neighbors[b].add(a).add(c)
-    neighbors[c].add(a).add(b)
-  }
+interface LaplacianSys {
+  n: number
+  adjStart: Uint32Array
+  adjIdx: Uint32Array
+  adjWt: Float64Array
+  diag: Float64Array
+}
 
-  const tempZ = new Float32Array(vertexCount)
-
-  for (let iter = 0; iter < iterations; iter++) {
-    // Copy current Z values
-    for (let v = 0; v < vertexCount; v++) {
-      tempZ[v] = positions[v * 3 + 2]
-    }
+// Build cotangent Laplacian - zM in reference
+function buildLaplacian(pts: Point2D[], tris: number[]): LaplacianSys {
+  const n = pts.length
+  const edgeWt = new Map<number, number>()
+  
+  for (let f = 0; f < tris.length; f += 3) {
+    const i0 = tris[f], i1 = tris[f + 1], i2 = tris[f + 2]
+    const vs = [i0, i1, i2]
     
-    for (let v = 0; v < vertexCount; v++) {
-      if (boundaryVertices.has(v)) continue
+    for (let k = 0; k < 3; k++) {
+      const a = vs[k], b = vs[(k + 1) % 3], c = vs[(k + 2) % 3]
       
-      const neighborSet = neighbors[v]
-      if (neighborSet.size === 0) continue
+      const ax = pts[a].x - pts[c].x, ay = pts[a].y - pts[c].y
+      const bx = pts[b].x - pts[c].x, by = pts[b].y - pts[c].y
       
-      let sumZ = 0
-      for (const n of neighborSet) {
-        sumZ += tempZ[n]
-      }
+      const dot = ax * bx + ay * by
+      const cross = Math.abs(ax * by - ay * bx)
+      const cot = cross > 1e-12 ? dot / cross : 0
       
-      const avgZ = sumZ / neighborSet.size
-      // Blend current with average
-      positions[v * 3 + 2] = positions[v * 3 + 2] * 0.3 + avgZ * 0.7
+      const minI = Math.min(a, b), maxI = Math.max(a, b)
+      const key = minI * n + maxI
+      edgeWt.set(key, (edgeWt.get(key) || 0) + cot * 0.5)
     }
   }
+  
+  const adj: Array<Array<{ j: number; w: number }>> = Array.from({ length: n }, () => [])
+  
+  for (const [key, wt] of edgeWt) {
+    const j = key % n, i = (key - j) / n
+    const w = Math.max(wt, 1e-8)
+    adj[i].push({ j, w }); adj[j].push({ j: i, w })
+  }
+  
+  for (let i = 0; i < n; i++) adj[i].sort((a, b) => a.j - b.j)
+  
+  let total = 0
+  for (let i = 0; i < n; i++) total += adj[i].length
+  
+  const adjStart = new Uint32Array(n + 1)
+  const adjIdx = new Uint32Array(total)
+  const adjWt = new Float64Array(total)
+  const diag = new Float64Array(n)
+  
+  let idx = 0
+  for (let i = 0; i < n; i++) {
+    adjStart[i] = idx
+    let dsum = 0
+    for (const { j, w } of adj[i]) {
+      adjIdx[idx] = j; adjWt[idx] = w; dsum += w; idx++
+    }
+    diag[i] = dsum
+  }
+  adjStart[n] = idx
+  
+  return { n, adjStart, adjIdx, adjWt, diag }
+}
+
+// L * x - Op in reference
+function lapMult(L: LaplacianSys, x: Float64Array, out: Float64Array): void {
+  for (let i = 0; i < L.n; i++) {
+    let v = L.diag[i] * x[i]
+    for (let k = L.adjStart[i]; k < L.adjStart[i + 1]; k++) {
+      v -= L.adjWt[k] * x[L.adjIdx[k]]
+    }
+    out[i] = v
+  }
+}
+
+// Conjugate gradient - Bp in reference
+function conjGrad(L: LaplacianSys, b: Float64Array, x: Float64Array, boundary: Uint8Array, maxIt = 300, tol = 1e-6): void {
+  const n = L.n
+  const r = new Float64Array(n), p = new Float64Array(n)
+  const Ap = new Float64Array(n), z = new Float64Array(n)
+  const prec = new Float64Array(n)
+  
+  for (let i = 0; i < n; i++) prec[i] = L.diag[i] > 1e-12 ? 1 / L.diag[i] : 1
+  
+  lapMult(L, x, Ap)
+  for (let i = 0; i < n; i++) r[i] = boundary[i] ? 0 : b[i] - Ap[i]
+  for (let i = 0; i < n; i++) z[i] = prec[i] * r[i]
+  for (let i = 0; i < n; i++) p[i] = z[i]
+  
+  let rz = 0
+  for (let i = 0; i < n; i++) rz += r[i] * z[i]
+  
+  for (let it = 0; it < maxIt; it++) {
+    lapMult(L, p, Ap)
+    for (let i = 0; i < n; i++) if (boundary[i]) Ap[i] = p[i]
+    
+    let pAp = 0
+    for (let i = 0; i < n; i++) pAp += p[i] * Ap[i]
+    if (Math.abs(pAp) < 1e-30) break
+    
+    const alpha = rz / pAp
+    for (let i = 0; i < n; i++) { x[i] += alpha * p[i]; r[i] -= alpha * Ap[i] }
+    
+    let rNorm = 0
+    for (let i = 0; i < n; i++) rNorm += r[i] * r[i]
+    if (Math.sqrt(rNorm) < tol) break
+    
+    for (let i = 0; i < n; i++) z[i] = prec[i] * r[i]
+    
+    let rzNew = 0
+    for (let i = 0; i < n; i++) rzNew += r[i] * z[i]
+    
+    const beta = rzNew / (rz + 1e-30)
+    rz = rzNew
+    for (let i = 0; i < n; i++) p[i] = z[i] + beta * p[i]
+  }
+}
+
+// Heat diffusion for heights - zp in reference
+function heatDiffusion(pts: Point2D[], tris: number[], boundary: Uint8Array): Float64Array {
+  const n = pts.length
+  const L = buildLaplacian(pts, tris)
+  
+  const u0 = new Float64Array(n)
+  for (let i = 0; i < n; i++) u0[i] = boundary[i] ? 0 : 1
+  
+  const u1 = new Float64Array(n)
+  conjGrad(L, u0, u1, boundary)
+  
+  const u2 = new Float64Array(n)
+  conjGrad(L, u1, u2, boundary)
+  
+  let maxV = 0
+  for (let i = 0; i < n; i++) if (u2[i] > maxV) maxV = u2[i]
+  
+  const res = new Float64Array(n)
+  if (maxV > 1e-12) {
+    for (let i = 0; i < n; i++) res[i] = boundary[i] ? 1 : 1 - u2[i] / maxV
+  } else {
+    for (let i = 0; i < n; i++) res[i] = boundary[i] ? 1 : 0
+  }
+  
+  return res
+}
+
+// ============================================================================
+// Height Profile - WM in reference
+// ============================================================================
+
+const POW_A = 2.47, POW_B = 0.43
+
+function smoothProfile(t: number): number {
+  const c = Math.max(0, Math.min(1, t))
+  return Math.pow(Math.max(0, 1 - Math.pow(c, POW_A)), POW_B)
+}
+
+// Percentile - XM in reference
+function percentile(arr: number[], p: number): number {
+  if (!arr.length) return 0
+  const s = arr.slice().sort((a, b) => a - b)
+  const idx = Math.max(0, Math.min(s.length - 1, (s.length - 1) * p))
+  const lo = Math.floor(idx), hi = Math.ceil(idx)
+  if (lo === hi) return s[lo]
+  return s[lo] + (s[hi] - s[lo]) * (idx - lo)
 }
 
 // ============================================================================
@@ -389,184 +388,231 @@ export function createInflatedGeometry(
   if (contour.length < 3) return null
   
   try {
-    // Simplify contour slightly to reduce noise
-    const bbox = getBoundingBox(contour)
-    const diagonal = Math.sqrt((bbox.maxX - bbox.minX) ** 2 + (bbox.maxY - bbox.minY) ** 2)
-    const tolerance = diagonal * 0.001
+    // Ensure CCW
+    const polygon = ensureCCW(contour)
+    const bbox = getBBox(polygon)
+    const width = bbox.maxX - bbox.minX
+    const height = bbox.maxY - bbox.minY
     
-    let simplifiedContour = simplifyContour(contour, tolerance)
-    if (simplifiedContour.length < 3) simplifiedContour = contour
+    if (width <= 0 || height <= 0) return null
     
-    // Ensure minimum number of points
-    const minPoints = 10
-    if (simplifiedContour.length < minPoints && contour.length >= minPoints) {
-      simplifiedContour = contour
+    // Calculate spacing from area
+    const area = Math.abs(signedArea(polygon))
+    const minDim = Math.min(width, height) || 1
+    const maxDim = Math.max(width, height) || 1
+    const spacing = Math.sqrt(area * minDim / maxDim)
+    
+    // Generate Steiner points
+    const boundarySteiner = genBoundarySteiner(polygon, spacing)
+    const interiorSteiner = genInteriorSteiner(polygon, bbox, spacing, spacing * 0.55)
+    
+    // Combine: polygon + boundary steiner + interior steiner
+    const allPts = [...polygon, ...boundarySteiner, ...interiorSteiner]
+    const numPts = allPts.length
+    const numBoundary = polygon.length
+    
+    // Mark boundary
+    const isBoundary = new Uint8Array(numPts)
+    for (let i = 0; i < numBoundary; i++) isBoundary[i] = 1
+    
+    // Triangulate with Delaunator
+    const coords = new Float64Array(numPts * 2)
+    for (let i = 0; i < numPts; i++) {
+      coords[i * 2] = allPts[i].x
+      coords[i * 2 + 1] = allPts[i].y
     }
     
-    // Generate Steiner points for interior detail
-    const simpleBbox = getBoundingBox(simplifiedContour)
-    const steinerPoints = generateSteinerPoints(simplifiedContour, simpleBbox, opts.gridResolution)
+    const del = new Delaunator(coords)
     
-    // Combine contour + steiner points for triangulation
-    const allPoints: Point2D[] = [...simplifiedContour, ...steinerPoints]
+    // Filter triangles inside polygon
+    const tris: number[] = []
+    const triArr = del.triangles
     
-    // Triangulate using custom ear-clipping algorithm
-    const triangleIndices = triangulatePolygon(simplifiedContour, steinerPoints)
-    
-    if (triangleIndices.length < 3) return null
-    
-    // Calculate max distance for normalization
-    let maxDistInside = 0
-    for (const p of allPoints) {
-      if (isPointInsideContour(p.x, p.y, simplifiedContour)) {
-        const dist = distanceToContour(p.x, p.y, simplifiedContour)
-        if (dist > maxDistInside) maxDistInside = dist
-      }
-    }
-    if (maxDistInside <= 0) maxDistInside = 1
-    
-    // Inflation scale
-    const volumeScale = (opts.amount / 100) * maxDistInside * 0.5
-    
-    // Create positions with Z displacement
-    const positions: number[] = []
-    const uvs: number[] = []
-    const width = simpleBbox.maxX - simpleBbox.minX
-    const height = simpleBbox.maxY - simpleBbox.minY
-    const boundaryVertices = new Set<number>()
-    
-    for (let i = 0; i < allPoints.length; i++) {
-      const p = allPoints[i]
+    for (let i = 0; i < triArr.length; i += 3) {
+      const a = triArr[i], b = triArr[i + 1], c = triArr[i + 2]
+      const cx = (allPts[a].x + allPts[b].x + allPts[c].x) / 3
+      const cy = (allPts[a].y + allPts[b].y + allPts[c].y) / 3
       
-      // Calculate height based on distance to boundary
-      let z = 0
-      if (isPointInsideContour(p.x, p.y, simplifiedContour)) {
-        const dist = distanceToContour(p.x, p.y, simplifiedContour)
-        const normalizedDist = Math.min(dist / maxDistInside, 1)
-        // Smooth balloon profile: sin^2 curve
-        const t = Math.sin(normalizedDist * Math.PI * 0.5)
-        z = volumeScale * t * t
-      }
-      
-      positions.push(p.x, p.y, z)
-      uvs.push(
-        (p.x - simpleBbox.minX) / width,
-        (p.y - simpleBbox.minY) / height
-      )
-      
-      // Mark contour vertices as boundary
-      if (i < simplifiedContour.length) {
-        boundaryVertices.add(i)
+      if (isPointInPolygon({ x: cx, y: cy }, polygon)) {
+        tris.push(a, b, c)
       }
     }
     
-    // Apply Laplacian smoothing
-    const posArray = new Float32Array(positions)
-    laplacianSmooth(posArray, triangleIndices, opts.smoothingIterations, boundaryVertices)
+    if (tris.length < 3) return null
     
-    // Prepare final geometry arrays
-    const finalPositions: number[] = []
-    const finalUvs: number[] = []
-    const finalIndices: number[] = []
+    // Compute distances to boundary
+    const dists = new Float64Array(numPts)
+    const nonZeroDists: number[] = []
     
-    // Copy front face
-    for (let i = 0; i < posArray.length; i++) {
-      finalPositions.push(posArray[i])
-    }
-    for (const uv of uvs) {
-      finalUvs.push(uv)
-    }
-    for (const idx of triangleIndices) {
-      finalIndices.push(idx)
+    for (let i = 0; i < numPts; i++) {
+      const d = distToPolygon(allPts[i], polygon)
+      dists[i] = d
+      if (d > 1e-6) nonZeroDists.push(d)
     }
     
-    const frontVertCount = posArray.length / 3
+    // Reference distance (85th percentile)
+    const refDist = Math.max(1e-6, percentile(nonZeroDists, 0.85))
+    const maxH = refDist * 3
+    const inflateScale = Math.max(spacing, maxH)
     
+    // Heat diffusion heights
+    const heat = heatDiffusion(allPts, tris, isBoundary)
+    
+    // Final heights
+    const heightScale = (opts.amount / 100) * inflateScale * 0.3125
+    const heights = new Float64Array(numPts)
+    
+    for (let i = 0; i < numPts; i++) {
+      const normDist = Math.max(0, Math.min(1.5, dists[i] / refDist))
+      const distFactor = 0.6 + 0.4 * Math.pow(normDist, 0.35)
+      heights[i] = smoothProfile(heat[i]) * heightScale * distFactor
+    }
+    
+    // Edge parameters
+    const edgeH = (opts.amount / 200) * spacing * 0.15
+    const edgeRings = Math.max(6, Math.ceil(opts.amount / 10))
+    
+    // Build geometry
     if (opts.doubleSided) {
-      // Add back face (mirrored Z)
-      for (let i = 0; i < posArray.length; i += 3) {
-        finalPositions.push(posArray[i], posArray[i + 1], -posArray[i + 2])
-      }
-      for (const uv of uvs) {
-        finalUvs.push(uv)
-      }
-      // Back face with reversed winding
-      for (let i = 0; i < triangleIndices.length; i += 3) {
-        finalIndices.push(
-          triangleIndices[i] + frontVertCount,
-          triangleIndices[i + 2] + frontVertCount,
-          triangleIndices[i + 1] + frontVertCount
-        )
+      const totalVerts = numPts * 2 + edgeRings * numBoundary
+      const pos = new Float32Array(totalVerts * 3)
+      
+      // Front vertices (+Z)
+      for (let i = 0; i < numPts; i++) {
+        const h = heights[i] + edgeH
+        pos[i * 3] = allPts[i].x
+        pos[i * 3 + 1] = allPts[i].y
+        pos[i * 3 + 2] = h
       }
       
-      // Edge strip connecting front and back along contour
-      const contourLen = simplifiedContour.length
-      for (let i = 0; i < contourLen; i++) {
-        const nextI = (i + 1) % contourLen
-        
-        const frontCurr = i
-        const frontNext = nextI
-        const backCurr = i + frontVertCount
-        const backNext = nextI + frontVertCount
-        
-        // Two triangles per edge segment
-        finalIndices.push(frontCurr, frontNext, backNext)
-        finalIndices.push(frontCurr, backNext, backCurr)
+      // Back vertices (-Z)
+      for (let i = 0; i < numPts; i++) {
+        const h = heights[i] + edgeH
+        const idx = (numPts + i) * 3
+        pos[idx] = allPts[i].x
+        pos[idx + 1] = allPts[i].y
+        pos[idx + 2] = -h
       }
+      
+      // Edge ring vertices
+      const ringStart = numPts * 2
+      for (let r = 0; r < edgeRings; r++) {
+        const theta = Math.PI * (r + 1) / (edgeRings + 1)
+        const ringZ = edgeH * Math.cos(theta)
+        
+        for (let i = 0; i < numBoundary; i++) {
+          const idx = (ringStart + r * numBoundary + i) * 3
+          pos[idx] = polygon[i].x
+          pos[idx + 1] = polygon[i].y
+          pos[idx + 2] = ringZ
+        }
+      }
+      
+      // Build indices
+      const indices: number[] = []
+      
+      // Front face (reversed winding)
+      for (let i = 0; i < tris.length; i += 3) {
+        indices.push(tris[i + 2], tris[i + 1], tris[i])
+      }
+      
+      // Back face
+      for (let i = 0; i < tris.length; i += 3) {
+        indices.push(tris[i] + numPts, tris[i + 1] + numPts, tris[i + 2] + numPts)
+      }
+      
+      // Front to first ring
+      for (let i = 0; i < numBoundary; i++) {
+        const next = (i + 1) % numBoundary
+        indices.push(i, ringStart + i, ringStart + next)
+        indices.push(i, ringStart + next, next)
+      }
+      
+      // Between rings
+      for (let r = 0; r < edgeRings - 1; r++) {
+        const currRing = ringStart + r * numBoundary
+        const nextRing = ringStart + (r + 1) * numBoundary
+        
+        for (let i = 0; i < numBoundary; i++) {
+          const next = (i + 1) % numBoundary
+          indices.push(currRing + i, nextRing + i, nextRing + next)
+          indices.push(currRing + i, nextRing + next, currRing + next)
+        }
+      }
+      
+      // Last ring to back
+      const lastRing = ringStart + (edgeRings - 1) * numBoundary
+      for (let i = 0; i < numBoundary; i++) {
+        const next = (i + 1) % numBoundary
+        indices.push(lastRing + i, numPts + i, numPts + next)
+        indices.push(lastRing + i, numPts + next, lastRing + next)
+      }
+      
+      // Create geometry
+      const geom = new THREE.BufferGeometry()
+      geom.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+      geom.setIndex(indices)
+      geom.computeVertexNormals()
+      
+      // UVs
+      const uvs = new Float32Array(totalVerts * 2)
+      for (let i = 0; i < totalVerts; i++) {
+        uvs[i * 2] = (pos[i * 3] - bbox.minX) / width
+        uvs[i * 2 + 1] = (pos[i * 3 + 1] - bbox.minY) / height
+      }
+      geom.setAttribute('uv', new THREE.BufferAttribute(uvs, 2))
+      
+      geom.center()
+      return geom
+    } else {
+      // Single sided
+      const pos = new Float32Array(numPts * 3)
+      
+      for (let i = 0; i < numPts; i++) {
+        pos[i * 3] = allPts[i].x
+        pos[i * 3 + 1] = allPts[i].y
+        pos[i * 3 + 2] = heights[i]
+      }
+      
+      const geom = new THREE.BufferGeometry()
+      geom.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+      geom.setIndex(tris)
+      geom.computeVertexNormals()
+      
+      const uvs = new Float32Array(numPts * 2)
+      for (let i = 0; i < numPts; i++) {
+        uvs[i * 2] = (allPts[i].x - bbox.minX) / width
+        uvs[i * 2 + 1] = (allPts[i].y - bbox.minY) / height
+      }
+      geom.setAttribute('uv', new THREE.BufferAttribute(uvs, 2))
+      
+      geom.center()
+      return geom
     }
-    
-    // Create BufferGeometry
-    const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(finalPositions, 3))
-    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(finalUvs, 2))
-    geometry.setIndex(finalIndices)
-    geometry.computeVertexNormals()
-    
-    // Center the geometry
-    geometry.center()
-    
-    return geometry
-    
-  } catch (error) {
-    console.error('Error creating inflated geometry:', error)
+  } catch (err) {
+    console.error('[inflate] error:', err)
     return null
   }
 }
 
 // ============================================================================
-// Export Utilities
+// Utilities
 // ============================================================================
 
 export function ensureClosedContour(points: Point2D[]): Point2D[] {
   if (points.length < 2) return points
-  
-  const first = points[0]
-  const last = points[points.length - 1]
-  const dist = Math.sqrt((first.x - last.x) ** 2 + (first.y - last.y) ** 2)
-  
-  if (dist > 0.001) {
-    return [...points, { x: first.x, y: first.y }]
-  }
-  
-  return points
+  const first = points[0], last = points[points.length - 1]
+  const d = Math.sqrt((first.x - last.x) ** 2 + (first.y - last.y) ** 2)
+  return d > 0.001 ? [...points, { x: first.x, y: first.y }] : points
 }
 
-export function normalizeContour(points: Point2D[], targetSize: number = 100): Point2D[] {
+export function normalizeContour(points: Point2D[], targetSize = 100): Point2D[] {
   if (points.length < 2) return points
-  
-  const bbox = getBoundingBox(points)
-  const width = bbox.maxX - bbox.minX
-  const height = bbox.maxY - bbox.minY
-  const maxDim = Math.max(width, height)
-  
-  if (maxDim === 0) return points
-  
-  const scale = targetSize / maxDim
-  const centerX = (bbox.minX + bbox.maxX) / 2
-  const centerY = (bbox.minY + bbox.maxY) / 2
-  
-  return points.map(p => ({
-    x: (p.x - centerX) * scale,
-    y: (p.y - centerY) * scale,
-  }))
+  const bbox = getBBox(points)
+  const w = bbox.maxX - bbox.minX, h = bbox.maxY - bbox.minY
+  const maxD = Math.max(w, h)
+  if (maxD === 0) return points
+  const scale = targetSize / maxD
+  const cx = (bbox.minX + bbox.maxX) / 2, cy = (bbox.minY + bbox.maxY) / 2
+  return points.map(p => ({ x: (p.x - cx) * scale, y: (p.y - cy) * scale }))
 }

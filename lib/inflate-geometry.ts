@@ -40,7 +40,7 @@ export interface InflateOptions {
 const DEFAULT_OPTIONS: InflateOptions = {
   amount: 100,
   steinerPoints: 200,
-  smoothingIterations: 3,
+  smoothingIterations: 6,  // Increased from 3 for smoother results
   doubleSided: true,
   gridResolution: 20,
 }
@@ -364,19 +364,22 @@ function generateSteinerPoints(
   const steinerPoints: Point2D[] = []
   const width = bbox.maxX - bbox.minX
   const height = bbox.maxY - bbox.minY
-  const stepX = width / gridResolution
-  const stepY = height / gridResolution
+  
+  // Increase grid density for smoother surface - multiply by 1.5
+  const denseGridResolution = Math.max(gridResolution, Math.ceil(gridResolution * 1.5))
+  const stepX = width / denseGridResolution
+  const stepY = height / denseGridResolution
 
-  // Add grid points inside contour
-  for (let iy = 1; iy < gridResolution; iy++) {
-    for (let ix = 1; ix < gridResolution; ix++) {
+  // Add grid points inside contour with better distribution
+  for (let iy = 1; iy < denseGridResolution; iy++) {
+    for (let ix = 1; ix < denseGridResolution; ix++) {
       const x = bbox.minX + ix * stepX
       const y = bbox.minY + iy * stepY
       
       if (isPointInsideContour(x, y, contour)) {
         // Check if not too close to contour edge
         const distToEdge = distanceToContour(x, y, contour)
-        const minDist = Math.min(stepX, stepY) * 0.3
+        const minDist = Math.min(stepX, stepY) * 0.25  // Reduced from 0.3 to allow points closer to edge
         
         if (distToEdge > minDist) {
           steinerPoints.push({ x, y })
@@ -404,10 +407,12 @@ function computeInflatedHeight(
   const dist = distanceToContour(px, py, contour)
   const normalizedDist = Math.min(dist / maxDist, 1)
   
-  // Hemisphere profile for smooth balloon shape
-  const height = Math.sqrt(Math.max(0, 1 - (1 - normalizedDist) ** 2))
+  // Smooth cubic profile for better balloon shape (smoother than hemisphere)
+  // Uses: f(t) = sin(t * PI/2)^2 for very smooth transition
+  const smoothT = Math.sin(normalizedDist * Math.PI * 0.5)
+  const height = smoothT * smoothT
   
-  return height * inflateAmount * maxDist * 0.5
+  return height * inflateAmount * maxDist * 0.4
 }
 
 function laplacianSmooth(
@@ -418,7 +423,7 @@ function laplacianSmooth(
 ): void {
   const vertexCount = positions.length / 3
   
-  // Build adjacency list
+  // Build adjacency list with degree counting
   const neighbors: Set<number>[] = Array.from({ length: vertexCount }, () => new Set())
   
   for (let i = 0; i < indices.length; i += 3) {
@@ -432,6 +437,7 @@ function laplacianSmooth(
 
   const tempPositions = new Float32Array(positions.length)
 
+  // Perform smoothing with multiple passes for smoother result
   for (let iter = 0; iter < iterations; iter++) {
     tempPositions.set(positions)
     
@@ -451,8 +457,15 @@ function laplacianSmooth(
       }
       
       const count = neighborSet.size
-      // Only smooth Z (height) to preserve contour shape
-      tempPositions[v * 3 + 2] = positions[v * 3 + 2] * 0.5 + (sumZ / count) * 0.5
+      const invCount = 1.0 / count
+      
+      // Smooth factor - interpolate between current and neighbor average
+      const smoothFactor = 0.6 // Higher = more smoothing
+      
+      // Smooth all coordinates for better results
+      tempPositions[v * 3] = positions[v * 3] * (1 - smoothFactor) + (sumX * invCount) * smoothFactor
+      tempPositions[v * 3 + 1] = positions[v * 3 + 1] * (1 - smoothFactor) + (sumY * invCount) * smoothFactor
+      tempPositions[v * 3 + 2] = positions[v * 3 + 2] * (1 - smoothFactor) + (sumZ * invCount) * smoothFactor
     }
     
     positions.set(tempPositions)

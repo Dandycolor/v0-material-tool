@@ -147,10 +147,20 @@ export function InflateCanvas({
     const pos = getMousePos(e)
     const last = currentPath[currentPath.length - 1]
     
-    // Only add point if moved enough distance
+    // Only add point if moved enough distance (reduced from 3 to 2 for smoother curves)
     const dist = Math.sqrt((pos.x - last.x) ** 2 + (pos.y - last.y) ** 2)
-    if (dist > 3) {
-      setCurrentPath(prev => [...prev, pos])
+    if (dist > 2) {
+      // Interpolate points between last and current for smoother path
+      const steps = Math.ceil(dist / 1.5) // More interpolation steps
+      let newPoints: Point2D[] = []
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps
+        newPoints.push({
+          x: last.x + (pos.x - last.x) * t,
+          y: last.y + (pos.y - last.y) * t,
+        })
+      }
+      setCurrentPath(prev => [...prev, ...newPoints])
     }
   }
 
@@ -218,8 +228,18 @@ export function InflateCanvas({
     
     const last = currentPath[currentPath.length - 1]
     const dist = Math.sqrt((pos.x - last.x) ** 2 + (pos.y - last.y) ** 2)
-    if (dist > 3) {
-      setCurrentPath(prev => [...prev, pos])
+    if (dist > 2) {
+      // Interpolate for smoother touch drawing
+      const steps = Math.ceil(dist / 1.5)
+      let newPoints: Point2D[] = []
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps
+        newPoints.push({
+          x: last.x + (pos.x - last.x) * t,
+          y: last.y + (pos.y - last.y) * t,
+        })
+      }
+      setCurrentPath(prev => [...prev, ...newPoints])
     }
   }
 

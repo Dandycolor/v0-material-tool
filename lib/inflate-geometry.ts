@@ -199,6 +199,27 @@ export function inflatePolygon(polygon: Point2D[], options: Partial<InflateOptio
     heights.set(newHeights)
   }
   
+  // Find boundary vertices (vertices on polygon edge)
+  const boundaryIndices: number[] = []
+  const boundaryThreshold = step * 1.5
+  for (let i = 0; i < vertices.length; i++) {
+    if (distanceToPolygonEdge(vertices[i], polygon) < boundaryThreshold) {
+      boundaryIndices.push(i)
+    }
+  }
+  
+  // Sort boundary vertices by angle from centroid
+  const cx = vertices.reduce((s, v) => s + v.x, 0) / vertices.length
+  const cy = vertices.reduce((s, v) => s + v.y, 0) / vertices.length
+  boundaryIndices.sort((a, b) => {
+    const angleA = Math.atan2(vertices[a].y - cy, vertices[a].x - cx)
+    const angleB = Math.atan2(vertices[b].y - cy, vertices[b].x - cx)
+    return angleA - angleB
+  })
+  
+  // Normalize scale - fit into [-1, 1] range
+  const scale = 2 / size
+  
   // Build geometry
   const numVerts = vertices.length
   const positions: number[] = []
@@ -206,7 +227,10 @@ export function inflatePolygon(polygon: Point2D[], options: Partial<InflateOptio
   
   // Front face (+Z)
   for (let i = 0; i < numVerts; i++) {
-    positions.push(vertices[i].x, vertices[i].y, heights[i])
+    const x = (vertices[i].x - bounds.minX - size * 0.5) * scale
+    const y = (vertices[i].y - bounds.minY - size * 0.5) * scale
+    const z = heights[i] * scale
+    positions.push(x, y, z)
   }
   
   // Front triangles
@@ -217,7 +241,10 @@ export function inflatePolygon(polygon: Point2D[], options: Partial<InflateOptio
   if (opts.doubleSided) {
     // Back face (-Z)
     for (let i = 0; i < numVerts; i++) {
-      positions.push(vertices[i].x, vertices[i].y, -heights[i])
+      const x = (vertices[i].x - bounds.minX - size * 0.5) * scale
+      const y = (vertices[i].y - bounds.minY - size * 0.5) * scale
+      const z = -heights[i] * scale
+      positions.push(x, y, z)
     }
     
     // Back triangles (reversed winding)
@@ -228,6 +255,61 @@ export function inflatePolygon(polygon: Point2D[], options: Partial<InflateOptio
         triangles[i + 1] + numVerts
       )
     }
+    
+    // Edge rings to connect front and back smoothly
+    const edgeRings = 4
+    const edgeVertStart = positions.length / 3
+    
+    // Create edge ring vertices
+    for (let ring = 0; ring < edgeRings; ring++) {
+      const t = (ring + 1) / (edgeRings + 1)
+      const theta = Math.PI * t
+      
+      for (let i = 0; i < boundaryIndices.length; i++) {
+        const bi = boundaryIndices[i]
+        const x = (vertices[bi].x - bounds.minX - size * 0.5) * scale
+        const y = (vertices[bi].y - bounds.minY - size * 0.5) * scale
+        const frontZ = heights[bi] * scale
+        const z = frontZ * Math.cos(theta)
+        positions.push(x, y, z)
+      }
+    }
+    
+    // Connect front to first ring
+    const numBoundary = boundaryIndices.length
+    for (let i = 0; i < numBoundary; i++) {
+      const next = (i + 1) % numBoundary
+      const frontCurr = boundaryIndices[i]
+      const frontNext = boundaryIndices[next]
+      const ringCurr = edgeVertStart + i
+      const ringNext = edgeVertStart + next
+      
+      indices.push(frontCurr, ringCurr, frontNext)
+      indices.push(frontNext, ringCurr, ringNext)
+    }
+    
+    // Connect rings to each other
+    for (let ring = 0; ring < edgeRings - 1; ring++) {
+      const ringStart = edgeVertStart + ring * numBoundary
+      const nextRingStart = edgeVertStart + (ring + 1) * numBoundary
+      
+      for (let i = 0; i < numBoundary; i++) {
+        const next = (i + 1) % numBoundary
+        indices.push(ringStart + i, nextRingStart + i, ringStart + next)
+        indices.push(ringStart + next, nextRingStart + i, nextRingStart + next)
+      }
+    }
+    
+    // Connect last ring to back
+    const lastRingStart = edgeVertStart + (edgeRings - 1) * numBoundary
+    for (let i = 0; i < numBoundary; i++) {
+      const next = (i + 1) % numBoundary
+      const backCurr = boundaryIndices[i] + numVerts
+      const backNext = boundaryIndices[next] + numVerts
+      
+      indices.push(lastRingStart + i, backCurr, lastRingStart + next)
+      indices.push(lastRingStart + next, backCurr, backNext)
+    }
   }
   
   // Create geometry
@@ -235,12 +317,6 @@ export function inflatePolygon(polygon: Point2D[], options: Partial<InflateOptio
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
   geometry.setIndex(indices)
   geometry.computeVertexNormals()
-  
-  // Center geometry
-  geometry.computeBoundingBox()
-  const center = new THREE.Vector3()
-  geometry.boundingBox!.getCenter(center)
-  geometry.translate(-center.x, -center.y, -center.z)
   
   return geometry
 }

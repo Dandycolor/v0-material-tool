@@ -306,35 +306,69 @@ function createGridMesh(
     boundaryVertices.add(contourVertexStart + Math.floor(i / contourSampleStep))
   }
   
-  // Create triangles connecting grid boundary to contour
-  // For each contour vertex, find nearest grid boundary vertex and connect
+  // Create triangles connecting grid boundary to contour using improved algorithm
   const gridBoundaryArray = Array.from(boundaryVertices).filter(v => v < contourVertexStart)
   const contourVertCount = Math.ceil(contour.length / contourSampleStep)
   
+  // For each contour edge, create triangles to fill the gap to grid
   for (let ci = 0; ci < contourVertCount; ci++) {
     const contourIdx = contourVertexStart + ci
     const nextContourIdx = contourVertexStart + ((ci + 1) % contourVertCount)
     
-    const cx = positions[contourIdx * 3]
-    const cy = positions[contourIdx * 3 + 1]
+    const cx1 = positions[contourIdx * 3]
+    const cy1 = positions[contourIdx * 3 + 1]
+    const cx2 = positions[nextContourIdx * 3]
+    const cy2 = positions[nextContourIdx * 3 + 1]
     
-    // Find nearest grid boundary vertex
+    // Find all grid boundary vertices near this contour edge
+    const edgeMidX = (cx1 + cx2) / 2
+    const edgeMidY = (cy1 + cy2) / 2
+    const searchRadius = Math.max(stepX, stepY) * 3
+    
+    // Find nearest grid vertex to this edge
     let nearestGridVert = -1
     let nearestDist = Infinity
     
     for (const gridVert of gridBoundaryArray) {
       const gx = positions[gridVert * 3]
       const gy = positions[gridVert * 3 + 1]
-      const dist = (gx - cx) ** 2 + (gy - cy) ** 2
-      if (dist < nearestDist) {
+      const dist = (gx - edgeMidX) ** 2 + (gy - edgeMidY) ** 2
+      if (dist < nearestDist && dist < searchRadius * searchRadius) {
         nearestDist = dist
         nearestGridVert = gridVert
       }
     }
     
-    if (nearestGridVert !== -1 && nearestDist < (stepX * stepX + stepY * stepY) * 4) {
-      // Create triangle connecting contour to grid
+    if (nearestGridVert !== -1) {
+      // Create triangle: contour edge + nearest grid vertex
       indices.push(contourIdx, nextContourIdx, nearestGridVert)
+    }
+  }
+  
+  // Also create triangles from grid boundary to nearby contour vertices
+  for (const gridVert of gridBoundaryArray) {
+    const gx = positions[gridVert * 3]
+    const gy = positions[gridVert * 3 + 1]
+    
+    // Find the two nearest contour vertices
+    const contourDists: Array<{idx: number; dist: number}> = []
+    
+    for (let ci = 0; ci < contourVertCount; ci++) {
+      const contourIdx = contourVertexStart + ci
+      const cx = positions[contourIdx * 3]
+      const cy = positions[contourIdx * 3 + 1]
+      const dist = (gx - cx) ** 2 + (gy - cy) ** 2
+      contourDists.push({ idx: contourIdx, dist })
+    }
+    
+    contourDists.sort((a, b) => a.dist - b.dist)
+    
+    // Connect to two nearest contour vertices if they're close enough
+    if (contourDists.length >= 2) {
+      const maxDist = (stepX * stepX + stepY * stepY) * 6
+      if (contourDists[0].dist < maxDist && contourDists[1].dist < maxDist) {
+        indices.push(gridVert, contourDists[0].idx, contourDists[1].idx)
+      }
     }
   }
   

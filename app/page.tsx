@@ -861,7 +861,7 @@ export default function MaterialTool() {
     inflateVolume: 100,
     inflateBothSides: true,
     inflateSmoothing: 3,
-    inflateGridResolution: 80,
+    inflateGridResolution: 150,
   })
 
   const [materialSettings, setMaterialSettings] = useState<MaterialSettings>({
@@ -1718,14 +1718,14 @@ export default function MaterialTool() {
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <Label className="text-xs text-zinc-500">Grid Resolution</Label>
-                            <span className="text-xs text-white font-mono">{geometrySettings.inflateGridResolution ?? 80}</span>
+                            <span className="text-xs text-white font-mono">{geometrySettings.inflateGridResolution ?? 150}</span>
                           </div>
                           <Slider
-                            value={[geometrySettings.inflateGridResolution ?? 80]}
+                            value={[geometrySettings.inflateGridResolution ?? 150]}
                             onValueChange={([value]) => setGeometrySettings({ ...geometrySettings, inflateGridResolution: value })}
-                            min={20}
-                            max={120}
-                            step={4}
+                            min={40}
+                            max={240}
+                            step={5}
                             className="w-full"
                           />
                           <p className="text-xs text-zinc-500">Internal mesh density</p>

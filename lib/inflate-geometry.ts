@@ -281,6 +281,16 @@ export function inflatePolygon(polygon: Point2D[], options: Partial<InflateOptio
   geometry.setIndex(indices)
   geometry.computeVertexNormals()
   
+  // Flip all normals to point outward (fix inside-out rendering)
+  const normals = geometry.getAttribute('normal')
+  if (normals) {
+    const arr = normals.array as Float32Array
+    for (let i = 0; i < arr.length; i++) {
+      arr[i] = -arr[i]
+    }
+    normals.needsUpdate = true
+  }
+  
   return geometry
 }
 

@@ -36,7 +36,7 @@ const DEFAULT_OPTIONS: InflateOptions = {
   steinerPoints: 200,
   smoothingIterations: 5,
   doubleSided: true,
-  gridResolution: 25,
+  gridResolution: 50,  // Increased from 25 for smoother surfaces
 }
 
 // ============================================================================
@@ -386,7 +386,7 @@ export function createInflatedGeometry(
     // Simplify contour to remove noise but keep shape
     const bbox = getBoundingBox(contour)
     const diagonal = Math.sqrt((bbox.maxX - bbox.minX) ** 2 + (bbox.maxY - bbox.minY) ** 2)
-    const tolerance = diagonal * 0.005 // 0.5% of diagonal
+    const tolerance = diagonal * 0.002 // Reduced from 0.005 to preserve more details
     
     let simplifiedContour = simplifyContour(contour, tolerance)
     
@@ -456,25 +456,11 @@ export function createInflatedGeometry(
       }
       
       // Add edge strip to connect front and back along the original contour
-      // Use contour points directly instead of trying to find boundary vertices
+      // Use full contour resolution for detailed edges
       const edgeVertStart = finalPositions.length / 3
       
-      // Sample contour at regular intervals for edge strip
-      const edgeResolution = Math.min(simplifiedContour.length, 128)
-      const edgeStep = Math.max(1, Math.floor(simplifiedContour.length / edgeResolution))
-      
-      const edgePoints: Point2D[] = []
-      for (let i = 0; i < simplifiedContour.length; i += edgeStep) {
-        edgePoints.push(simplifiedContour[i])
-      }
-      // Ensure we include the last point for a closed loop
-      if (edgePoints.length > 0 && simplifiedContour.length > 0) {
-        const last = simplifiedContour[simplifiedContour.length - 1]
-        const first = edgePoints[0]
-        if (Math.abs(last.x - first.x) > 0.01 || Math.abs(last.y - first.y) > 0.01) {
-          edgePoints.push(last)
-        }
-      }
+      // Use original contour with maximum resolution for crisp edges
+      const edgePoints: Point2D[] = contour  // Use original, not simplified
       
       // Create edge vertices along contour (at z=0, the "pinch" point)
       for (let i = 0; i < edgePoints.length; i++) {

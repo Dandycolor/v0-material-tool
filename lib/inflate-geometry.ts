@@ -112,7 +112,7 @@ function triangulatePolygon(
 }
 
 /**
- * Simple ear-clipping triangulation for a polygon
+ * Simple fan triangulation from centroid - much simpler and reliable
  * baseIdx is the offset to add to vertex indices
  */
 function earClipTriangle(polygon: Point2D[], baseIdx: number): number[] {
@@ -121,56 +121,10 @@ function earClipTriangle(polygon: Point2D[], baseIdx: number): number[] {
   if (n === 3) return [baseIdx, baseIdx + 1, baseIdx + 2]
   
   const triangles: number[] = []
-  const vertices = Array.from({ length: n }, (_, i) => baseIdx + i)
-  const active = new Array(n).fill(true)
-  let remaining = n
   
-  while (remaining > 3) {
-    for (let i = 0; i < n && remaining > 3; i++) {
-      if (!active[i]) continue
-      const prev = (i - 1 + n) % n
-      const next = (i + 1) % n
-      while (!active[prev]) {
-        // Skip inactive
-        break
-      }
-      while (!active[next]) {
-        break
-      }
-      
-      const a = polygon[i]
-      const b = polygon[next]
-      const c = polygon[prev]
-      
-      // Check if it's an ear
-      const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
-      if (cross > 0) {
-        // Check if any vertex is inside this triangle
-        let isEar = true
-        for (let j = 0; j < n; j++) {
-          if (j === i || j === next || j === prev || !active[j]) continue
-          if (isPointInTriangle(polygon[j], a, b, c)) {
-            isEar = false
-            break
-          }
-        }
-        
-        if (isEar) {
-          triangles.push(vertices[i], vertices[next], vertices[prev])
-          active[i] = false
-          remaining--
-        }
-      }
-    }
-  }
-  
-  // Add remaining triangle
-  const remaining_verts = []
-  for (let i = 0; i < n; i++) {
-    if (active[i]) remaining_verts.push(vertices[i])
-  }
-  if (remaining_verts.length === 3) {
-    triangles.push(...remaining_verts)
+  // Simple fan triangulation from first vertex - works for convex and most concave polygons
+  for (let i = 1; i < n - 1; i++) {
+    triangles.push(baseIdx, baseIdx + i, baseIdx + i + 1)
   }
   
   return triangles

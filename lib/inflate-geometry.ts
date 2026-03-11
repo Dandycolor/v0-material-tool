@@ -238,32 +238,36 @@ export function inflatePolygon(
     }
 
     // ── Stitch boundary edges ────────────────────────────────────────────────
-    // A boundary edge belongs to exactly one triangle.
-    // We store it as (lo, hi) for dedup but remember original orientation.
-    const edgeMap = new Map<string, { a: number; b: number }>()
+    // Count how many triangles share each edge. Boundary edges appear once.
+    const edgeCount = new Map<string, { a: number; b: number; count: number }>()
 
     for (let i = 0; i < triIdx.length; i += 3) {
       for (let j = 0; j < 3; j++) {
         const a = triIdx[i + j]
         const b = triIdx[i + (j + 1) % 3]
+        // Normalize key so a < b, but store original orientation
         const key = a < b ? `${a}:${b}` : `${b}:${a}`
-        if (edgeMap.has(key)) {
-          edgeMap.delete(key) // shared edge → not boundary
+        const existing = edgeCount.get(key)
+        if (existing) {
+          existing.count++
         } else {
-          edgeMap.set(key, { a, b }) // store oriented edge
+          edgeCount.set(key, { a, b, count: 1 })
         }
       }
     }
 
-    // For each boundary edge (a→b on front face, which has outward normal +Z),
-    // the side quad should face outward.
-    // Front edge a→b (CCW from outside) → side quad: a, b, b+nV, a+nV (CCW from outside)
-    edgeMap.forEach(({ a, b }) => {
+    // For boundary edges (count === 1), build side quad.
+    // Front face is CCW when viewed from +Z. A boundary edge a→b on the front
+    // face winds CCW, so the outward side quad (viewed from outside) is:
+    //   triangle 1: fa, bb, fb
+    //   triangle 2: fa, ba, bb
+    // where fa/fb are front verts and ba/bb are back verts (offset by numVerts).
+    edgeCount.forEach(({ a, b, count }) => {
+      if (count !== 1) return
       const fa = a, fb = b
       const ba = a + numVerts, bb = b + numVerts
-      // Two triangles of the quad, CCW from outside:
-      indexArr.push(fa, fb, bb)
-      indexArr.push(fa, bb, ba)
+      indexArr.push(fa, bb, fb)
+      indexArr.push(fa, ba, bb)
     })
   }
 

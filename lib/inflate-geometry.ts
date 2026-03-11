@@ -2,13 +2,12 @@
  * Inflate Geometry Library
  * 
  * Creates inflated 3D meshes from 2D contours using:
- * - Earcut for Constrained Delaunay Triangulation (CDT)
+ * - Custom ear-clipping triangulation
  * - Signed Distance Field (SDF) for height displacement
  * - Laplacian smoothing for soft balloon effect
  */
 
 import * as THREE from 'three'
-import earcut from 'earcut'
 
 // ============================================================================
 // Types
@@ -103,6 +102,160 @@ function getBoundingBox(contour: Point2D[]): { minX: number; maxX: number; minY:
   }
   
   return { minX, maxX, minY, maxY }
+}
+
+// ============================================================================
+// Triangulation - Custom Ear Clipping with Steiner Points
+// ============================================================================
+
+function triangulatePolygon(contour: Point2D[], steinerPoints: Point2D[]): number[] {
+  // Combine all points: contour first, then steiner points
+  const allPoints = [...contour, ...steinerPoints]
+  const n = allPoints.length
+  const contourLen = contour.length
+  
+  if (n < 3) return []
+  
+  // For triangulation with steiner points, use Delaunay-like approach
+  // by creating triangles that connect boundary and interior points
+  
+  const indices: number[] = []
+  
+  // First, triangulate the boundary polygon using ear clipping
+  const boundaryIndices = earClipTriangulate(contour)
+  indices.push(...boundaryIndices)
+  
+  // Then, for each steiner point, find the triangle it falls into
+  // and subdivide that triangle
+  if (steinerPoints.length > 0) {
+    // Build triangle list from current indices
+    const triangles: Array<[number, number, number]> = []
+    for (let i = 0; i < indices.length; i += 3) {
+      triangles.push([indices[i], indices[i + 1], indices[i + 2]])
+    }
+    
+    // Clear and rebuild with steiner point insertion
+    indices.length = 0
+    
+    // For each steiner point, insert it into the mesh
+    for (let si = 0; si < steinerPoints.length; si++) {
+      const sp = steinerPoints[si]
+      const spIdx = contourLen + si
+      
+      // Find containing triangle
+      let containingTriIdx = -1
+      for (let ti = 0; ti < triangles.length; ti++) {
+        const [a, b, c] = triangles[ti]
+        if (isPointInTriangle(sp, allPoints[a], allPoints[b], allPoints[c])) {
+          containingTriIdx = ti
+          break
+        }
+      }
+      
+      if (containingTriIdx !== -1) {
+        // Replace triangle with 3 new triangles
+        const [a, b, c] = triangles[containingTriIdx]
+        triangles.splice(containingTriIdx, 1)
+        triangles.push([a, b, spIdx])
+        triangles.push([b, c, spIdx])
+        triangles.push([c, a, spIdx])
+      }
+    }
+    
+    // Convert triangles back to indices
+    for (const [a, b, c] of triangles) {
+      indices.push(a, b, c)
+    }
+  }
+  
+  return indices
+}
+
+function isPointInTriangle(p: Point2D, a: Point2D, b: Point2D, c: Point2D): boolean {
+  const sign = (p1: Point2D, p2: Point2D, p3: Point2D) =>
+    (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y)
+  
+  const d1 = sign(p, a, b)
+  const d2 = sign(p, b, c)
+  const d3 = sign(p, c, a)
+  
+  const hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0)
+  const hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0)
+  
+  return !(hasNeg && hasPos)
+}
+
+function earClipTriangulate(polygon: Point2D[]): number[] {
+  const n = polygon.length
+  if (n < 3) return []
+  if (n === 3) return [0, 1, 2]
+  
+  const indices: number[] = []
+  
+  // Create linked list of vertex indices
+  const V: number[] = []
+  
+  // Ensure counter-clockwise winding
+  let area = 0
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n
+    area += polygon[i].x * polygon[j].y
+    area -= polygon[j].x * polygon[i].y
+  }
+  
+  if (area > 0) {
+    for (let i = 0; i < n; i++) V.push(i)
+  } else {
+    for (let i = 0; i < n; i++) V.push(n - 1 - i)
+  }
+  
+  let nv = n
+  let count = 2 * nv
+  let v = nv - 1
+  
+  while (nv > 2) {
+    if (count-- <= 0) break // Infinite loop protection
+    
+    // Get indices
+    let u = v
+    if (nv <= u) u = 0
+    v = u + 1
+    if (nv <= v) v = 0
+    let w = v + 1
+    if (nv <= w) w = 0
+    
+    if (isEar(polygon, V, u, v, w, nv)) {
+      // Output triangle
+      indices.push(V[u], V[v], V[w])
+      
+      // Remove v from polygon
+      for (let s = v, t = v + 1; t < nv; s++, t++) {
+        V[s] = V[t]
+      }
+      nv--
+      count = 2 * nv
+    }
+  }
+  
+  return indices
+}
+
+function isEar(polygon: Point2D[], V: number[], u: number, v: number, w: number, n: number): boolean {
+  const a = polygon[V[u]]
+  const b = polygon[V[v]]
+  const c = polygon[V[w]]
+  
+  // Check for valid triangle (non-degenerate and correct winding)
+  const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+  if (cross <= 0.0000001) return false // Not convex
+  
+  // Check that no other vertex is inside this triangle
+  for (let p = 0; p < n; p++) {
+    if (p === u || p === v || p === w) continue
+    if (isPointInTriangle(polygon[V[p]], a, b, c)) return false
+  }
+  
+  return true
 }
 
 function simplifyContour(contour: Point2D[], tolerance: number): Point2D[] {
@@ -257,15 +410,8 @@ export function createInflatedGeometry(
     // Combine contour + steiner points for triangulation
     const allPoints: Point2D[] = [...simplifiedContour, ...steinerPoints]
     
-    // Flatten for earcut
-    const flatCoords: number[] = []
-    for (const p of allPoints) {
-      flatCoords.push(p.x, p.y)
-    }
-    
-    // Triangulate using earcut
-    // First N points form the boundary, rest are interior
-    const triangleIndices = earcut(flatCoords, undefined, 2)
+    // Triangulate using custom ear-clipping algorithm
+    const triangleIndices = triangulatePolygon(simplifiedContour, steinerPoints)
     
     if (triangleIndices.length < 3) return null
     

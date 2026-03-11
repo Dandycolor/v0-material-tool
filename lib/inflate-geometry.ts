@@ -9,7 +9,8 @@
  */
 
 import * as THREE from 'three'
-import * as poly2tri from 'poly2tri'
+// @ts-ignore
+import poly2tri from 'poly2tri'
 
 // ============================================================================
 // Types

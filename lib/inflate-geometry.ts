@@ -328,12 +328,12 @@ function conjGrad(L: LaplacianSys, b: Float64Array, x: Float64Array, boundary: U
 }
 
 // Heat diffusion for heights - zp in reference
-// Returns values in [0,1] where 0=boundary, 1=deep interior (for balloon effect)
+// Returns values in [0,1] where 1=boundary, 0=deep interior (matching original)
 function heatDiffusion(pts: Point2D[], tris: number[], boundary: Uint8Array): Float64Array {
   const n = pts.length
   const L = buildLaplacian(pts, tris)
   
-  // Start with interior = 1, boundary = 0
+  // Start with interior = 1, boundary = 0 (same as original)
   const u0 = new Float64Array(n)
   for (let i = 0; i < n; i++) u0[i] = boundary[i] ? 0 : 1
   
@@ -344,17 +344,16 @@ function heatDiffusion(pts: Point2D[], tris: number[], boundary: Uint8Array): Fl
   const u2 = new Float64Array(n)
   conjGrad(L, u1, u2, boundary)
   
-  // Normalize so max interior = 1, boundary stays 0
+  // Normalize - boundary=1, interior=1-normalized (matching original zp)
   let maxV = 0
   for (let i = 0; i < n; i++) if (u2[i] > maxV) maxV = u2[i]
   
   const res = new Float64Array(n)
   if (maxV > 1e-12) {
-    // Interior points get high values (close to 1), boundary stays 0
-    for (let i = 0; i < n; i++) res[i] = boundary[i] ? 0 : u2[i] / maxV
+    // boundary => 1, interior => 1 - u2[i]/maxV (close to 0 for deep interior)
+    for (let i = 0; i < n; i++) res[i] = boundary[i] ? 1 : 1 - u2[i] / maxV
   } else {
-    // Fallback: use normalized distance
-    for (let i = 0; i < n; i++) res[i] = boundary[i] ? 0 : 1
+    for (let i = 0; i < n; i++) res[i] = boundary[i] ? 1 : 0
   }
   
   return res
@@ -364,12 +363,13 @@ function heatDiffusion(pts: Point2D[], tris: number[], boundary: Uint8Array): Fl
 // Height Profile - WM in reference
 // ============================================================================
 
-// Smooth balloon profile: t=0 (boundary) -> 0, t=1 (center) -> ~1
-// Creates smooth curved falloff from center to edges like a pillow
+const POW_A = 2.47, POW_B = 0.43
+
+// WM in reference: t=1 (boundary) -> 0, t=0 (interior) -> 1
+// This creates the balloon curve where interior bulges up
 function smoothProfile(t: number): number {
   const c = Math.max(0, Math.min(1, t))
-  // Simple smooth curve: sin^2 gives nice balloon shape
-  return Math.sin(c * Math.PI * 0.5) * Math.sin(c * Math.PI * 0.5)
+  return Math.pow(Math.max(0, 1 - Math.pow(c, POW_A)), POW_B)
 }
 
 // Percentile - XM in reference
@@ -484,30 +484,35 @@ export function createInflatedGeometry(
       const totalVerts = numPts * 2 + edgeRings * numBoundary
       const pos = new Float32Array(totalVerts * 3)
       
-      // Front vertices (+Z)
+      // Front vertices (+Z) - heights only, no edgeH offset
       for (let i = 0; i < numPts; i++) {
-        const h = heights[i] + edgeH
         pos[i * 3] = allPts[i].x
         pos[i * 3 + 1] = allPts[i].y
-        pos[i * 3 + 2] = h
+        pos[i * 3 + 2] = heights[i]
       }
       
-      // Back vertices (-Z)
+      // Back vertices (-Z) - heights only, mirrored
       for (let i = 0; i < numPts; i++) {
-        const h = heights[i] + edgeH
         const idx = (numPts + i) * 3
         pos[idx] = allPts[i].x
         pos[idx + 1] = allPts[i].y
-        pos[idx + 2] = -h
+        pos[idx + 2] = -heights[i]
       }
       
-      // Edge ring vertices
+      // Edge ring vertices - transition from front (heights[i]) to back (-heights[i])
       const ringStart = numPts * 2
       for (let r = 0; r < edgeRings; r++) {
+        // theta goes from ~0 to ~PI, so cos goes from ~1 to ~-1
         const theta = Math.PI * (r + 1) / (edgeRings + 1)
-        const ringZ = edgeH * Math.cos(theta)
+        const t = Math.cos(theta) // +1 near front, -1 near back
         
         for (let i = 0; i < numBoundary; i++) {
+          // Boundary vertex i has height heights[i] (should be ~0 or small)
+          // We interpolate from +heights[i] to -heights[i] with bulge from edgeH
+          const boundaryH = heights[i]
+          const bulge = edgeH * Math.sin(theta) // max at middle
+          const ringZ = boundaryH * t + bulge * (1 - Math.abs(t))
+          
           const idx = (ringStart + r * numBoundary + i) * 3
           pos[idx] = polygon[i].x
           pos[idx + 1] = polygon[i].y

@@ -232,3 +232,6 @@ function isOnBoundary(point: Point2D, polygon: Point2D[], threshold: number): bo
   }
   return false
 }
+
+// Export alias for backwards compatibility
+export const createInflatedGeometry = inflatePolygon

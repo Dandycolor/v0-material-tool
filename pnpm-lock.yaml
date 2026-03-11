@@ -158,6 +158,9 @@ importers:
       oauth-1.0a:
         specifier: 2.2.6
         version: 2.2.6
+      poly2tri:
+        specifier: 1.5.0
+        version: 1.5.0
       react:
         specifier: 19.2.0
         version: 19.2.0
@@ -3735,6 +3738,9 @@ packages:
   pngjs@3.4.0:
     resolution: {integrity: sha512-NCrCHhWmnQklfH4MtJMRjZ2a8c80qXeMlQMv2uVp9ISJMTt562SbGd6n2oq0PaPgKm7Z6pL9E2UlLIhC+SHL3w==}
     engines: {node: '>=4.0.0'}
+
+  poly2tri@1.5.0:
+    resolution: {integrity: sha512-5yACqznqRrlFA9RhdWyD2blNPVhlB3qK+iRYJCfHtJGINb+XNBgKTw+pJOsJZ+oaGxFsIyFmOVapuREHnRhXPg==}
 
   postcss-value-parser@4.2.0:
     resolution: {integrity: sha512-1NNCs6uurfkVbeXG4S8JFT9t19m45ICnif8zWLd5oPSZ50QnwMfK+H3jv408d4jw/7Bttv5axS5IiHoLaVNHeQ==}
@@ -8581,6 +8587,8 @@ snapshots:
       xmlbuilder: 15.1.1
 
   pngjs@3.4.0: {}
+
+  poly2tri@1.5.0: {}
 
   postcss-value-parser@4.2.0: {}
 

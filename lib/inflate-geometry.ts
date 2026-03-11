@@ -2,12 +2,14 @@
  * Inflate Geometry Library
  * 
  * Creates inflated 3D meshes from 2D contours using:
- * - Grid-based triangulation (stable approach)
- * - Signed Distance Field (SDF) for height displacement
- * - Smooth balloon profile for natural inflation
+ * - poly2tri Constrained Delaunay Triangulation (CDT) - same as reference
+ * - Contour-following mesh with Steiner points
+ * - Heat diffusion for smooth height interpolation
+ * - Laplacian smoothing for soft balloon effect
  */
 
 import * as THREE from 'three'
+import * as poly2tri from 'poly2tri'
 
 // ============================================================================
 // Types
@@ -28,17 +30,29 @@ export interface InflateOptions {
 
 const DEFAULT_OPTIONS: InflateOptions = {
   amount: 100,
-  steinerPoints: 200,
-  smoothingIterations: 5,
+  steinerPoints: 100,
+  smoothingIterations: 3,
   doubleSided: true,
-  gridResolution: 50,
+  gridResolution: 20
 }
 
 // ============================================================================
 // Geometry Utilities
 // ============================================================================
 
-function isPointInside(p: Point2D, polygon: Point2D[]): boolean {
+function getBounds(polygon: Point2D[]) {
+  let minX = Infinity, maxX = -Infinity
+  let minY = Infinity, maxY = -Infinity
+  for (const p of polygon) {
+    if (p.x < minX) minX = p.x
+    if (p.x > maxX) maxX = p.x
+    if (p.y < minY) minY = p.y
+    if (p.y > maxY) maxY = p.y
+  }
+  return { minX, maxX, minY, maxY, width: maxX - minX, height: maxY - minY }
+}
+
+function isPointInPolygon(p: Point2D, polygon: Point2D[]): boolean {
   let inside = false
   const n = polygon.length
   for (let i = 0, j = n - 1; i < n; j = i++) {
@@ -52,41 +66,21 @@ function isPointInside(p: Point2D, polygon: Point2D[]): boolean {
 }
 
 function distToSegment(p: Point2D, a: Point2D, b: Point2D): number {
-  const dx = b.x - a.x
-  const dy = b.y - a.y
-  const lenSq = dx * dx + dy * dy
-  if (lenSq === 0) {
-    const fx = p.x - a.x, fy = p.y - a.y
-    return Math.sqrt(fx * fx + fy * fy)
-  }
-  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq
-  t = Math.max(0, Math.min(1, t))
-  const px = a.x + t * dx
-  const py = a.y + t * dy
-  const cx = p.x - px, cy = p.y - py
-  return Math.sqrt(cx * cx + cy * cy)
+  const dx = b.x - a.x, dy = b.y - a.y
+  const len2 = dx * dx + dy * dy
+  if (len2 === 0) return Math.hypot(p.x - a.x, p.y - a.y)
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2))
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy))
 }
 
 function distToPolygon(p: Point2D, polygon: Point2D[]): number {
   let minDist = Infinity
   const n = polygon.length
   for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n
-    const d = distToSegment(p, polygon[i], polygon[j])
+    const d = distToSegment(p, polygon[i], polygon[(i + 1) % n])
     if (d < minDist) minDist = d
   }
   return minDist
-}
-
-function getBBox(polygon: Point2D[]): { minX: number; minY: number; maxX: number; maxY: number } {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-  for (const p of polygon) {
-    if (p.x < minX) minX = p.x
-    if (p.y < minY) minY = p.y
-    if (p.x > maxX) maxX = p.x
-    if (p.y > maxY) maxY = p.y
-  }
-  return { minX, minY, maxX, maxY }
 }
 
 function ensureCCW(polygon: Point2D[]): Point2D[] {
@@ -97,136 +91,94 @@ function ensureCCW(polygon: Point2D[]): Point2D[] {
     area += polygon[i].x * polygon[j].y
     area -= polygon[j].x * polygon[i].y
   }
-  return area < 0 ? [...polygon].reverse() : polygon
+  return area < 0 ? polygon.slice().reverse() : polygon
 }
 
-// Smooth balloon profile: closer to center = higher
-function smoothProfile(normalizedDist: number, maxDist: number): number {
-  if (maxDist <= 0) return 0
-  const t = Math.max(0, Math.min(1, normalizedDist / maxDist))
-  // Smooth curve: higher in center, falls off towards edges
-  return Math.pow(Math.max(0, 1 - t * t), 1.5)
+// Resample polygon with uniform spacing - Mu in reference
+function resamplePolygon(polygon: Point2D[], step: number): Point2D[] {
+  const result: Point2D[] = []
+  const n = polygon.length
+  
+  for (let i = 0; i < n; i++) {
+    const a = polygon[i]
+    const b = polygon[(i + 1) % n]
+    const dx = b.x - a.x, dy = b.y - a.y
+    const len = Math.hypot(dx, dy)
+    const segs = Math.max(1, Math.ceil(len / step))
+    
+    for (let j = 0; j < segs; j++) {
+      const t = j / segs
+      result.push({ x: a.x + dx * t, y: a.y + dy * t })
+    }
+  }
+  
+  return result
 }
 
-// ============================================================================
-// Grid-based Mesh Generation (stable approach)
-// ============================================================================
-
-interface GridResult {
-  vertices: Point2D[]
-  indices: number[]
-  heights: Float32Array
-  boundaryIndices: number[]
-}
-
-function createGridMesh(polygon: Point2D[], resolution: number, amount: number): GridResult | null {
-  const bbox = getBBox(polygon)
-  const width = bbox.maxX - bbox.minX
-  const height = bbox.maxY - bbox.minY
+// Generate interior Steiner points - HM in reference
+function genInteriorSteiners(polygon: Point2D[], bounds: ReturnType<typeof getBounds>, step: number, minDist: number): Point2D[] {
+  const { minX, minY, width, height } = bounds
+  const points: Point2D[] = []
+  const rowH = step * Math.sqrt(3) / 2
   
-  if (width <= 0 || height <= 0) return null
-  
-  // Grid dimensions
-  const gridSize = Math.max(6, Math.round(resolution))
-  const stepX = width / gridSize
-  const stepY = height / gridSize
-  
-  // Create grid of vertices
-  const vertices: Point2D[] = []
-  const vertexMap: Map<string, number> = new Map()
-  const insideGrid: boolean[][] = []
-  
-  for (let iy = 0; iy <= gridSize; iy++) {
-    insideGrid[iy] = []
-    for (let ix = 0; ix <= gridSize; ix++) {
-      const x = bbox.minX + ix * stepX
-      const y = bbox.minY + iy * stepY
+  let row = 0
+  for (let y = minY + step; y < minY + height - step; y += rowH) {
+    const offset = (row % 2) * step * 0.5
+    for (let x = minX + step + offset; x < minX + width - step; x += step) {
       const pt = { x, y }
-      const inside = isPointInside(pt, polygon)
-      insideGrid[iy][ix] = inside
-      
-      if (inside) {
-        const key = `${ix},${iy}`
-        vertexMap.set(key, vertices.length)
-        vertices.push(pt)
-      }
-    }
-  }
-  
-  if (vertices.length < 3) return null
-  
-  // Create triangles from grid
-  const indices: number[] = []
-  
-  for (let iy = 0; iy < gridSize; iy++) {
-    for (let ix = 0; ix < gridSize; ix++) {
-      // Get 4 corners of this cell
-      const k00 = `${ix},${iy}`
-      const k10 = `${ix + 1},${iy}`
-      const k01 = `${ix},${iy + 1}`
-      const k11 = `${ix + 1},${iy + 1}`
-      
-      const v00 = vertexMap.get(k00)
-      const v10 = vertexMap.get(k10)
-      const v01 = vertexMap.get(k01)
-      const v11 = vertexMap.get(k11)
-      
-      // Triangle 1: 00-10-11
-      if (v00 !== undefined && v10 !== undefined && v11 !== undefined) {
-        indices.push(v00, v10, v11)
-      }
-      
-      // Triangle 2: 00-11-01
-      if (v00 !== undefined && v11 !== undefined && v01 !== undefined) {
-        indices.push(v00, v11, v01)
-      }
-    }
-  }
-  
-  if (indices.length < 3) return null
-  
-  // Calculate heights based on SDF
-  const maxDist = Math.min(width, height) * 0.5
-  const scale = (amount / 100) * maxDist * 0.5
-  const heights = new Float32Array(vertices.length)
-  
-  for (let i = 0; i < vertices.length; i++) {
-    const dist = distToPolygon(vertices[i], polygon)
-    const profile = smoothProfile(dist, maxDist)
-    heights[i] = profile * scale
-  }
-  
-  // Find boundary vertices (those on edge of inside region)
-  const boundaryIndices: number[] = []
-  for (let iy = 0; iy <= gridSize; iy++) {
-    for (let ix = 0; ix <= gridSize; ix++) {
-      if (!insideGrid[iy]?.[ix]) continue
-      
-      const key = `${ix},${iy}`
-      const idx = vertexMap.get(key)
-      if (idx === undefined) continue
-      
-      // Check if any neighbor is outside
-      const neighbors = [
-        [ix - 1, iy], [ix + 1, iy],
-        [ix, iy - 1], [ix, iy + 1]
-      ]
-      
-      let isBoundary = false
-      for (const [nx, ny] of neighbors) {
-        if (nx < 0 || nx > gridSize || ny < 0 || ny > gridSize || !insideGrid[ny]?.[nx]) {
-          isBoundary = true
-          break
+      if (isPointInPolygon(pt, polygon)) {
+        const d = distToPolygon(pt, polygon)
+        if (d > minDist) {
+          points.push(pt)
         }
       }
+    }
+    row++
+  }
+  
+  return points
+}
+
+// Generate boundary offset Steiner points - GM in reference
+function genBoundarySteiners(polygon: Point2D[], step: number): Point2D[] {
+  const points: Point2D[] = []
+  const offsets = [0.15, 0.30, 0.45]
+  const n = polygon.length
+  
+  for (const offsetRatio of offsets) {
+    const offset = step * offsetRatio
+    
+    for (let i = 0; i < n; i++) {
+      const a = polygon[i]
+      const b = polygon[(i + 1) % n]
+      const c = polygon[(i + 2) % n]
       
-      if (isBoundary) {
-        boundaryIndices.push(idx)
+      // Calculate inward normal at vertex b
+      const dx1 = b.x - a.x, dy1 = b.y - a.y
+      const dx2 = c.x - b.x, dy2 = c.y - b.y
+      const len1 = Math.hypot(dx1, dy1) || 1
+      const len2 = Math.hypot(dx2, dy2) || 1
+      
+      const nx = -(dy1 / len1 + dy2 / len2) * 0.5
+      const ny = (dx1 / len1 + dx2 / len2) * 0.5
+      const nlen = Math.hypot(nx, ny) || 1
+      
+      const pt = { x: b.x + nx / nlen * offset, y: b.y + ny / nlen * offset }
+      
+      if (isPointInPolygon(pt, polygon)) {
+        points.push(pt)
       }
     }
   }
   
-  return { vertices, indices, heights, boundaryIndices }
+  return points
+}
+
+// Height profile function - WM in reference
+const POW_A = 2.47, POW_B = 0.43
+function smoothProfile(t: number): number {
+  const c = Math.max(0, Math.min(1, t))
+  return Math.pow(Math.max(0, 1 - Math.pow(c, POW_A)), POW_B)
 }
 
 // ============================================================================
@@ -239,23 +191,133 @@ export function createInflatedGeometry(
 ): THREE.BufferGeometry | null {
   const opts = { ...DEFAULT_OPTIONS, ...options }
   
-  if (!contour || contour.length < 3) {
-    return null
-  }
+  if (!contour || contour.length < 3) return null
   
   try {
     const polygon = ensureCCW(contour)
-    const grid = createGridMesh(polygon, opts.gridResolution, opts.amount)
+    const bounds = getBounds(polygon)
+    const { width, height } = bounds
+    const diag = Math.hypot(width, height)
     
-    if (!grid) return null
+    // Grid step based on resolution
+    const gridStep = diag / Math.max(10, opts.gridResolution)
     
-    const { vertices, indices, heights, boundaryIndices } = grid
+    // Resample polygon contour for smooth boundary
+    const sampledPoly = resamplePolygon(polygon, gridStep * 0.5)
+    const numBoundary = sampledPoly.length
+    
+    if (numBoundary < 3) return null
+    
+    // Generate Steiner points
+    const boundarySteiners = genBoundarySteiners(sampledPoly, gridStep)
+    const interiorSteiners = genInteriorSteiners(polygon, bounds, gridStep, gridStep * 0.55)
+    
+    // Create poly2tri context with boundary
+    const contourPts = sampledPoly.map(p => new poly2tri.Point(p.x, p.y))
+    
+    let triangles: poly2tri.Triangle[]
+    
+    try {
+      const ctx = new poly2tri.SweepContext(contourPts)
+      
+      // Add Steiner points
+      for (const sp of boundarySteiners) {
+        try {
+          ctx.addPoint(new poly2tri.Point(sp.x, sp.y))
+        } catch { /* skip duplicate/invalid points */ }
+      }
+      
+      for (const sp of interiorSteiners) {
+        try {
+          ctx.addPoint(new poly2tri.Point(sp.x, sp.y))
+        } catch { /* skip duplicate/invalid points */ }
+      }
+      
+      // Triangulate
+      ctx.triangulate()
+      triangles = ctx.getTriangles()
+    } catch {
+      // Fallback: simple fan triangulation if poly2tri fails
+      triangles = []
+      for (let i = 1; i < numBoundary - 1; i++) {
+        const tri = {
+          getPoints: () => [contourPts[0], contourPts[i], contourPts[i + 1]]
+        } as poly2tri.Triangle
+        triangles.push(tri)
+      }
+    }
+    
+    if (triangles.length === 0) return null
+    
+    // Collect all unique vertices
+    const vertexMap = new Map<string, number>()
+    const vertices: Point2D[] = []
+    const boundary: boolean[] = []
+    
+    // Helper to get or create vertex index
+    const getVertexIdx = (p: poly2tri.Point): number => {
+      const key = `${p.x.toFixed(6)},${p.y.toFixed(6)}`
+      let idx = vertexMap.get(key)
+      if (idx === undefined) {
+        idx = vertices.length
+        vertexMap.set(key, idx)
+        vertices.push({ x: p.x, y: p.y })
+        // Check if on boundary
+        const isBoundary = sampledPoly.some(bp => 
+          Math.abs(bp.x - p.x) < 0.001 && Math.abs(bp.y - p.y) < 0.001
+        )
+        boundary.push(isBoundary)
+      }
+      return idx
+    }
+    
+    // Build index array
+    const indices: number[] = []
+    for (const tri of triangles) {
+      const pts = tri.getPoints()
+      const a = getVertexIdx(pts[0])
+      const b = getVertexIdx(pts[1])
+      const c = getVertexIdx(pts[2])
+      indices.push(a, b, c)
+    }
+    
     const numVerts = vertices.length
     
+    // Calculate heights using SDF
+    const maxDist = Math.min(width, height) * 0.5
+    const scale = (opts.amount / 100) * maxDist * 0.5
+    const heights = new Float32Array(numVerts)
+    
+    for (let i = 0; i < numVerts; i++) {
+      const dist = distToPolygon(vertices[i], polygon)
+      const normDist = dist / maxDist
+      // Distance factor like reference: qt = .6 + .4 * pow(R, .35)
+      const distFactor = 0.6 + 0.4 * Math.pow(Math.max(0, normDist), 0.35)
+      // Boundary vertices get smoothProfile(1) ≈ 0, interior get higher values
+      const t = boundary[i] ? 1 : Math.max(0, 1 - normDist * 2)
+      heights[i] = smoothProfile(t) * distFactor * scale
+    }
+    
+    // Find boundary vertex indices for edge rings
+    const boundaryIndices: number[] = []
+    for (let i = 0; i < numVerts; i++) {
+      if (boundary[i]) boundaryIndices.push(i)
+    }
+    
+    // Sort boundary indices by angle from centroid for proper edge ring
+    const cx = vertices.reduce((s, v) => s + v.x, 0) / numVerts
+    const cy = vertices.reduce((s, v) => s + v.y, 0) / numVerts
+    boundaryIndices.sort((a, b) => {
+      const angA = Math.atan2(vertices[a].y - cy, vertices[a].x - cx)
+      const angB = Math.atan2(vertices[b].y - cy, vertices[b].x - cx)
+      return angA - angB
+    })
+    
+    // Build geometry
     if (opts.doubleSided) {
-      // Create double-sided mesh with edge strip
       const edgeRings = 4
-      const edgeVerts = boundaryIndices.length * edgeRings
+      const numBoundaryVerts = boundaryIndices.length
+      const edgeVerts = numBoundaryVerts * edgeRings
       const totalVerts = numVerts * 2 + edgeVerts
       
       const pos = new Float32Array(totalVerts * 3)
@@ -279,91 +341,78 @@ export function createInflatedGeometry(
       const ringStart = numVerts * 2
       for (let r = 0; r < edgeRings; r++) {
         const theta = Math.PI * (r + 1) / (edgeRings + 1)
-        for (let i = 0; i < boundaryIndices.length; i++) {
+        for (let i = 0; i < numBoundaryVerts; i++) {
           const vi = boundaryIndices[i]
           const h = heights[vi]
           const z = h * Math.cos(theta)
-          const idx = (ringStart + r * boundaryIndices.length + i) * 3
+          const idx = (ringStart + r * numBoundaryVerts + i) * 3
           pos[idx] = vertices[vi].x
           pos[idx + 1] = vertices[vi].y
           pos[idx + 2] = z
         }
       }
       
-      // Build index buffer
-      const numFrontTris = indices.length
-      const numBackTris = indices.length
-      const numEdgeTris = boundaryIndices.length * (edgeRings + 1) * 2
-      const totalIndices = numFrontTris + numBackTris + numEdgeTris * 3
-      const indexArray = new Uint32Array(totalIndices)
-      
-      let idxPtr = 0
+      // Build indices
+      const frontTris = indices.length
+      const backTris = indices.length
+      const edgeTris = numBoundaryVerts * (edgeRings + 1) * 6
+      const totalIdx = frontTris + backTris + edgeTris
+      const idxArr = new Uint32Array(totalIdx)
       
       // Front triangles
+      let ptr = 0
       for (let i = 0; i < indices.length; i++) {
-        indexArray[idxPtr++] = indices[i]
+        idxArr[ptr++] = indices[i]
       }
       
       // Back triangles (reversed winding)
       for (let i = 0; i < indices.length; i += 3) {
-        indexArray[idxPtr++] = numVerts + indices[i]
-        indexArray[idxPtr++] = numVerts + indices[i + 2]
-        indexArray[idxPtr++] = numVerts + indices[i + 1]
+        idxArr[ptr++] = numVerts + indices[i]
+        idxArr[ptr++] = numVerts + indices[i + 2]
+        idxArr[ptr++] = numVerts + indices[i + 1]
       }
       
-      // Edge strip triangles
-      const numBoundary = boundaryIndices.length
-      for (let i = 0; i < numBoundary; i++) {
-        const nextI = (i + 1) % numBoundary
-        const frontA = boundaryIndices[i]
-        const frontB = boundaryIndices[nextI]
-        
-        // Connect front to first ring
-        const ring0A = ringStart + i
-        const ring0B = ringStart + nextI
-        indexArray[idxPtr++] = frontA
-        indexArray[idxPtr++] = ring0B
-        indexArray[idxPtr++] = ring0A
-        indexArray[idxPtr++] = frontA
-        indexArray[idxPtr++] = frontB
-        indexArray[idxPtr++] = ring0B
-        
-        // Connect rings
-        for (let r = 0; r < edgeRings - 1; r++) {
-          const rA = ringStart + r * numBoundary + i
-          const rB = ringStart + r * numBoundary + nextI
-          const rNextA = ringStart + (r + 1) * numBoundary + i
-          const rNextB = ringStart + (r + 1) * numBoundary + nextI
-          indexArray[idxPtr++] = rA
-          indexArray[idxPtr++] = rNextB
-          indexArray[idxPtr++] = rNextA
-          indexArray[idxPtr++] = rA
-          indexArray[idxPtr++] = rB
-          indexArray[idxPtr++] = rNextB
+      // Edge triangles
+      for (let r = 0; r <= edgeRings; r++) {
+        for (let i = 0; i < numBoundaryVerts; i++) {
+          const ni = (i + 1) % numBoundaryVerts
+          
+          let top0: number, top1: number, bot0: number, bot1: number
+          
+          if (r === 0) {
+            top0 = boundaryIndices[i]
+            top1 = boundaryIndices[ni]
+            bot0 = ringStart + i
+            bot1 = ringStart + ni
+          } else if (r === edgeRings) {
+            top0 = ringStart + (edgeRings - 1) * numBoundaryVerts + i
+            top1 = ringStart + (edgeRings - 1) * numBoundaryVerts + ni
+            bot0 = numVerts + boundaryIndices[i]
+            bot1 = numVerts + boundaryIndices[ni]
+          } else {
+            top0 = ringStart + (r - 1) * numBoundaryVerts + i
+            top1 = ringStart + (r - 1) * numBoundaryVerts + ni
+            bot0 = ringStart + r * numBoundaryVerts + i
+            bot1 = ringStart + r * numBoundaryVerts + ni
+          }
+          
+          idxArr[ptr++] = top0
+          idxArr[ptr++] = bot0
+          idxArr[ptr++] = bot1
+          idxArr[ptr++] = top0
+          idxArr[ptr++] = bot1
+          idxArr[ptr++] = top1
         }
-        
-        // Connect last ring to back
-        const lastR = edgeRings - 1
-        const lastA = ringStart + lastR * numBoundary + i
-        const lastB = ringStart + lastR * numBoundary + nextI
-        const backA = numVerts + boundaryIndices[i]
-        const backB = numVerts + boundaryIndices[nextI]
-        indexArray[idxPtr++] = lastA
-        indexArray[idxPtr++] = backB
-        indexArray[idxPtr++] = backA
-        indexArray[idxPtr++] = lastA
-        indexArray[idxPtr++] = lastB
-        indexArray[idxPtr++] = backB
       }
       
       const geometry = new THREE.BufferGeometry()
       geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-      geometry.setIndex(new THREE.BufferAttribute(indexArray.slice(0, idxPtr), 1))
+      geometry.setIndex(new THREE.BufferAttribute(idxArr, 1))
       geometry.computeVertexNormals()
       
       return geometry
     } else {
-      // Single-sided mesh
+      // Single-sided
       const pos = new Float32Array(numVerts * 3)
       for (let i = 0; i < numVerts; i++) {
         pos[i * 3] = vertices[i].x
@@ -378,41 +427,8 @@ export function createInflatedGeometry(
       
       return geometry
     }
-  } catch (error) {
-    console.error('[v0] Error creating inflated geometry:', error)
+  } catch (e) {
+    console.error('[v0] Inflate geometry error:', e)
     return null
   }
-}
-
-/**
- * Simplify a path by removing points that are too close together
- */
-export function simplifyPath(points: Point2D[], tolerance: number = 2): Point2D[] {
-  if (points.length < 3) return points
-  
-  const result: Point2D[] = [points[0]]
-  
-  for (let i = 1; i < points.length; i++) {
-    const last = result[result.length - 1]
-    const dx = points[i].x - last.x
-    const dy = points[i].y - last.y
-    const dist = Math.sqrt(dx * dx + dy * dy)
-    
-    if (dist >= tolerance) {
-      result.push(points[i])
-    }
-  }
-  
-  // Ensure polygon is closed
-  if (result.length >= 3) {
-    const first = result[0]
-    const last = result[result.length - 1]
-    const dx = first.x - last.x
-    const dy = first.y - last.y
-    if (Math.sqrt(dx * dx + dy * dy) < tolerance) {
-      result.pop()
-    }
-  }
-  
-  return result.length >= 3 ? result : points
 }

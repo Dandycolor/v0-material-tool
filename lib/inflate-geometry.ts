@@ -207,34 +207,34 @@ export function inflatePolygon(polygon: Point2D[], options: Partial<InflateOptio
   const positions: number[] = []
   const indices: number[] = []
   
-  // Front face (+Z)
+  // Front face (+Z) - flip Y to match canvas coordinates (canvas Y goes down, 3D Y goes up)
   for (let i = 0; i < numVerts; i++) {
     const x = (vertices[i].x - bounds.minX - size * 0.5) * scale
-    const y = (vertices[i].y - bounds.minY - size * 0.5) * scale
+    const y = -(vertices[i].y - bounds.minY - size * 0.5) * scale // Flip Y
     const z = heights[i] * scale
     positions.push(x, y, z)
   }
   
-  // Front triangles
+  // Front triangles - reversed winding for correct outward normals
   for (let i = 0; i < triangles.length; i += 3) {
-    indices.push(triangles[i], triangles[i + 1], triangles[i + 2])
+    indices.push(triangles[i], triangles[i + 2], triangles[i + 1])
   }
   
   if (opts.doubleSided) {
     // Back face (-Z)
     for (let i = 0; i < numVerts; i++) {
       const x = (vertices[i].x - bounds.minX - size * 0.5) * scale
-      const y = (vertices[i].y - bounds.minY - size * 0.5) * scale
+      const y = -(vertices[i].y - bounds.minY - size * 0.5) * scale // Flip Y
       const z = -heights[i] * scale
       positions.push(x, y, z)
     }
     
-    // Back triangles (reversed winding)
+    // Back triangles (original winding since we flipped front)
     for (let i = 0; i < triangles.length; i += 3) {
       indices.push(
         triangles[i] + numVerts,
-        triangles[i + 2] + numVerts,
-        triangles[i + 1] + numVerts
+        triangles[i + 1] + numVerts,
+        triangles[i + 2] + numVerts
       )
     }
     
@@ -268,9 +268,9 @@ export function inflatePolygon(polygon: Point2D[], options: Partial<InflateOptio
       const backA = edge.a + numVerts
       const backB = edge.b + numVerts
       
-      // Create quad as 2 triangles (with correct winding for outward normals)
-      indices.push(frontA, frontB, backA)
-      indices.push(frontB, backB, backA)
+      // Create quad as 2 triangles - winding matches the flipped front face
+      indices.push(frontA, backA, frontB)
+      indices.push(frontB, backA, backB)
     }
   }
   

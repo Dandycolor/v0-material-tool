@@ -89,6 +89,15 @@ function balloonProfile(t: number): number {
   return Math.pow(Math.sin(c * Math.PI), 0.6)
 }
 
+// Catmull-Rom interpolation for smooth curves
+function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number): number {
+  const t2 = t * t
+  const t3 = t2 * t
+  const v0 = (p2 - p0) * 0.5
+  const v1 = (p3 - p1) * 0.5
+  return (1 - t3) * p1 + t3 * p2 + t * ((1 - t2) * v0 + (t2 - 1) * v1) + t2 * (3 * (p1 - p2) + v0 + v1)
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -237,7 +246,7 @@ export function inflatePolygon(
       )
     }
 
-    // ── Stitch boundary edges ────────────────────────────────────────────────
+    // ── Stitch boundary edges with smooth interpolation ──────────────────────
     // Count how many triangles share each edge. Boundary edges appear once.
     const edgeCount = new Map<string, { a: number; b: number; count: number }>()
 
@@ -256,19 +265,109 @@ export function inflatePolygon(
       }
     }
 
-    // For boundary edges (count === 1), build side quad.
-    // Front face is CCW when viewed from +Z. A boundary edge a→b on the front
-    // face winds CCW, so the outward side quad (viewed from outside) is:
-    //   triangle 1: fa, bb, fb
-    //   triangle 2: fa, ba, bb
-    // where fa/fb are front verts and ba/bb are back verts (offset by numVerts).
+    // Collect boundary edges in order for smooth interpolation
+    const boundaryEdges: Array<{ a: number; b: number }> = []
     edgeCount.forEach(({ a, b, count }) => {
-      if (count !== 1) return
+      if (count === 1) {
+        boundaryEdges.push({ a, b })
+      }
+    })
+
+    // Build boundary loop from edges
+    const boundaryLoops: number[][] = []
+    const used = new Set<string>()
+    
+    for (const edge of boundaryEdges) {
+      const key = `${edge.a}:${edge.b}`
+      if (used.has(key)) continue
+      
+      const loop: number[] = [edge.a, edge.b]
+      used.add(key)
+      let curr = edge.b
+      let prev = edge.a
+      
+      while (curr !== edge.a) {
+        const next = boundaryEdges.find(e => 
+          (e.a === curr && e.b !== prev) || (e.b === curr && e.a !== prev)
+        )
+        if (!next) break
+        
+        const k = `${next.a}:${next.b}`
+        if (used.has(k)) break
+        used.add(k)
+        
+        prev = curr
+        curr = next.a === curr ? next.b : next.a
+        loop.push(curr)
+      }
+      
+      if (loop.length > 2) boundaryLoops.push(loop)
+    }
+
+    // Add interpolated vertices for smooth boundary edges (2 intermediate per edge)
+    const interpMultiplier = 2
+    const interpVertStart = positions.length / 3
+    const oldToNewIdx = new Map<number, number>()
+    
+    for (const loop of boundaryLoops) {
+      const n = loop.length
+      
+      for (let i = 0; i < n; i++) {
+        const vi = loop[i]
+        const vPrev = loop[(i - 1 + n) % n]
+        const vNext = loop[(i + 1) % n]
+        const vNext2 = loop[(i + 2) % n]
+        
+        // Get positions and heights
+        const p0 = { x: positions[vPrev * 3], y: positions[vPrev * 3 + 1], z: heights[vPrev] }
+        const p1 = { x: positions[vi * 3], y: positions[vi * 3 + 1], z: heights[vi] }
+        const p2 = { x: positions[vNext * 3], y: positions[vNext * 3 + 1], z: heights[vNext] }
+        const p3 = { x: positions[vNext2 * 3], y: positions[vNext2 * 3 + 1], z: heights[vNext2] }
+        
+        // Add interpolated vertices along edge vi → vNext
+        for (let j = 1; j <= interpMultiplier; j++) {
+          const t = j / (interpMultiplier + 1)
+          const x = catmullRom(p1.x, p2.x, p2.x, p3.x, t) // simple lerp for now
+          const y = catmullRom(p1.y, p2.y, p2.y, p3.y, t)
+          const z = catmullRom(p1.z, p2.z, p2.z, p3.z, t)
+          
+          positions.push(x, y, z)
+          
+          if (opts.doubleSided) {
+            positions.push(x, y, -z)
+          }
+        }
+      }
+    }
+
+    // Build side quads with interpolated vertices
+    for (const { a, b } of boundaryEdges) {
+      if (a >= b) continue // Already handled or skip duplicates
+      
       const fa = a, fb = b
       const ba = a + numVerts, bb = b + numVerts
-      indexArr.push(fa, bb, fb)
+      
+      // Add interpolated intermediate vertices
+      const interpStart = interpVertStart + a * interpMultiplier * (opts.doubleSided ? 2 : 1)
+      
+      // Connect fa to first interpolated vertex
+      const fi0 = interpStart
+      indexArr.push(fa, bb, fi0)
       indexArr.push(fa, ba, bb)
-    })
+      
+      // Connect interpolated vertices to each other
+      for (let j = 0; j < interpMultiplier - 1; j++) {
+        const fij = interpStart + j
+        const fij1 = interpStart + j + 1
+        indexArr.push(fij, fij1 + numVerts, fij1)
+        indexArr.push(fij, fij, fij1 + numVerts)
+      }
+      
+      // Connect last interpolated to fb
+      const fim1 = interpStart + interpMultiplier - 1
+      indexArr.push(fim1, fb + numVerts, fb)
+      indexArr.push(fim1, fim1 + numVerts, fb + numVerts)
+    }
   }
 
   const geo = new THREE.BufferGeometry()

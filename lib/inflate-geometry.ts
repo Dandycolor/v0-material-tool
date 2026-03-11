@@ -284,11 +284,9 @@ export function inflatePolygon(polygon: Point2D[], options: Partial<InflateOptio
       const ringCurr = edgeVertStart + i
       const ringNext = edgeVertStart + next
       
-      // Quad: frontCurr - frontNext - ringNext - ringCurr
-      // Triangle 1: frontCurr, frontNext, ringCurr
-      indices.push(frontCurr, frontNext, ringCurr)
-      // Triangle 2: frontNext, ringNext, ringCurr
-      indices.push(frontNext, ringNext, ringCurr)
+      // Invert winding for outward-facing normals
+      indices.push(frontCurr, ringCurr, frontNext)
+      indices.push(frontNext, ringCurr, ringNext)
     }
     
     // Connect rings to each other
@@ -298,11 +296,9 @@ export function inflatePolygon(polygon: Point2D[], options: Partial<InflateOptio
       
       for (let i = 0; i < numBoundary; i++) {
         const next = (i + 1) % numBoundary
-        // Quad: ringStart[i] - ringStart[next] - nextRingStart[next] - nextRingStart[i]
-        // Triangle 1: ringStart[i], ringStart[next], nextRingStart[i]
-        indices.push(ringStart + i, ringStart + next, nextRingStart + i)
-        // Triangle 2: ringStart[next], nextRingStart[next], nextRingStart[i]
-        indices.push(ringStart + next, nextRingStart + next, nextRingStart + i)
+        // Invert winding for outward-facing normals
+        indices.push(ringStart + i, nextRingStart + i, ringStart + next)
+        indices.push(ringStart + next, nextRingStart + i, nextRingStart + next)
       }
     }
     
@@ -313,11 +309,9 @@ export function inflatePolygon(polygon: Point2D[], options: Partial<InflateOptio
       const backCurr = boundaryIndices[i] + numVerts
       const backNext = boundaryIndices[next] + numVerts
       
-      // Quad: lastRingStart[i] - lastRingStart[next] - backNext - backCurr
-      // Triangle 1: lastRingStart[i], lastRingStart[next], backCurr
-      indices.push(lastRingStart + i, lastRingStart + next, backCurr)
-      // Triangle 2: lastRingStart[next], backNext, backCurr
-      indices.push(lastRingStart + next, backNext, backCurr)
+      // Invert winding for outward-facing normals
+      indices.push(lastRingStart + i, backCurr, lastRingStart + next)
+      indices.push(lastRingStart + next, backCurr, backNext)
     }
   }
   

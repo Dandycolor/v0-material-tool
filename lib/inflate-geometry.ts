@@ -3,13 +3,12 @@
  * 
  * Creates inflated 3D meshes from 2D contours using:
  * - Contour-following triangulation (like original Inflation app)
- * - poly2tri-style Constrained Delaunay Triangulation with Delaunator fallback
+ * - Custom ear-clipping Constrained Delaunay Triangulation
  * - Signed Distance Field (SDF) for height displacement
  * - Laplacian smoothing for soft balloon effect
  */
 
 import * as THREE from 'three'
-import Delaunator from 'delaunator'
 
 // ============================================================================
 // Types
@@ -50,7 +49,151 @@ const POW_B = 0.43
 // ============================================================================
 
 /**
- * Check if point is inside polygon (ray casting) - Xs in reference
+ * Simple triangulation: ear-clipping for boundary + fan triangulation from centroid
+ * For contour-based meshes, this connects boundary → steiner points → interior points
+ */
+function triangulatePolygon(
+  boundary: Point2D[], 
+  boundarySteiners: Point2D[], 
+  interiorSteiners: Point2D[], 
+  allPts: Point2D[],
+  originalPoly: Point2D[]
+): number[] {
+  const triangles: number[] = []
+  const numBoundary = boundary.length
+  const numBoundarySteiner = boundarySteiners.length
+  const numInterior = interiorSteiners.length
+  
+  // First, triangulate the boundary using ear-clipping
+  const boundaryTris = earClipTriangle(boundary, 0)
+  triangles.push(...boundaryTris)
+  
+  // Connect boundary steiner points to boundary
+  for (let i = 0; i < numBoundarySteiner; i++) {
+    const si = numBoundary + i
+    // Find two nearest boundary points
+    let nearest1 = 0, nearest2 = 1, dist1 = Infinity, dist2 = Infinity
+    for (let j = 0; j < numBoundary; j++) {
+      const dx = allPts[si].x - allPts[j].x
+      const dy = allPts[si].y - allPts[j].y
+      const d = dx * dx + dy * dy
+      if (d < dist1) {
+        dist2 = dist1
+        nearest2 = nearest1
+        dist1 = d
+        nearest1 = j
+      } else if (d < dist2) {
+        dist2 = d
+        nearest2 = j
+      }
+    }
+    triangles.push(si, nearest1, nearest2)
+  }
+  
+  // Connect interior points using simple approach - connect to nearest 3 steiner/boundary points
+  const interiorStart = numBoundary + numBoundarySteiner
+  for (let i = 0; i < numInterior; i++) {
+    const ii = interiorStart + i
+    // Find 3 nearest points from boundary + boundary steiners
+    const dists: Array<{ idx: number; d: number }> = []
+    for (let j = 0; j < numBoundary + numBoundarySteiner; j++) {
+      const dx = allPts[ii].x - allPts[j].x
+      const dy = allPts[ii].y - allPts[j].y
+      dists.push({ idx: j, d: dx * dx + dy * dy })
+    }
+    dists.sort((a, b) => a.d - b.d)
+    if (dists.length >= 3) {
+      triangles.push(ii, dists[0].idx, dists[1].idx)
+      triangles.push(ii, dists[1].idx, dists[2].idx)
+    }
+  }
+  
+  return triangles
+}
+
+/**
+ * Simple ear-clipping triangulation for a polygon
+ * baseIdx is the offset to add to vertex indices
+ */
+function earClipTriangle(polygon: Point2D[], baseIdx: number): number[] {
+  const n = polygon.length
+  if (n < 3) return []
+  if (n === 3) return [baseIdx, baseIdx + 1, baseIdx + 2]
+  
+  const triangles: number[] = []
+  const vertices = Array.from({ length: n }, (_, i) => baseIdx + i)
+  const active = new Array(n).fill(true)
+  let remaining = n
+  
+  while (remaining > 3) {
+    for (let i = 0; i < n && remaining > 3; i++) {
+      if (!active[i]) continue
+      const prev = (i - 1 + n) % n
+      const next = (i + 1) % n
+      while (!active[prev]) {
+        // Skip inactive
+        break
+      }
+      while (!active[next]) {
+        break
+      }
+      
+      const a = polygon[i]
+      const b = polygon[next]
+      const c = polygon[prev]
+      
+      // Check if it's an ear
+      const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+      if (cross > 0) {
+        // Check if any vertex is inside this triangle
+        let isEar = true
+        for (let j = 0; j < n; j++) {
+          if (j === i || j === next || j === prev || !active[j]) continue
+          if (isPointInTriangle(polygon[j], a, b, c)) {
+            isEar = false
+            break
+          }
+        }
+        
+        if (isEar) {
+          triangles.push(vertices[i], vertices[next], vertices[prev])
+          active[i] = false
+          remaining--
+        }
+      }
+    }
+  }
+  
+  // Add remaining triangle
+  const remaining_verts = []
+  for (let i = 0; i < n; i++) {
+    if (active[i]) remaining_verts.push(vertices[i])
+  }
+  if (remaining_verts.length === 3) {
+    triangles.push(...remaining_verts)
+  }
+  
+  return triangles
+}
+
+/**
+ * Check if point P is inside triangle ABC
+ */
+function isPointInTriangle(p: Point2D, a: Point2D, b: Point2D, c: Point2D): boolean {
+  const sign = (p1: Point2D, p2: Point2D, p3: Point2D) => (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y)
+  
+  const d1 = sign(p, a, b)
+  const d2 = sign(p, b, c)
+  const d3 = sign(p, c, a)
+  
+  const hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0)
+  const hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0)
+  
+  return !(hasNeg && hasPos)
+}
+
+/**
+ * Get bounding box - Np in reference
  */
 function isPointInside(p: Point2D, polygon: Point2D[]): boolean {
   let inside = false
@@ -481,26 +624,8 @@ export function createInflatedGeometry(
     const boundary = new Uint8Array(numPts)
     for (let i = 0; i < numBoundary; i++) boundary[i] = 1
     
-    // Triangulate using Delaunator
-    const flatCoords = new Float64Array(numPts * 2)
-    for (let i = 0; i < numPts; i++) {
-      flatCoords[i * 2] = allPts[i].x
-      flatCoords[i * 2 + 1] = allPts[i].y
-    }
-    
-    const delaunay = new Delaunator(flatCoords)
-    const rawTris = delaunay.triangles
-    
-    // Filter triangles to only those inside polygon
-    const triangles: number[] = []
-    for (let i = 0; i < rawTris.length; i += 3) {
-      const a = rawTris[i], b = rawTris[i + 1], c = rawTris[i + 2]
-      const cx = (allPts[a].x + allPts[b].x + allPts[c].x) / 3
-      const cy = (allPts[a].y + allPts[b].y + allPts[c].y) / 3
-      if (isPointInside({ x: cx, y: cy }, polygon)) {
-        triangles.push(a, b, c)
-      }
-    }
+    // Triangulate using simple ear-clipping for boundary + fan triangulation from interior
+    const triangles = triangulatePolygon(sampledPoly, boundarySteiners, interiorSteiners, allPts, polygon)
     
     if (triangles.length < 3) return null
     

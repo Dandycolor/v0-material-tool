@@ -328,27 +328,33 @@ function conjGrad(L: LaplacianSys, b: Float64Array, x: Float64Array, boundary: U
 }
 
 // Heat diffusion for heights - zp in reference
+// Returns values in [0,1] where 0=boundary, 1=deep interior (for balloon effect)
 function heatDiffusion(pts: Point2D[], tris: number[], boundary: Uint8Array): Float64Array {
   const n = pts.length
   const L = buildLaplacian(pts, tris)
   
+  // Start with interior = 1, boundary = 0
   const u0 = new Float64Array(n)
   for (let i = 0; i < n; i++) u0[i] = boundary[i] ? 0 : 1
   
+  // Two iterations of heat diffusion for smooth gradients
   const u1 = new Float64Array(n)
   conjGrad(L, u0, u1, boundary)
   
   const u2 = new Float64Array(n)
   conjGrad(L, u1, u2, boundary)
   
+  // Normalize so max interior = 1, boundary stays 0
   let maxV = 0
   for (let i = 0; i < n; i++) if (u2[i] > maxV) maxV = u2[i]
   
   const res = new Float64Array(n)
   if (maxV > 1e-12) {
-    for (let i = 0; i < n; i++) res[i] = boundary[i] ? 1 : 1 - u2[i] / maxV
+    // Interior points get high values (close to 1), boundary stays 0
+    for (let i = 0; i < n; i++) res[i] = boundary[i] ? 0 : u2[i] / maxV
   } else {
-    for (let i = 0; i < n; i++) res[i] = boundary[i] ? 1 : 0
+    // Fallback: use normalized distance
+    for (let i = 0; i < n; i++) res[i] = boundary[i] ? 0 : 1
   }
   
   return res
@@ -358,11 +364,12 @@ function heatDiffusion(pts: Point2D[], tris: number[], boundary: Uint8Array): Fl
 // Height Profile - WM in reference
 // ============================================================================
 
-const POW_A = 2.47, POW_B = 0.43
-
+// Smooth balloon profile: t=0 (boundary) -> 0, t=1 (center) -> ~1
+// Creates smooth curved falloff from center to edges like a pillow
 function smoothProfile(t: number): number {
   const c = Math.max(0, Math.min(1, t))
-  return Math.pow(Math.max(0, 1 - Math.pow(c, POW_A)), POW_B)
+  // Simple smooth curve: sin^2 gives nice balloon shape
+  return Math.sin(c * Math.PI * 0.5) * Math.sin(c * Math.PI * 0.5)
 }
 
 // Percentile - XM in reference

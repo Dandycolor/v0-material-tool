@@ -455,45 +455,43 @@ export function createInflatedGeometry(
         )
       }
       
-      // Add edge strip to connect front and back at z=0
-      // Find boundary vertices and create edge loop
-      const edgeVertStart = finalPositions.length / 3
+      // Add edge strip to connect front and back using actual boundary vertices
+      // The boundary vertices are already marked in boundaryVertices set
+      const boundaryArray = Array.from(boundaryVertices).sort((a, b) => a - b)
       
-      // Sample contour points for edge
-      const edgeResolution = Math.min(simplifiedContour.length, 64)
-      const edgeStep = Math.max(1, Math.floor(simplifiedContour.length / edgeResolution))
-      
-      for (let i = 0; i < simplifiedContour.length; i += edgeStep) {
-        const p = simplifiedContour[i]
-        // Front edge vertex (z = small positive)
-        finalPositions.push(p.x, p.y, 0.001)
-        finalUvs.push(i / simplifiedContour.length, 0.5)
-        // Back edge vertex (z = small negative)
-        finalPositions.push(p.x, p.y, -0.001)
-        finalUvs.push(i / simplifiedContour.length, 0.5)
+      // Create mapping of boundary vertices to contour points for proper ordering
+      const boundaryPositions: Array<{ vertexIdx: number; x: number; y: number }> = []
+      for (const vIdx of boundaryArray) {
+        const x = posArray[vIdx * 3]
+        const y = posArray[vIdx * 3 + 1]
+        boundaryPositions.push({ vertexIdx: vIdx, x, y })
       }
       
-      // Connect edge vertices into a strip
-      const edgeCount = Math.ceil(simplifiedContour.length / edgeStep)
-      for (let i = 0; i < edgeCount - 1; i++) {
-        const frontCurr = edgeVertStart + i * 2
-        const backCurr = edgeVertStart + i * 2 + 1
-        const frontNext = edgeVertStart + (i + 1) * 2
-        const backNext = edgeVertStart + (i + 1) * 2 + 1
+      // Sort boundary vertices by angle from center for proper edge loop
+      const boundingBox = getBoundingBox(simplifiedContour)
+      const centerX = (boundingBox.minX + boundingBox.maxX) / 2
+      const centerY = (boundingBox.minY + boundingBox.maxY) / 2
+      boundaryPositions.sort((a, b) => {
+        const angleA = Math.atan2(a.y - centerY, a.x - centerX)
+        const angleB = Math.atan2(b.y - centerY, b.x - centerX)
+        return angleA - angleB
+      })
+      
+      // Connect front and back boundary vertices
+      for (let i = 0; i < boundaryPositions.length; i++) {
+        const curr = boundaryPositions[i]
+        const next = boundaryPositions[(i + 1) % boundaryPositions.length]
         
+        // Front vertices
+        const frontCurr = curr.vertexIdx
+        const frontNext = next.vertexIdx
+        // Back vertices (offset by frontVertCount)
+        const backCurr = curr.vertexIdx + frontVertCount
+        const backNext = next.vertexIdx + frontVertCount
+        
+        // Create two triangles to close the gap
         finalIndices.push(frontCurr, frontNext, backNext)
         finalIndices.push(frontCurr, backNext, backCurr)
-      }
-      
-      // Close the loop
-      if (edgeCount >= 2) {
-        const frontFirst = edgeVertStart
-        const backFirst = edgeVertStart + 1
-        const frontLast = edgeVertStart + (edgeCount - 1) * 2
-        const backLast = edgeVertStart + (edgeCount - 1) * 2 + 1
-        
-        finalIndices.push(frontLast, frontFirst, backFirst)
-        finalIndices.push(frontLast, backFirst, backLast)
       }
     } else {
       finalPositions = Array.from(posArray)

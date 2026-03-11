@@ -182,36 +182,24 @@ function createGridMesh(
   
   if (width <= 0 || height <= 0) return null
   
-  // Create grid with padding
-  const padding = Math.min(width, height) * 0.02
-  const paddedMinX = bbox.minX - padding
-  const paddedMaxX = bbox.maxX + padding
-  const paddedMinY = bbox.minY - padding
-  const paddedMaxY = bbox.maxY + padding
-  const paddedWidth = paddedMaxX - paddedMinX
-  const paddedHeight = paddedMaxY - paddedMinY
+  // Adaptive grid resolution based on contour complexity
+  // More points in contour = higher resolution grid needed
+  const complexityFactor = Math.log(contour.length) / Math.log(10)
+  const adaptiveResolution = Math.ceil(gridResolution * (0.5 + complexityFactor * 0.5))
   
-  // Calculate grid size to maintain aspect ratio
-  const aspectRatio = paddedWidth / paddedHeight
-  let gridSizeX: number, gridSizeY: number
+  // Create grid with no padding - use exact bbox
+  const gridSizeX = adaptiveResolution
+  const gridSizeY = Math.ceil(adaptiveResolution * (height / width))
   
-  if (aspectRatio > 1) {
-    gridSizeX = gridResolution
-    gridSizeY = Math.max(3, Math.round(gridResolution / aspectRatio))
-  } else {
-    gridSizeY = gridResolution
-    gridSizeX = Math.max(3, Math.round(gridResolution * aspectRatio))
-  }
-  
-  const stepX = paddedWidth / (gridSizeX - 1)
-  const stepY = paddedHeight / (gridSizeY - 1)
+  const stepX = width / (gridSizeX - 1)
+  const stepY = height / (gridSizeY - 1)
   
   // Find max distance inside for normalization
   let maxDistInside = 0
   for (let iy = 0; iy < gridSizeY; iy++) {
     for (let ix = 0; ix < gridSizeX; ix++) {
-      const x = paddedMinX + ix * stepX
-      const y = paddedMinY + iy * stepY
+      const x = bbox.minX + ix * stepX
+      const y = bbox.minY + iy * stepY
       if (isPointInsideContour(x, y, contour)) {
         const dist = distanceToContour(x, y, contour)
         if (dist > maxDistInside) maxDistInside = dist
@@ -231,8 +219,8 @@ function createGridMesh(
   for (let iy = 0; iy < gridSizeY; iy++) {
     vertexGrid[iy] = []
     for (let ix = 0; ix < gridSizeX; ix++) {
-      const x = paddedMinX + ix * stepX
-      const y = paddedMinY + iy * stepY
+      const x = bbox.minX + ix * stepX
+      const y = bbox.minY + iy * stepY
       const inside = isPointInsideContour(x, y, contour)
       
       if (inside) {
@@ -240,8 +228,10 @@ function createGridMesh(
         const normalizedDist = Math.min(dist / maxDistInside, 1)
         
         // Smooth height profile - sine curve for balloon effect
+        // Uses sin^2 for very smooth curves
         const r = normalizedDist
-        const z = volumeScale * Math.sin(r * Math.PI * 0.5)
+        const sine = Math.sin(r * Math.PI * 0.5)
+        const z = volumeScale * sine * sine
         
         const vertIdx = vertices.length
         vertices.push({ x, y, z, inside, gridX: ix, gridY: iy })
@@ -299,8 +289,8 @@ function createGridMesh(
   for (const v of vertices) {
     positions.push(v.x, v.y, v.z)
     uvs.push(
-      (v.x - paddedMinX) / paddedWidth,
-      (v.y - paddedMinY) / paddedHeight
+      (v.x - bbox.minX) / width,
+      (v.y - bbox.minY) / height
     )
   }
   
@@ -455,39 +445,79 @@ export function createInflatedGeometry(
         )
       }
       
-      // Add edge strip to connect front and back along the original contour
-      // Use full contour resolution for detailed edges
-      const edgeVertStart = finalPositions.length / 3
+      // Add edge strip using boundary vertices from the mesh
+      // Boundary vertices are already positioned correctly at the contour
+      // Map boundary vertex indices from front to back
+      const boundaryVertexMapping = new Map<number, number>()
       
-      // Use original contour with maximum resolution for crisp edges
-      const edgePoints: Point2D[] = contour  // Use original, not simplified
-      
-      // Create edge vertices along contour (at z=0, the "pinch" point)
-      for (let i = 0; i < edgePoints.length; i++) {
-        const p = edgePoints[i]
-        const u = i / edgePoints.length
-        
-        // Front edge vertex (z = tiny positive)
-        finalPositions.push(p.x, p.y, 0.002)
-        finalUvs.push(u, 0.5)
-        
-        // Back edge vertex (z = tiny negative)
-        finalPositions.push(p.x, p.y, -0.002)
-        finalUvs.push(u, 0.5)
+      // Build mapping: front boundary vertex -> back boundary vertex
+      for (const frontBoundaryIdx of boundaryVertices) {
+        const backBoundaryIdx = frontBoundaryIdx + frontVertCount
+        boundaryVertexMapping.set(frontBoundaryIdx, backBoundaryIdx)
       }
       
-      // Connect edge vertices in a strip following contour order
-      for (let i = 0; i < edgePoints.length; i++) {
-        const nextI = (i + 1) % edgePoints.length
+      // Connect boundary vertices between front and back
+      // We need to trace around the boundary to create a proper edge loop
+      const boundaryArray = Array.from(boundaryVertices).sort((a, b) => a - b)
+      
+      // Build adjacency for boundary vertices
+      const boundaryNeighbors = new Map<number, Set<number>>()
+      for (const vIdx of boundaryArray) {
+        boundaryNeighbors.set(vIdx, new Set())
+      }
+      
+      // Find neighbors in triangle indices
+      for (let i = 0; i < indices.length; i += 3) {
+        const a = indices[i], b = indices[i + 1], c = indices[i + 2]
         
-        const frontCurr = edgeVertStart + i * 2
-        const backCurr = edgeVertStart + i * 2 + 1
-        const frontNext = edgeVertStart + nextI * 2
-        const backNext = edgeVertStart + nextI * 2 + 1
+        // If any edge has both vertices as boundary, they're connected
+        if (boundaryNeighbors.has(a) && boundaryNeighbors.has(b)) {
+          boundaryNeighbors.get(a)!.add(b)
+          boundaryNeighbors.get(b)!.add(a)
+        }
+        if (boundaryNeighbors.has(b) && boundaryNeighbors.has(c)) {
+          boundaryNeighbors.get(b)!.add(c)
+          boundaryNeighbors.get(c)!.add(b)
+        }
+        if (boundaryNeighbors.has(c) && boundaryNeighbors.has(a)) {
+          boundaryNeighbors.get(c)!.add(a)
+          boundaryNeighbors.get(a)!.add(c)
+        }
+      }
+      
+      // Trace boundary loop and create edge triangles
+      if (boundaryArray.length > 0) {
+        let current = boundaryArray[0]
+        const visited = new Set<number>()
         
-        // Two triangles per edge segment
-        finalIndices.push(frontCurr, frontNext, backNext)
-        finalIndices.push(frontCurr, backNext, backCurr)
+        while (visited.size < boundaryArray.length && visited.size < boundaryArray.length * 2) {
+          visited.add(current)
+          
+          const neighbors = boundaryNeighbors.get(current)
+          if (!neighbors || neighbors.size === 0) break
+          
+          let next = -1
+          for (const n of neighbors) {
+            if (!visited.has(n)) {
+              next = n
+              break
+            }
+          }
+          
+          if (next === -1) break
+          
+          // Connect current and next between front and back
+          const frontCurr = current
+          const backCurr = current + frontVertCount
+          const frontNext = next
+          const backNext = next + frontVertCount
+          
+          // Two triangles closing the edge
+          finalIndices.push(frontCurr, frontNext, backNext)
+          finalIndices.push(frontCurr, backNext, backCurr)
+          
+          current = next
+        }
       }
     } else {
       finalPositions = Array.from(posArray)

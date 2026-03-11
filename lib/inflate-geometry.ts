@@ -455,41 +455,51 @@ export function createInflatedGeometry(
         )
       }
       
-      // Add edge strip to connect front and back using actual boundary vertices
-      // The boundary vertices are already marked in boundaryVertices set
-      const boundaryArray = Array.from(boundaryVertices).sort((a, b) => a - b)
+      // Add edge strip to connect front and back along the original contour
+      // Use contour points directly instead of trying to find boundary vertices
+      const edgeVertStart = finalPositions.length / 3
       
-      // Create mapping of boundary vertices to contour points for proper ordering
-      const boundaryPositions: Array<{ vertexIdx: number; x: number; y: number }> = []
-      for (const vIdx of boundaryArray) {
-        const x = posArray[vIdx * 3]
-        const y = posArray[vIdx * 3 + 1]
-        boundaryPositions.push({ vertexIdx: vIdx, x, y })
+      // Sample contour at regular intervals for edge strip
+      const edgeResolution = Math.min(simplifiedContour.length, 128)
+      const edgeStep = Math.max(1, Math.floor(simplifiedContour.length / edgeResolution))
+      
+      const edgePoints: Point2D[] = []
+      for (let i = 0; i < simplifiedContour.length; i += edgeStep) {
+        edgePoints.push(simplifiedContour[i])
+      }
+      // Ensure we include the last point for a closed loop
+      if (edgePoints.length > 0 && simplifiedContour.length > 0) {
+        const last = simplifiedContour[simplifiedContour.length - 1]
+        const first = edgePoints[0]
+        if (Math.abs(last.x - first.x) > 0.01 || Math.abs(last.y - first.y) > 0.01) {
+          edgePoints.push(last)
+        }
       }
       
-      // Sort boundary vertices by angle from center for proper edge loop
-      const boundingBox = getBoundingBox(simplifiedContour)
-      const centerX = (boundingBox.minX + boundingBox.maxX) / 2
-      const centerY = (boundingBox.minY + boundingBox.maxY) / 2
-      boundaryPositions.sort((a, b) => {
-        const angleA = Math.atan2(a.y - centerY, a.x - centerX)
-        const angleB = Math.atan2(b.y - centerY, b.x - centerX)
-        return angleA - angleB
-      })
+      // Create edge vertices along contour (at z=0, the "pinch" point)
+      for (let i = 0; i < edgePoints.length; i++) {
+        const p = edgePoints[i]
+        const u = i / edgePoints.length
+        
+        // Front edge vertex (z = tiny positive)
+        finalPositions.push(p.x, p.y, 0.002)
+        finalUvs.push(u, 0.5)
+        
+        // Back edge vertex (z = tiny negative)
+        finalPositions.push(p.x, p.y, -0.002)
+        finalUvs.push(u, 0.5)
+      }
       
-      // Connect front and back boundary vertices
-      for (let i = 0; i < boundaryPositions.length; i++) {
-        const curr = boundaryPositions[i]
-        const next = boundaryPositions[(i + 1) % boundaryPositions.length]
+      // Connect edge vertices in a strip following contour order
+      for (let i = 0; i < edgePoints.length; i++) {
+        const nextI = (i + 1) % edgePoints.length
         
-        // Front vertices
-        const frontCurr = curr.vertexIdx
-        const frontNext = next.vertexIdx
-        // Back vertices (offset by frontVertCount)
-        const backCurr = curr.vertexIdx + frontVertCount
-        const backNext = next.vertexIdx + frontVertCount
+        const frontCurr = edgeVertStart + i * 2
+        const backCurr = edgeVertStart + i * 2 + 1
+        const frontNext = edgeVertStart + nextI * 2
+        const backNext = edgeVertStart + nextI * 2 + 1
         
-        // Create two triangles to close the gap
+        // Two triangles per edge segment
         finalIndices.push(frontCurr, frontNext, backNext)
         finalIndices.push(frontCurr, backNext, backCurr)
       }

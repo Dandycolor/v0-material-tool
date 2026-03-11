@@ -256,6 +256,14 @@ interface GeometrySettings {
   inflateSphereRadius: number
   flatBase?: boolean
   deformEnabled?: boolean
+  // Pottery wheel / lathe mode
+  usePotteryMode?: boolean
+  latheSegments?: number
+  latheAxis?: 'center' | 'left' | 'right' | 'top' | 'bottom'
+  // Inflate mode (balloon/pillow effect)
+  useInflateMode?: boolean
+  inflateVolume?: number       // 0-100, controls the height of inflation
+  inflateBothSides?: boolean   // inflate both front and back
 }
 
 export interface MaterialSettings {
@@ -1270,6 +1278,302 @@ function isPointInShape(x: number, y: number, points: THREE.Vector2[]): boolean 
   return inside
 }
 
+// Helper: compute minimum distance from point to polygon edge
+function distanceToPolygonEdge(px: number, py: number, polygon: THREE.Vector2[]): number {
+  let minDist = Infinity
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const ax = polygon[j].x, ay = polygon[j].y
+    const bx = polygon[i].x, by = polygon[i].y
+    const dx = bx - ax, dy = by - ay
+    const lenSq = dx * dx + dy * dy
+    let t = 0
+    if (lenSq > 0) {
+      t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq))
+    }
+    const projX = ax + t * dx, projY = ay + t * dy
+    const dist = Math.sqrt((px - projX) ** 2 + (py - projY) ** 2)
+    if (dist < minDist) minDist = dist
+  }
+  return minDist
+}
+
+// Helper: check if point is inside polygon considering holes
+function isPointInsideWithHoles(
+  x: number, 
+  y: number, 
+  outerPolygon: THREE.Vector2[], 
+  holes: THREE.Vector2[][]
+): boolean {
+  if (!isPointInShape(x, y, outerPolygon)) return false
+  for (const hole of holes) {
+    if (isPointInShape(x, y, hole)) return false
+  }
+  return true
+}
+
+// Helper: compute minimum distance to nearest edge (outer + holes)
+function distanceToAllEdges(
+  px: number, 
+  py: number, 
+  outerPolygon: THREE.Vector2[], 
+  holes: THREE.Vector2[][]
+): number {
+  let minDist = distanceToPolygonEdge(px, py, outerPolygon)
+  for (const hole of holes) {
+    const holeDist = distanceToPolygonEdge(px, py, hole)
+    if (holeDist < minDist) minDist = holeDist
+  }
+  return minDist
+}
+
+/**
+ * Creates an inflated (balloon/pillow) geometry from an SVG shape.
+ * The shape is "blown up" like a balloon - center vertices rise, edges stay at z=0.
+ * Uses a grid-based SDF approach for smooth inflation.
+ */
+function createInflatedGeometry(
+  svgString: string,
+  volume: number = 100,      // 0-100, inflation height
+  bothSides: boolean = true, // inflate both front and back
+  resolution: number = 96,   // grid resolution
+  svgSource: "iconify" | "upload" = "iconify",
+): THREE.BufferGeometry | null {
+  if (!svgString) return null
+
+  try {
+    const shapes = parseSVGContent(svgString, svgSource)
+    if (shapes.length === 0) {
+      console.warn("[v0] No valid shapes found in SVG for inflate")
+      return null
+    }
+
+    // For now, process the first shape (with holes)
+    const shape = shapes[0]
+    const outerPoints = shape.getPoints(64) // high resolution for smooth edges
+    const holePolygons: THREE.Vector2[][] = shape.holes.map(hole => hole.getPoints(64))
+
+    // Calculate bounding box
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+    outerPoints.forEach(p => {
+      minX = Math.min(minX, p.x)
+      maxX = Math.max(maxX, p.x)
+      minY = Math.min(minY, p.y)
+      maxY = Math.max(maxY, p.y)
+    })
+
+    const width = maxX - minX
+    const height = maxY - minY
+    if (width <= 0 || height <= 0) return null
+
+    // Compute max distance inside the shape for normalization
+    let maxDistanceInside = 0
+    const gridSizeX = resolution
+    const gridSizeY = Math.ceil(resolution * (height / width))
+    const stepX = width / (gridSizeX - 1)
+    const stepY = height / (gridSizeY - 1)
+
+    // First pass: find max distance
+    for (let iy = 0; iy < gridSizeY; iy++) {
+      for (let ix = 0; ix < gridSizeX; ix++) {
+        const x = minX + ix * stepX
+        const y = minY + iy * stepY
+        if (isPointInsideWithHoles(x, y, outerPoints, holePolygons)) {
+          const dist = distanceToAllEdges(x, y, outerPoints, holePolygons)
+          if (dist > maxDistanceInside) maxDistanceInside = dist
+        }
+      }
+    }
+
+    if (maxDistanceInside <= 0) maxDistanceInside = 1
+
+    // Volume scale factor
+    const volumeScale = (volume / 100) * maxDistanceInside * 0.6
+
+    // Create grid vertices
+    const positions: number[] = []
+    const indices: number[] = []
+    const uvs: number[] = []
+    const vertexMap: Map<string, number> = new Map() // grid coord -> vertex index
+    const insideFlags: boolean[][] = [] // track which grid cells are inside
+
+    // Generate vertices
+    for (let iy = 0; iy < gridSizeY; iy++) {
+      insideFlags[iy] = []
+      for (let ix = 0; ix < gridSizeX; ix++) {
+        const x = minX + ix * stepX
+        const y = minY + iy * stepY
+        const inside = isPointInsideWithHoles(x, y, outerPoints, holePolygons)
+        insideFlags[iy][ix] = inside
+
+        if (inside) {
+          const dist = distanceToAllEdges(x, y, outerPoints, holePolygons)
+          const normalizedDist = dist / maxDistanceInside
+          // Dome profile: hemisphere-like curve
+          const r = Math.max(0, Math.min(1, normalizedDist))
+          const z = volumeScale * Math.sqrt(Math.max(0, 1 - (1 - r) * (1 - r)))
+
+          const vertIdx = positions.length / 3
+          positions.push(x, y, z)
+          uvs.push(ix / (gridSizeX - 1), iy / (gridSizeY - 1))
+          vertexMap.set(`${ix},${iy}`, vertIdx)
+        }
+      }
+    }
+
+    // Generate triangles for front face
+    for (let iy = 0; iy < gridSizeY - 1; iy++) {
+      for (let ix = 0; ix < gridSizeX - 1; ix++) {
+        // Check if all 4 corners of this cell are inside
+        const inside00 = insideFlags[iy][ix]
+        const inside10 = insideFlags[iy][ix + 1]
+        const inside01 = insideFlags[iy + 1][ix]
+        const inside11 = insideFlags[iy + 1][ix + 1]
+
+        if (inside00 && inside10 && inside01 && inside11) {
+          const v00 = vertexMap.get(`${ix},${iy}`)!
+          const v10 = vertexMap.get(`${ix + 1},${iy}`)!
+          const v01 = vertexMap.get(`${ix},${iy + 1}`)!
+          const v11 = vertexMap.get(`${ix + 1},${iy + 1}`)!
+
+          // Two triangles per quad
+          indices.push(v00, v10, v11)
+          indices.push(v00, v11, v01)
+        }
+      }
+    }
+
+    if (positions.length === 0 || indices.length === 0) {
+      console.warn("[v0] No geometry created from inflate")
+      return null
+    }
+
+    // Create front geometry
+    const frontGeometry = new THREE.BufferGeometry()
+    frontGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    frontGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+    frontGeometry.setIndex(indices)
+    frontGeometry.computeVertexNormals()
+
+    let finalGeometry: THREE.BufferGeometry
+
+    if (bothSides) {
+      // Create back face (mirror z)
+      const backPositions: number[] = []
+      const backIndices: number[] = []
+      const backUvs: number[] = []
+      const frontVertexCount = positions.length / 3
+
+      for (let i = 0; i < positions.length; i += 3) {
+        backPositions.push(positions[i], positions[i + 1], -positions[i + 2])
+      }
+      for (let i = 0; i < uvs.length; i++) {
+        backUvs.push(uvs[i])
+      }
+      // Reverse winding for back face
+      for (let i = 0; i < indices.length; i += 3) {
+        backIndices.push(
+          indices[i] + frontVertexCount,
+          indices[i + 2] + frontVertexCount,
+          indices[i + 1] + frontVertexCount
+        )
+      }
+
+      // Create side walls along the boundary using the shape outline
+      // Use the original shape contour points for clean edges
+      const edgePoints = outerPoints.map(p => {
+        // Find the closest grid vertex that's inside
+        return new THREE.Vector2(p.x, p.y)
+      })
+
+      // Combine all positions
+      const allPositions = [...positions, ...backPositions]
+      const allUvs = [...uvs, ...backUvs]
+      const allIndices = [...indices, ...backIndices]
+
+      // Add smooth side wall geometry using the shape outline
+      const sideWallStartIdx = allPositions.length / 3
+      const edgeResolution = Math.min(outerPoints.length, 128)
+      const edgeStep = Math.max(1, Math.floor(outerPoints.length / edgeResolution))
+      
+      const edgeVerticesIndices: number[] = []
+      for (let i = 0; i < outerPoints.length; i += edgeStep) {
+        const p = outerPoints[i]
+        const x = p.x, y = p.y
+        // Edge vertices are at z=0 (the pinch point of the balloon)
+        const frontZ = 0.001 // Slight offset to avoid z-fighting
+        const backZ = -0.001
+        
+        // Front edge vertex
+        const frontIdx = allPositions.length / 3
+        allPositions.push(x, y, frontZ)
+        allUvs.push(i / outerPoints.length, 0.5)
+        
+        // Back edge vertex
+        const backIdx = allPositions.length / 3
+        allPositions.push(x, y, backZ)
+        allUvs.push(i / outerPoints.length, 0.5)
+        
+        edgeVerticesIndices.push(frontIdx, backIdx)
+      }
+
+      // Create triangles connecting edge to front/back surfaces
+      for (let i = 0; i < edgeVerticesIndices.length - 2; i += 2) {
+        const frontCurr = edgeVerticesIndices[i]
+        const backCurr = edgeVerticesIndices[i + 1]
+        const frontNext = edgeVerticesIndices[i + 2]
+        const backNext = edgeVerticesIndices[i + 3]
+        
+        // Quad between edge vertices
+        allIndices.push(frontCurr, frontNext, backNext)
+        allIndices.push(frontCurr, backNext, backCurr)
+      }
+      
+      // Close the loop
+      if (edgeVerticesIndices.length >= 4) {
+        const frontFirst = edgeVerticesIndices[0]
+        const backFirst = edgeVerticesIndices[1]
+        const frontLast = edgeVerticesIndices[edgeVerticesIndices.length - 2]
+        const backLast = edgeVerticesIndices[edgeVerticesIndices.length - 1]
+        
+        allIndices.push(frontLast, frontFirst, backFirst)
+        allIndices.push(frontLast, backFirst, backLast)
+      }
+
+      finalGeometry = new THREE.BufferGeometry()
+      finalGeometry.setAttribute('position', new THREE.Float32BufferAttribute(allPositions, 3))
+      finalGeometry.setAttribute('uv', new THREE.Float32BufferAttribute(allUvs, 2))
+      finalGeometry.setIndex(allIndices)
+    } else {
+      finalGeometry = frontGeometry
+    }
+
+    // Compute normals
+    finalGeometry.computeVertexNormals()
+
+    // Center and scale
+    finalGeometry.center()
+    finalGeometry.computeBoundingBox()
+    const box = finalGeometry.boundingBox
+    if (box) {
+      const size = new THREE.Vector3()
+      box.getSize(size)
+      const maxDim = Math.max(size.x, size.y, size.z)
+      if (maxDim > 0) {
+        const scale = 2 / maxDim
+        finalGeometry.scale(scale, scale, scale)
+      }
+    }
+
+    // Flip Y axis (SVG Y is inverted)
+    finalGeometry.rotateX(Math.PI)
+
+    return finalGeometry
+  } catch (error) {
+    console.error("[v0] Error creating inflated geometry:", error)
+    return null
+  }
+}
+
 function createLatheGeometry(
   svgString: string,
   segments: number,
@@ -1661,6 +1965,17 @@ function ExtrudedSVGMesh({
   const geometry = useMemo(() => {
     if (!geometrySettings.svgPath) return null
     
+    // Inflate mode takes priority
+    if (geometrySettings.useInflateMode) {
+      return createInflatedGeometry(
+        geometrySettings.svgPath,
+        geometrySettings.inflateVolume ?? 100,
+        geometrySettings.inflateBothSides ?? true,
+        96, // resolution
+        geometrySettings.svgSource ?? "iconify",
+      )
+    }
+    
     if (geometrySettings.usePotteryMode) {
       return createLatheGeometry(
         geometrySettings.svgPath,
@@ -1669,13 +1984,13 @@ function ExtrudedSVGMesh({
       )
     }
     
-const baseGeometry = createExtrudedGeometry(
-  geometrySettings.svgPath,
-  geometrySettings.thickness,
-  geometrySettings.bevelSize,
-  geometrySettings.bevelSegments,
-  geometrySettings.bevelQuality,
-  geometrySettings.svgSource ?? "iconify",
+    const baseGeometry = createExtrudedGeometry(
+      geometrySettings.svgPath,
+      geometrySettings.thickness,
+      geometrySettings.bevelSize,
+      geometrySettings.bevelSegments,
+      geometrySettings.bevelQuality,
+      geometrySettings.svgSource ?? "iconify",
     )
     
     return baseGeometry
@@ -1689,6 +2004,9 @@ const baseGeometry = createExtrudedGeometry(
     geometrySettings.usePotteryMode,
     geometrySettings.latheSegments,
     geometrySettings.latheAxis,
+    geometrySettings.useInflateMode,
+    geometrySettings.inflateVolume,
+    geometrySettings.inflateBothSides,
   ])
 
   const meshRef = useRef<THREE.Mesh>(null)

@@ -8,7 +8,7 @@ import { Suspense, useMemo, useState, useEffect, useRef, useImperativeHandle, fo
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils"
 import { ModelMesh } from "./model-mesh"
 import { createGradientMaterial } from "./gradient-shader"
-import { createInflatedGeometry as createInflatedGeometryFromContour } from "@/lib/inflate-geometry"
+import { inflatePolygon as createInflatedGeometryFromContour } from "@/lib/inflate-geometry"
 
 // Grid component with fade effect at edges
 function GridHelper({ visible = true }: { visible?: boolean }) {

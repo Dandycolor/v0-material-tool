@@ -658,7 +658,7 @@ function createPBRMaterial(
       ? new THREE.Color(settings.attenuationColor || "#ffffff")
       : (settings.attenuationColor ? new THREE.Color(settings.attenuationColor) : new THREE.Color("#ffffff")),
     transparent: isGlass || false,
-    side: THREE.DoubleSide,
+    side: THREE.FrontSide,
     clearcoat: settings.clearcoat ?? 0,
     clearcoatRoughness: settings.clearcoatRoughness ?? 0,
     clearcoatNormalScale: settings.clearcoatNormalScale ? new THREE.Vector2(settings.clearcoatNormalScale, settings.clearcoatNormalScale) : undefined,
@@ -772,6 +772,6 @@ function createMatcapMaterial(
     vertexShader,
     fragmentShader,
     extensions: { derivatives: true },
-    side: THREE.DoubleSide,
+    side: THREE.FrontSide,
   })
 }

@@ -188,7 +188,7 @@ export function createGradientMaterial(gradientSettings: {
       angle: { value: gradientSettings.angle || 0 },
       noise: { value: gradientSettings.noise || 0 },
     },
-    side: THREE.DoubleSide,
+    side: THREE.FrontSide,
   })
 
   return material

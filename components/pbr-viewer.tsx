@@ -2269,7 +2269,7 @@ function Material({
         transparent: true,
         opacity: 1,
         alphaMap: opacityMap,
-        side: THREE.DoubleSide,
+        side: THREE.FrontSide,
         envMapIntensity: materialSettings.envMapIntensity || 1.5,
         clearcoat: materialSettings.clearcoat,
         clearcoatRoughness: materialSettings.clearcoatRoughness,

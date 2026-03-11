@@ -199,24 +199,6 @@ export function inflatePolygon(polygon: Point2D[], options: Partial<InflateOptio
     heights.set(newHeights)
   }
   
-  // Find boundary vertices (vertices on polygon edge)
-  const boundaryIndices: number[] = []
-  const boundaryThreshold = step * 1.5
-  for (let i = 0; i < vertices.length; i++) {
-    if (distanceToPolygonEdge(vertices[i], polygon) < boundaryThreshold) {
-      boundaryIndices.push(i)
-    }
-  }
-  
-  // Sort boundary vertices by angle from centroid
-  const cx = vertices.reduce((s, v) => s + v.x, 0) / vertices.length
-  const cy = vertices.reduce((s, v) => s + v.y, 0) / vertices.length
-  boundaryIndices.sort((a, b) => {
-    const angleA = Math.atan2(vertices[a].y - cy, vertices[a].x - cx)
-    const angleB = Math.atan2(vertices[b].y - cy, vertices[b].x - cx)
-    return angleA - angleB
-  })
-  
   // Normalize scale - fit into [-1, 1] range
   const scale = 2 / size
   
@@ -256,62 +238,39 @@ export function inflatePolygon(polygon: Point2D[], options: Partial<InflateOptio
       )
     }
     
-    // Edge rings to connect front and back smoothly
-    const edgeRings = 4
-    const edgeVertStart = positions.length / 3
-    
-    // Create edge ring vertices
-    for (let ring = 0; ring < edgeRings; ring++) {
-      const t = (ring + 1) / (edgeRings + 1)
-      const theta = Math.PI * t
-      
-      for (let i = 0; i < boundaryIndices.length; i++) {
-        const bi = boundaryIndices[i]
-        const x = (vertices[bi].x - bounds.minX - size * 0.5) * scale
-        const y = (vertices[bi].y - bounds.minY - size * 0.5) * scale
-        const frontZ = heights[bi] * scale
-        const z = frontZ * Math.cos(theta)
-        positions.push(x, y, z)
+    // Simple edge connection: use boundary triangles from grid to connect front/back
+    // Find boundary edges (edges that are only used by one triangle)
+    const edgeCount = new Map<string, { a: number, b: number, count: number }>()
+    for (let i = 0; i < triangles.length; i += 3) {
+      const tri = [triangles[i], triangles[i + 1], triangles[i + 2]]
+      for (let j = 0; j < 3; j++) {
+        const a = tri[j], b = tri[(j + 1) % 3]
+        const key = a < b ? `${a}-${b}` : `${b}-${a}`
+        if (!edgeCount.has(key)) {
+          edgeCount.set(key, { a, b, count: 0 })
+        }
+        edgeCount.get(key)!.count++
       }
     }
     
-    // Connect front to first ring - quad split into 2 triangles
-    const numBoundary = boundaryIndices.length
-    for (let i = 0; i < numBoundary; i++) {
-      const next = (i + 1) % numBoundary
-      const frontCurr = boundaryIndices[i]
-      const frontNext = boundaryIndices[next]
-      const ringCurr = edgeVertStart + i
-      const ringNext = edgeVertStart + next
-      
-      // Invert winding for outward-facing normals
-      indices.push(frontCurr, ringCurr, frontNext)
-      indices.push(frontNext, ringCurr, ringNext)
-    }
-    
-    // Connect rings to each other
-    for (let ring = 0; ring < edgeRings - 1; ring++) {
-      const ringStart = edgeVertStart + ring * numBoundary
-      const nextRingStart = edgeVertStart + (ring + 1) * numBoundary
-      
-      for (let i = 0; i < numBoundary; i++) {
-        const next = (i + 1) % numBoundary
-        // Invert winding for outward-facing normals
-        indices.push(ringStart + i, nextRingStart + i, ringStart + next)
-        indices.push(ringStart + next, nextRingStart + i, nextRingStart + next)
+    // Boundary edges are those with count === 1
+    const boundaryEdges: Array<{ a: number, b: number }> = []
+    edgeCount.forEach((edge) => {
+      if (edge.count === 1) {
+        boundaryEdges.push({ a: edge.a, b: edge.b })
       }
-    }
+    })
     
-    // Connect last ring to back
-    const lastRingStart = edgeVertStart + (edgeRings - 1) * numBoundary
-    for (let i = 0; i < numBoundary; i++) {
-      const next = (i + 1) % numBoundary
-      const backCurr = boundaryIndices[i] + numVerts
-      const backNext = boundaryIndices[next] + numVerts
+    // Connect boundary edges between front and back with quads
+    for (const edge of boundaryEdges) {
+      const frontA = edge.a
+      const frontB = edge.b
+      const backA = edge.a + numVerts
+      const backB = edge.b + numVerts
       
-      // Invert winding for outward-facing normals
-      indices.push(lastRingStart + i, backCurr, lastRingStart + next)
-      indices.push(lastRingStart + next, backCurr, backNext)
+      // Create quad as 2 triangles (with correct winding for outward normals)
+      indices.push(frontA, frontB, backA)
+      indices.push(frontB, backB, backA)
     }
   }
   

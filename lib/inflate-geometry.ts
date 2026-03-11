@@ -1,11 +1,10 @@
 /**
- * Inflate Geometry Library - Simple Grid-Based Approach
+ * Inflate Geometry Library - Grid-Based Approach
  * 
  * Creates inflated 3D meshes from 2D contours using:
- * - Grid-based triangulation (no external dependencies needed)
+ * - Efficient grid-based triangulation 
  * - Point-in-polygon testing for mesh generation
  * - Signed Distance Field for smooth height profiles
- * - Laplacian smoothing for soft balloon effect
  */
 
 import * as THREE from 'three'
@@ -49,9 +48,6 @@ function getBounds(polygon: Point2D[]): { minX: number; maxX: number; minY: numb
   return { minX, maxX, minY, maxY }
 }
 
-/**
- * Point in polygon using ray casting algorithm
- */
 function pointInPolygon(point: Point2D, polygon: Point2D[]): boolean {
   let inside = false
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
@@ -63,56 +59,37 @@ function pointInPolygon(point: Point2D, polygon: Point2D[]): boolean {
   return inside
 }
 
-/**
- * Signed distance from point to polygon boundary
- * Negative if outside, positive if inside
- */
-function signedDistanceToPolygon(point: Point2D, polygon: Point2D[]): number {
-  let minDist = Infinity
-  let inside = pointInPolygon(point, polygon)
-  
-  for (let i = 0; i < polygon.length; i++) {
-    const a = polygon[i]
-    const b = polygon[(i + 1) % polygon.length]
-    const dist = distanceToSegment(point, a, b)
-    minDist = Math.min(minDist, dist)
-  }
-  
-  return inside ? minDist : -minDist
-}
-
 function distanceToSegment(p: Point2D, a: Point2D, b: Point2D): number {
   const dx = b.x - a.x
   const dy = b.y - a.y
-  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)
+  const lenSq = dx * dx + dy * dy
+  if (lenSq === 0) return Math.sqrt((p.x - a.x) ** 2 + (p.y - a.y) ** 2)
+  
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq
   t = Math.max(0, Math.min(1, t))
   
   const closest = { x: a.x + t * dx, y: a.y + t * dy }
-  const ddx = p.x - closest.x
-  const ddy = p.y - closest.y
-  return Math.sqrt(ddx * ddx + ddy * ddy)
+  return Math.sqrt((p.x - closest.x) ** 2 + (p.y - closest.y) ** 2)
 }
 
-/**
- * Smooth balloon profile: height falloff from center (1) to edges (0)
- * t should be normalized distance where 0=boundary, 1=deep interior
- */
+function distanceToPolygonEdge(point: Point2D, polygon: Point2D[]): number {
+  let minDist = Infinity
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i]
+    const b = polygon[(i + 1) % polygon.length]
+    minDist = Math.min(minDist, distanceToSegment(point, a, b))
+  }
+  return minDist
+}
+
+// Smooth balloon profile (from reference: WM function)
 function smoothProfile(t: number): number {
   const c = Math.max(0, Math.min(1, t))
-  // Exact formula from reference: pow(max(0, 1-pow(c, 2.47)), 0.43)
   return Math.pow(Math.max(0, 1 - Math.pow(c, 2.47)), 0.43)
 }
 
-/**
- * Normalize distance: 0=boundary, 1=far from boundary
- */
-function normalizeDistance(dist: number, bounds: ReturnType<typeof getBounds>): number {
-  const maxDist = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) * 0.5
-  return Math.min(1, Math.max(0, (dist / maxDist + 1) * 0.5))
-}
-
 // ============================================================================
-// Main Inflate Function
+// Main Inflate Function  
 // ============================================================================
 
 export function inflatePolygon(polygon: Point2D[], options: Partial<InflateOptions> = {}): THREE.BufferGeometry | null {
@@ -123,115 +100,150 @@ export function inflatePolygon(polygon: Point2D[], options: Partial<InflateOptio
   const bounds = getBounds(polygon)
   const w = bounds.maxX - bounds.minX
   const h = bounds.maxY - bounds.minY
+  if (w < 1 || h < 1) return null
+  
   const size = Math.max(w, h)
   const step = size / opts.gridResolution
+  const cols = Math.ceil(w / step) + 1
+  const rows = Math.ceil(h / step) + 1
   
-  // Generate grid vertices
+  // Create grid of vertices with index mapping
+  // grid[row][col] = vertex index or -1 if outside polygon
+  const grid: number[][] = []
   const vertices: Point2D[] = []
-  const vertexMap = new Map<string, number>()
   
-  for (let x = bounds.minX; x <= bounds.maxX; x += step) {
-    for (let y = bounds.minY; y <= bounds.maxY; y += step) {
+  for (let row = 0; row < rows; row++) {
+    grid[row] = []
+    for (let col = 0; col < cols; col++) {
+      const x = bounds.minX + col * step
+      const y = bounds.minY + row * step
       const p = { x, y }
-      if (pointInPolygon(p, polygon) || isOnBoundary(p, polygon, step * 0.1)) {
-        const key = `${x.toFixed(3)},${y.toFixed(3)}`
-        vertexMap.set(key, vertices.length)
+      
+      if (pointInPolygon(p, polygon)) {
+        grid[row][col] = vertices.length
         vertices.push(p)
+      } else {
+        grid[row][col] = -1
       }
     }
   }
   
-  // Generate triangles (grid cells)
+  if (vertices.length < 3) return null
+  
+  // Generate triangles from grid cells
   const triangles: number[] = []
-  for (let i = 0; i < vertices.length; i++) {
-    for (let j = i + 1; j < vertices.length; j++) {
-      for (let k = j + 1; k < vertices.length; k++) {
-        const a = vertices[i]
-        const b = vertices[j]
-        const c = vertices[k]
-        
-        // Check if these form a valid grid cell
-        const dx1 = b.x - a.x, dy1 = b.y - a.y
-        const dx2 = c.x - a.x, dy2 = c.y - a.y
-        
-        const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1)
-        const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2)
-        
-        if (len1 > 0 && len2 > 0 && len1 < step * 1.5 && len2 < step * 1.5) {
-          // Check if centroid is inside polygon
-          const cx = (a.x + b.x + c.x) / 3
-          const cy = (a.y + b.y + c.y) / 3
-          if (pointInPolygon({ x: cx, y: cy }, polygon)) {
-            triangles.push(i, j, k)
-          }
-        }
+  
+  for (let row = 0; row < rows - 1; row++) {
+    for (let col = 0; col < cols - 1; col++) {
+      const tl = grid[row][col]         // top-left
+      const tr = grid[row][col + 1]     // top-right
+      const bl = grid[row + 1][col]     // bottom-left
+      const br = grid[row + 1][col + 1] // bottom-right
+      
+      // If all 4 corners are inside, create 2 triangles
+      if (tl >= 0 && tr >= 0 && bl >= 0 && br >= 0) {
+        triangles.push(tl, bl, tr)
+        triangles.push(tr, bl, br)
+      } 
+      // Partial cells - create triangle if 3 corners are inside
+      else if (tl >= 0 && tr >= 0 && bl >= 0) {
+        triangles.push(tl, bl, tr)
+      } else if (tl >= 0 && tr >= 0 && br >= 0) {
+        triangles.push(tl, br, tr)
+      } else if (tl >= 0 && bl >= 0 && br >= 0) {
+        triangles.push(tl, bl, br)
+      } else if (tr >= 0 && bl >= 0 && br >= 0) {
+        triangles.push(tr, bl, br)
       }
     }
   }
   
-  if (triangles.length === 0) return null
+  if (triangles.length < 3) return null
   
-  // Calculate heights using SDF
+  // Calculate heights using distance to boundary
+  const maxDist = size * 0.5
   const heights = new Float32Array(vertices.length)
+  
   for (let i = 0; i < vertices.length; i++) {
-    const dist = signedDistanceToPolygon(vertices[i], polygon)
-    const normalized = normalizeDistance(dist, bounds)
+    const dist = distanceToPolygonEdge(vertices[i], polygon)
+    const normalized = 1 - Math.min(1, dist / maxDist) // 1 at boundary, 0 at center
     heights[i] = smoothProfile(normalized) * opts.amount
   }
   
-  // Build 3D positions (front face + back face + edges)
+  // Apply smoothing
+  for (let iter = 0; iter < opts.smoothingIterations; iter++) {
+    const newHeights = new Float32Array(heights)
+    for (let row = 1; row < rows - 1; row++) {
+      for (let col = 1; col < cols - 1; col++) {
+        const idx = grid[row][col]
+        if (idx < 0) continue
+        
+        const neighbors: number[] = []
+        const checkNeighbor = (r: number, c: number) => {
+          if (r >= 0 && r < rows && c >= 0 && c < cols && grid[r][c] >= 0) {
+            neighbors.push(grid[r][c])
+          }
+        }
+        checkNeighbor(row - 1, col)
+        checkNeighbor(row + 1, col)
+        checkNeighbor(row, col - 1)
+        checkNeighbor(row, col + 1)
+        
+        if (neighbors.length > 0) {
+          let sum = 0
+          for (const n of neighbors) sum += heights[n]
+          newHeights[idx] = (heights[idx] + sum / neighbors.length) * 0.5
+        }
+      }
+    }
+    heights.set(newHeights)
+  }
+  
+  // Build geometry
+  const numVerts = vertices.length
   const positions: number[] = []
   const indices: number[] = []
-  const numVerts = vertices.length
   
-  // Front vertices (+Z)
+  // Front face (+Z)
   for (let i = 0; i < numVerts; i++) {
     positions.push(vertices[i].x, vertices[i].y, heights[i])
   }
   
-  // Back vertices (-Z)
-  for (let i = 0; i < numVerts; i++) {
-    positions.push(vertices[i].x, vertices[i].y, -heights[i])
-  }
-  
-  // Front face triangles
+  // Front triangles
   for (let i = 0; i < triangles.length; i += 3) {
     indices.push(triangles[i], triangles[i + 1], triangles[i + 2])
   }
   
-  // Back face triangles (reversed for correct normal)
   if (opts.doubleSided) {
-    for (let i = triangles.length - 1; i >= 2; i -= 3) {
+    // Back face (-Z)
+    for (let i = 0; i < numVerts; i++) {
+      positions.push(vertices[i].x, vertices[i].y, -heights[i])
+    }
+    
+    // Back triangles (reversed winding)
+    for (let i = 0; i < triangles.length; i += 3) {
       indices.push(
-        numVerts + triangles[i - 2],
-        numVerts + triangles[i - 1],
-        numVerts + triangles[i]
+        triangles[i] + numVerts,
+        triangles[i + 2] + numVerts,
+        triangles[i + 1] + numVerts
       )
     }
   }
   
   // Create geometry
   const geometry = new THREE.BufferGeometry()
-  geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3))
-  geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1))
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setIndex(indices)
   geometry.computeVertexNormals()
+  
+  // Center geometry
+  geometry.computeBoundingBox()
+  const center = new THREE.Vector3()
+  geometry.boundingBox!.getCenter(center)
+  geometry.translate(-center.x, -center.y, -center.z)
   
   return geometry
 }
 
-/**
- * Check if point is near polygon boundary
- */
-function isOnBoundary(point: Point2D, polygon: Point2D[], threshold: number): boolean {
-  for (let i = 0; i < polygon.length; i++) {
-    const a = polygon[i]
-    const b = polygon[(i + 1) % polygon.length]
-    if (distanceToSegment(point, a, b) < threshold) {
-      return true
-    }
-  }
-  return false
-}
-
-// Export alias for backwards compatibility
+// Alias for backwards compatibility
 export const createInflatedGeometry = inflatePolygon

@@ -267,6 +267,7 @@ interface GeometrySettings {
   inflateBothSides?: boolean   // inflate both front and back
   inflateSmoothing?: number    // 0-10, smoothing iterations
   inflateGridResolution?: number // 10-40, internal grid density
+  inflateSharpRidge?: boolean  // voronoi-style sharp ridges toward medial axis
 }
 
 export interface MaterialSettings {

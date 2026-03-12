@@ -407,7 +407,7 @@ export function inflatePolygon(
   // inflateProfile(r) = (1 - (1-r)^n)^m gives dome shape
   const heights = new Float32Array(numVerts)
   for (let i = 0; i < numVerts; i++) {
-    const r = finalField[i]
+    const r = normalizedField[i]
     heights[i] = inflateProfile(r) * opts.amount
   }
 

@@ -2518,12 +2518,33 @@ function SceneContent({
     onExportReady(exportPNG)
   }, [gl, scene, camera, onExportReady])
 
-  // GLB export — exports the scene as-is with all materials, lights, and geometry
+  // GLB export — exports visible meshes from the scene
   useEffect(() => {
     const exportGLB = () => {
       const exporter = new GLTFExporter()
 
-      // Temporarily suppress GLTFExporter warnings (normalized normals, merged textures)
+      // Collect all visible meshes in the scene
+      const meshesToExport: THREE.Object3D[] = []
+      scene.traverse((obj) => {
+        if (obj instanceof THREE.Mesh && obj.visible && obj.geometry) {
+          meshesToExport.push(obj)
+        }
+      })
+
+      console.log("[v0] GLB export: found", meshesToExport.length, "visible meshes")
+
+      if (meshesToExport.length === 0) {
+        console.warn("[v0] No visible meshes to export")
+        return
+      }
+
+      // Create a group with all meshes to export
+      const exportGroup = new THREE.Group()
+      meshesToExport.forEach((mesh) => {
+        exportGroup.add(mesh)
+      })
+
+      // Temporarily suppress GLTFExporter warnings
       const originalWarn = console.warn
       console.warn = (message?: any) => {
         if (
@@ -2536,9 +2557,10 @@ function SceneContent({
       }
 
       exporter.parse(
-        scene,
+        exportGroup,
         (result) => {
           console.warn = originalWarn
+          console.log("[v0] GLB export successful, file size:", (result as ArrayBuffer).byteLength, "bytes")
           const blob = new Blob([result as ArrayBuffer], { type: "model/gltf-binary" })
           const url = URL.createObjectURL(blob)
           const link = document.createElement("a")
@@ -2549,7 +2571,7 @@ function SceneContent({
         },
         (error) => {
           console.warn = originalWarn
-          console.error("GLB export error:", error)
+          console.error("[v0] GLB export error:", error)
         },
         { binary: true },
       )

@@ -2230,7 +2230,9 @@ function Material({
         tex.wrapT = THREE.RepeatWrapping
         tex.repeat.set(textureScale, textureScale)
         tex.colorSpace = tex === colorMap ? THREE.SRGBColorSpace : THREE.LinearSRGBColorSpace
-        tex.needsUpdate = true
+        if (tex.image) {
+          tex.needsUpdate = true
+        }
       }
     })
   }, [colorMap, normalMap, roughnessMap, displacementMap, metalnessMap, opacityMap, textureScale])
@@ -2775,7 +2777,9 @@ function SceneContent({
   useEffect(() => {
     if (matcapNormalMap && matcapSettings?.normalRepeat) {
       matcapNormalMap.repeat.set(matcapSettings.normalRepeat, matcapSettings.normalRepeat)
-      matcapNormalMap.needsUpdate = true
+      if (matcapNormalMap.image) {
+        matcapNormalMap.needsUpdate = true
+      }
     }
   }, [matcapNormalMap, matcapSettings?.normalRepeat])
 

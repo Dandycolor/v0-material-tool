@@ -403,11 +403,11 @@ export function inflatePolygon(
   }
   
   // ── Step 5: Apply height profile ──────────────────────────────────────────
-  // r=0 → boundary (zero height), r=1 → center (peak height)
-  // inflateProfile(r) = (1 - (1-r)^n)^m gives dome shape
+  // r=0 at boundary (zero height), r=1 at center (peak height)
+  // inflateProfile(r) = (1 - (1-r)^n)^m gives dome shape with flat top
   const heights = new Float32Array(numVerts)
   for (let i = 0; i < numVerts; i++) {
-    const r = normalizedField[i]
+    const r = normalizedField[i]   // normalizedField: 0 at boundary, 1 at center
     heights[i] = inflateProfile(r) * opts.amount
   }
 

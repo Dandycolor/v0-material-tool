@@ -2541,7 +2541,23 @@ function SceneContent({
       // Create a group with all meshes to export
       const exportGroup = new THREE.Group()
       meshesToExport.forEach((mesh) => {
-        exportGroup.add(mesh)
+        const clone = mesh.clone() as THREE.Mesh
+        // Ensure all meshes have a visible material for export
+        // If mesh has no material or material is not visible, assign a default MeshStandardMaterial
+        if (!clone.material || (Array.isArray(clone.material) && clone.material.length === 0)) {
+          clone.material = new THREE.MeshStandardMaterial({
+            color: 0xcccccc,
+            metalness: 0.5,
+            roughness: 0.5,
+          })
+        } else if (Array.isArray(clone.material)) {
+          clone.material = clone.material.map((mat) =>
+            mat && (mat as any).color
+              ? mat
+              : new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.5, roughness: 0.5 }),
+          )
+        }
+        exportGroup.add(clone)
       })
 
       // Temporarily suppress GLTFExporter warnings

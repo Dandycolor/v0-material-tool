@@ -1757,7 +1757,7 @@ function ExtrudedSVGMesh({
 
   if (geometry) {
     return (
-      <mesh ref={meshRef} geometry={geometry}>
+      <mesh ref={meshRef} geometry={geometry} name="inflated-geometry">
         {!gradientSettings?.enabled && (
           useMatcap && matcapTexture ? (
             <MatcapMaterialWithEffects 
@@ -2524,40 +2524,34 @@ function SceneContent({
     onExportReady(exportPNG)
   }, [gl, scene, camera, onExportReady])
 
-  // GLB export — exports visible meshes from the scene
+  // GLB export — exports the inflated geometry mesh specifically
   useEffect(() => {
     const exportGLB = () => {
       const exporter = new GLTFExporter()
 
-      // Collect all visible meshes in the scene
-      const meshesToExport: THREE.Object3D[] = []
+      // Find the inflated geometry mesh by name
+      let inflatedMesh: THREE.Mesh | null = null
       scene.traverse((obj) => {
-        if (obj instanceof THREE.Mesh && obj.visible && obj.geometry) {
-          meshesToExport.push(obj)
+        if (obj instanceof THREE.Mesh && obj.name === "inflated-geometry" && obj.geometry) {
+          inflatedMesh = obj
         }
       })
 
-      console.log("[v0] GLB export: found", meshesToExport.length, "visible meshes")
-
-      if (meshesToExport.length === 0) {
-        console.warn("[v0] No visible meshes to export")
+      if (!inflatedMesh) {
+        console.warn("[v0] GLB export: inflated-geometry mesh not found")
         return
       }
 
-      // Create a group with CLONED meshes (don't move originals!)
-      const exportGroup = new THREE.Group()
-      meshesToExport.forEach((mesh) => {
-        const clone = mesh.clone() as THREE.Mesh
-        clone.geometry = mesh.geometry.clone()
-        // Ensure all meshes have a visible material for export
-        if (!clone.material || (Array.isArray(clone.material) && clone.material.length === 0)) {
-          clone.material = new THREE.MeshStandardMaterial({
-            color: 0xcccccc,
-            metalness: 0.5,
-            roughness: 0.5,
-          })
-        }
-        exportGroup.add(clone)
+      console.log("[v0] GLB export: found inflated-geometry mesh")
+
+      // Clone the mesh geometry for export
+      const clone = inflatedMesh.clone() as THREE.Mesh
+      clone.geometry = inflatedMesh.geometry.clone()
+      // Ensure mesh has a visible material for export
+      clone.material = new THREE.MeshStandardMaterial({
+        color: 0xcccccc,
+        metalness: 0.5,
+        roughness: 0.5,
       })
 
       // Temporarily suppress GLTFExporter warnings
@@ -2573,7 +2567,7 @@ function SceneContent({
       }
 
       exporter.parse(
-        exportGroup,
+        clone,
         (result) => {
           console.warn = originalWarn
           console.log("[v0] GLB export successful, file size:", (result as ArrayBuffer).byteLength, "bytes")
@@ -2595,35 +2589,31 @@ function SceneContent({
     onExportGeometryReady(exportGLB)
   }, [scene, onExportGeometryReady])
 
-  // STL export — exports geometry as binary STL (no materials, pure geometry)
+  // STL export — exports the inflated geometry mesh specifically
   useEffect(() => {
     const exportSTL = () => {
       const stlExporter = new STLExporter()
 
-      // Collect all visible meshes in the scene
-      const meshesToExport: THREE.Mesh[] = []
+      // Find the inflated geometry mesh by name
+      let inflatedMesh: THREE.Mesh | null = null
       scene.traverse((obj) => {
-        if (obj instanceof THREE.Mesh && obj.visible && obj.geometry) {
-          meshesToExport.push(obj)
+        if (obj instanceof THREE.Mesh && obj.name === "inflated-geometry" && obj.geometry) {
+          inflatedMesh = obj
         }
       })
 
-      console.log("[v0] STL export: found", meshesToExport.length, "visible meshes")
-
-      if (meshesToExport.length === 0) {
-        console.warn("[v0] No visible meshes to export")
+      if (!inflatedMesh) {
+        console.warn("[v0] STL export: inflated-geometry mesh not found")
         return
       }
 
-      // Create a group with CLONED meshes (don't move originals!)
-      const exportGroup = new THREE.Group()
-      meshesToExport.forEach((mesh) => {
-        const clone = mesh.clone()
-        clone.geometry = mesh.geometry.clone()
-        exportGroup.add(clone)
-      })
+      console.log("[v0] STL export: found inflated-geometry mesh")
 
-      const stlData = stlExporter.parse(exportGroup, { binary: true })
+      // Clone the mesh geometry for export
+      const clone = inflatedMesh.clone()
+      clone.geometry = inflatedMesh.geometry.clone()
+
+      const stlData = stlExporter.parse(clone, { binary: true })
       console.log("[v0] STL export successful, file size:", (stlData as ArrayBuffer).byteLength, "bytes")
 
       const blob = new Blob([stlData as ArrayBuffer], { type: "application/octet-stream" })
@@ -2637,35 +2627,31 @@ function SceneContent({
     onExportSTLReady(exportSTL)
   }, [scene, onExportSTLReady])
 
-  // OBJ export — exports geometry as OBJ (no materials, pure geometry)
+  // OBJ export — exports the inflated geometry mesh specifically
   useEffect(() => {
     const exportOBJ = () => {
       const objExporter = new OBJExporter()
 
-      // Collect all visible meshes in the scene
-      const meshesToExport: THREE.Mesh[] = []
+      // Find the inflated geometry mesh by name
+      let inflatedMesh: THREE.Mesh | null = null
       scene.traverse((obj) => {
-        if (obj instanceof THREE.Mesh && obj.visible && obj.geometry) {
-          meshesToExport.push(obj)
+        if (obj instanceof THREE.Mesh && obj.name === "inflated-geometry" && obj.geometry) {
+          inflatedMesh = obj
         }
       })
 
-      console.log("[v0] OBJ export: found", meshesToExport.length, "visible meshes")
-
-      if (meshesToExport.length === 0) {
-        console.warn("[v0] No visible meshes to export")
+      if (!inflatedMesh) {
+        console.warn("[v0] OBJ export: inflated-geometry mesh not found")
         return
       }
 
-      // Create a group with CLONED meshes (don't move originals!)
-      const exportGroup = new THREE.Group()
-      meshesToExport.forEach((mesh) => {
-        const clone = mesh.clone()
-        clone.geometry = mesh.geometry.clone()
-        exportGroup.add(clone)
-      })
+      console.log("[v0] OBJ export: found inflated-geometry mesh")
 
-      const objData = objExporter.parse(exportGroup)
+      // Clone the mesh geometry for export
+      const clone = inflatedMesh.clone()
+      clone.geometry = inflatedMesh.geometry.clone()
+
+      const objData = objExporter.parse(clone)
       console.log("[v0] OBJ export successful, file size:", objData.length, "bytes")
 
       const blob = new Blob([objData], { type: "text/plain" })

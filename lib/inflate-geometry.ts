@@ -259,9 +259,13 @@ function solveBiharmonic(
 // ============================================================================
 
 // Illustrator-like inflate profile: flatter top, steeper sides
+// r=0 → boundary (height=0), r=1 → center (height=peak)
+// Formula: z = (1 - (1-r)^n)^m
+// At r=0: (1 - 1)^m = 0 ✓  At r=1: (1 - 0)^m = 1 ✓
+// n controls how quickly it rises from boundary, m controls flatness of top
 function inflateProfile(r: number, n = 2.47, m = 0.43): number {
   const clamped = Math.max(0, Math.min(1, r))
-  return Math.pow(1 - Math.pow(clamped, n), m)
+  return Math.pow(1 - Math.pow(1 - clamped, n), m)
 }
 
 // ============================================================================
@@ -346,79 +350,52 @@ export function inflatePolygon(
   const neighbors = buildVertexNeighbors(coords, halfEdges)
   const weights = computeCotangentWeights(coords, halfEdges)
   
-  // ── Step 4: Compute scalar field via two Laplacian smoothing passes ──────
-  // Use SDF (distance to boundary) as initial field, then smooth it with
-  // the cotangent Laplacian to get a clean harmonic field.
+  // ── Step 4: Solve for smooth scalar field ─────────────────────────────────
+  // Harmonic field: boundary = 0, interior solved so it rises toward center.
+  // We use: Δu = 0, u = 0 on boundary.
+  // Since all boundary is 0, interior naturally gets non-zero values via the
+  // second Poisson solve in biharmonic. We instead solve a plain harmonic
+  // where boundary = 0 and we use the "distance" metric to drive it.
+  //
+  // Simpler & more reliable: solve Δu = -1 with u = 0 on boundary.
+  // This is the classic "drum membrane" / Poisson equation which gives a
+  // smooth dome-shaped field that peaks at the medial center.
   
-  // First pass: raw distance field
-  const rawField = new Float32Array(numVerts)
-  let maxDist = 0
+  const boundaryZero = new Map<number, number>()
+  boundaryIndices.forEach(i => boundaryZero.set(i, 0))
+  
+  const negOne = new Float32Array(numVerts)
   for (let i = 0; i < numVerts; i++) {
-    if (boundaryIndices.has(i)) {
-      rawField[i] = 0
-    } else {
-      const x = coords[i * 2], y = coords[i * 2 + 1]
-      const d = distToEdge(x, y, polygon)
-      rawField[i] = d
-      if (d > maxDist) maxDist = d
+    negOne[i] = boundaryIndices.has(i) ? 0 : -1
+  }
+  
+  const harmonicField = solvePoissonCotangent(coords, neighbors, weights, boundaryIndices, boundaryZero, negOne)
+  
+  // Normalize to [0, 1] across interior vertices only
+  let minF = Infinity, maxF = -Infinity
+  for (let i = 0; i < numVerts; i++) {
+    if (!boundaryIndices.has(i)) {
+      if (harmonicField[i] < minF) minF = harmonicField[i]
+      if (harmonicField[i] > maxF) maxF = harmonicField[i]
     }
   }
-
-  // Normalize to [0, 1]
+  
   const normalizedField = new Float32Array(numVerts)
-  for (let i = 0; i < numVerts; i++) {
-    normalizedField[i] = maxDist > 0 ? rawField[i] / maxDist : 0
-  }
-
-  // Second pass: smooth the field using the cotangent Laplacian
-  // (harmonic smoothing preserves boundary values and removes high-freq noise)
-  const boundaryValues = new Map<number, number>()
-  boundaryIndices.forEach(i => boundaryValues.set(i, 0))
-  
-  const rhs = new Float32Array(numVerts)
-  // Solve Δu = 0 with u=0 on boundary, u=normalizedField as initial guess
-  // Use normalizedField as RHS to bias toward it
-  for (let i = 0; i < numVerts; i++) rhs[i] = 0
-  
-  const smoothedField = solvePoissonCotangent(coords, neighbors, weights, boundaryIndices, 
-    new Map([...boundaryIndices].map(i => [i, 0])),
-    rhs
-  )
-  
-  // Blend: use the smoothed harmonic field for interior
-  // Re-normalize interior values 
-  let smoothMax = 0
-  for (let i = 0; i < numVerts; i++) {
-    if (!boundaryIndices.has(i) && smoothedField[i] > smoothMax) smoothMax = smoothedField[i]
-  }
-  
-  const finalField = new Float32Array(numVerts)
+  const range = maxF - minF
   for (let i = 0; i < numVerts; i++) {
     if (boundaryIndices.has(i)) {
-      finalField[i] = 0
-    } else if (smoothMax > 0) {
-      // Blend smoothed harmonic with raw SDF for a clean dome field
-      const harmonic = smoothedField[i] / smoothMax
-      const sdf = normalizedField[i]
-      finalField[i] = harmonic * 0.5 + sdf * 0.5
+      normalizedField[i] = 0
     } else {
-      finalField[i] = normalizedField[i]
+      normalizedField[i] = range > 1e-10 ? (harmonicField[i] - minF) / range : 0
     }
   }
-
-  // Re-normalize final field to [0, 1]
-  let finalMax = 0
-  for (let i = 0; i < numVerts; i++) {
-    if (finalField[i] > finalMax) finalMax = finalField[i]
-  }
-  if (finalMax > 0) {
-    for (let i = 0; i < numVerts; i++) finalField[i] /= finalMax
-  }
-
+  
   // ── Step 5: Apply height profile ──────────────────────────────────────────
+  // r=0 → boundary (zero height), r=1 → center (peak height)
+  // inflateProfile(r) = (1 - (1-r)^n)^m gives dome shape
   const heights = new Float32Array(numVerts)
   for (let i = 0; i < numVerts; i++) {
-    const r = finalField[i]
+    const r = normalizedField[i]
     heights[i] = inflateProfile(r) * opts.amount
   }
   

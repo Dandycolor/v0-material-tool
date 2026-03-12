@@ -661,7 +661,7 @@ function createPBRMaterial(
     side: THREE.FrontSide,
     clearcoat: settings.clearcoat ?? 0,
     clearcoatRoughness: settings.clearcoatRoughness ?? 0,
-    clearcoatNormalScale: settings.clearcoatNormalScale ? new THREE.Vector2(settings.clearcoatNormalScale, settings.clearcoatNormalScale) : undefined,
+    clearcoatNormalScale: new THREE.Vector2(settings.clearcoatNormalScale ?? 1, settings.clearcoatNormalScale ?? 1),
     reflectivity: settings.reflectivity ?? 0.5,
     iridescence: settings.iridescence ?? 0,
     iridescenceIOR: settings.iridescenceIOR ?? 1.3,

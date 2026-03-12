@@ -862,6 +862,7 @@ export default function MaterialTool() {
     inflateBothSides: true,
     inflateSmoothing: 3,
     inflateGridResolution: 150,
+    inflateSharpRidge: false,
   })
 
   const [materialSettings, setMaterialSettings] = useState<MaterialSettings>({
@@ -1744,6 +1745,24 @@ export default function MaterialTool() {
                             checked={geometrySettings.inflateBothSides ?? true}
                             onCheckedChange={(checked) =>
                               setGeometrySettings({ ...geometrySettings, inflateBothSides: checked })
+                            }
+                            className="data-[state=checked]:bg-cyan-600"
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-neutral-800 border border-neutral-700">
+                          <div className="flex-1">
+                            <Label className="text-sm font-semibold text-neutral-100 block mb-1">
+                              Sharp Ridge
+                            </Label>
+                            <p className="text-xs text-neutral-400">
+                              Voronoi-style ridges toward center
+                            </p>
+                          </div>
+                          <Switch
+                            checked={geometrySettings.inflateSharpRidge ?? false}
+                            onCheckedChange={(checked) =>
+                              setGeometrySettings({ ...geometrySettings, inflateSharpRidge: checked })
                             }
                             className="data-[state=checked]:bg-cyan-600"
                           />

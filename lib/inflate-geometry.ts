@@ -26,6 +26,7 @@ export interface InflateOptions {
   doubleSided: boolean
   gridResolution: number // legacy, controls steiner point density
   steinerPoints?: number
+  sharpRidge?: boolean // voronoi-like sharp ridge along medial axis
 }
 
 const DEFAULT_OPTIONS: InflateOptions = {
@@ -34,6 +35,7 @@ const DEFAULT_OPTIONS: InflateOptions = {
   doubleSided: true,
   gridResolution: 150,
   steinerPoints: 200,
+  sharpRidge: false,
 }
 
 // ============================================================================
@@ -271,6 +273,16 @@ function inflateProfile(r: number, n = 2.47, m = 0.43): number {
   return Math.pow(1 - Math.pow(1 - clamped, n), m)
 }
 
+// Sharp ridge (voronoi) profile: linear SDF creates sharp tent/pyramid shape
+// The raw SDF distance to boundary, without smoothing, naturally produces
+// a sharp ridge along the medial axis (the voronoi skeleton of the polygon).
+// r=0 → boundary (zero), r=1 → medial axis peak (sharp)
+function sharpRidgeProfile(r: number): number {
+  const clamped = Math.max(0, Math.min(1, r))
+  // Use a power < 1 to keep the ridge sharp and tent-like
+  return Math.pow(clamped, 0.7)
+}
+
 // ============================================================================
 // Main Pipeline
 // ============================================================================
@@ -404,17 +416,16 @@ export function inflatePolygon(
   
   // ── Step 5: Apply height profile ──────────────────────────────────────────
   // r=0 at boundary (zero height), r=1 at center (peak height)
-  // inflateProfile(r) = (1 - (1-r)^n)^m gives dome shape with flat top
   const heights = new Float32Array(numVerts)
-  for (let i = 0; i < numVerts; i++) {
-    const r = normalizedField[i]   // normalizedField: 0 at boundary, 1 at center
-    heights[i] = inflateProfile(r) * opts.amount
-  }
 
-  // Laplacian smoothing on height field to eliminate faceting
-  // Boundary heights stay 0, interior heights get averaged with neighbors
-  const smoothIter = Math.max(2, opts.smoothingIterations * 3)
-  for (let iter = 0; iter < smoothIter; iter++) {
+  if (opts.sharpRidge) {
+    // Sharp ridge mode: use raw SDF field directly (no Laplacian smoothing)
+    // This preserves the sharp medial-axis ridges that create the voronoi effect
+    for (let i = 0; i < numVerts; i++) {
+      const r = normalizedField[i]
+      heights[i] = sharpRidgeProfile(r) * opts.amount
+    }
+    // Minimal smoothing — just 1 pass to remove single-vertex spikes
     const smoothed = heights.slice()
     for (let i = 0; i < numVerts; i++) {
       if (boundaryIndices.has(i)) continue
@@ -422,10 +433,29 @@ export function inflatePolygon(
       if (nbrs.length === 0) continue
       let sum = 0
       for (const j of nbrs) sum += heights[j]
-      // Blend: 60% neighbor average + 40% original to preserve dome shape
-      smoothed[i] = sum / nbrs.length * 0.6 + heights[i] * 0.4
+      smoothed[i] = sum / nbrs.length * 0.15 + heights[i] * 0.85
     }
     heights.set(smoothed)
+  } else {
+    // Smooth dome mode: inflate profile + Laplacian smoothing
+    for (let i = 0; i < numVerts; i++) {
+      const r = normalizedField[i]
+      heights[i] = inflateProfile(r) * opts.amount
+    }
+    // Laplacian smoothing to eliminate faceting
+    const smoothIter = Math.max(2, opts.smoothingIterations * 3)
+    for (let iter = 0; iter < smoothIter; iter++) {
+      const smoothed = heights.slice()
+      for (let i = 0; i < numVerts; i++) {
+        if (boundaryIndices.has(i)) continue
+        const nbrs = neighbors[i]
+        if (nbrs.length === 0) continue
+        let sum = 0
+        for (const j of nbrs) sum += heights[j]
+        smoothed[i] = sum / nbrs.length * 0.6 + heights[i] * 0.4
+      }
+      heights.set(smoothed)
+    }
   }
   
   // ── Step 6: Build BufferGeometry ──────────────────────────────────────────

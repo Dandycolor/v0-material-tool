@@ -1681,6 +1681,7 @@ function ExtrudedSVGMesh({
         smoothingIterations: geometrySettings.inflateSmoothing ?? 3,
         gridResolution: geometrySettings.inflateGridResolution ?? 150,
         steinerPoints: 200,
+        sharpRidge: geometrySettings.inflateSharpRidge ?? false,
       })
     }
     

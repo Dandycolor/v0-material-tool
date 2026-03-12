@@ -2517,73 +2517,65 @@ function SceneContent({
 
   const showMatcap = renderMode === "matcap" && matcapTexture
 
-  const matcapTextureLoaded = useMemo(() => {
-    if (!showMatcap || !matcapTexture) return null
+  const [matcapTextureLoaded, setMatcapTextureLoaded] = useState<THREE.Texture | null>(null)
 
+  useEffect(() => {
+    if (!showMatcap || !matcapTexture) {
+      setMatcapTextureLoaded(null)
+      return
+    }
+
+    let cancelled = false
     const loader = new THREE.TextureLoader()
-    const texture = new THREE.Texture()
-    texture.colorSpace = THREE.SRGBColorSpace
 
     loader.load(matcapTexture, (loadedTexture) => {
-      console.log("[v0] Matcap texture loaded, applying hue shift:", matcapHueShift)
+      if (cancelled) return
 
       if (matcapHueShift === 0) {
-        // No hue shift, use original texture
-        texture.image = loadedTexture.image
-        texture.needsUpdate = true
+        loadedTexture.colorSpace = THREE.SRGBColorSpace
+        setMatcapTextureLoaded(loadedTexture)
         return
       }
 
-      // Apply hue shift
+      // Apply hue shift via canvas
       const canvas = document.createElement("canvas")
       const ctx = canvas.getContext("2d")
       const image = loadedTexture.image
 
-      if (!ctx || !image) return
+      if (!ctx || !image) {
+        setMatcapTextureLoaded(loadedTexture)
+        return
+      }
 
       canvas.width = image.width
       canvas.height = image.height
-
-      // Draw original image
       ctx.drawImage(image, 0, 0)
 
-      // Get image data and apply hue shift
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
       const data = imageData.data
 
       for (let i = 0; i < data.length; i += 4) {
-        // Convert RGB to HSL
         const r = data[i] / 255
         const g = data[i + 1] / 255
         const b = data[i + 2] / 255
 
         const max = Math.max(r, g, b)
         const min = Math.min(r, g, b)
-        let h = 0
-        let s = 0
+        let h = 0, s = 0
         const l = (max + min) / 2
 
         if (max !== min) {
           const d = max - min
           s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
-
           switch (max) {
-            case r:
-              h = ((g - b) / d + (g < b ? 6 : 0)) / 6
-              break
-            case g:
-              h = ((b - r) / d + 2) / 6
-              break
-            case b:
-              h = ((r - g) / d + 4) / 6
-              break
+            case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break
+            case g: h = ((b - r) / d + 2) / 6; break
+            case b: h = ((r - g) / d + 4) / 6; break
           }
         }
 
-        // Apply hue shift
         h = (h + matcapHueShift / 360) % 1
 
-        // Convert back to RGB
         let r2, g2, b2
         if (s === 0) {
           r2 = g2 = b2 = l
@@ -2596,7 +2588,6 @@ function SceneContent({
             if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6
             return p
           }
-
           const q = l < 0.5 ? l * (1 + s) : l + s - l * s
           const p = 2 * l - q
           r2 = hue2rgb(p, q, h + 1 / 3)
@@ -2610,13 +2601,14 @@ function SceneContent({
       }
 
       ctx.putImageData(imageData, 0, 0)
-      texture.image = canvas
-      texture.needsUpdate = true
-
-      console.log("[v0] Hue shift applied successfully")
+      // CanvasTexture sets image immediately — no empty-texture warning
+      const canvasTex = new THREE.CanvasTexture(canvas)
+      canvasTex.colorSpace = THREE.SRGBColorSpace
+      if (cancelled) { canvasTex.dispose(); return }
+      setMatcapTextureLoaded(canvasTex)
     })
 
-    return texture
+    return () => { cancelled = true }
   }, [matcapTexture, showMatcap, matcapHueShift])
 
   // Load normal map texture for matcap

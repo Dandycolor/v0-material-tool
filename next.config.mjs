@@ -10,7 +10,7 @@ const nextConfig = {
     unoptimized: true,
   },
   turbopack: {
-    root: '/vercel/share/v0-next-shadcn',
+    root: process.cwd(),
   },
 }
 

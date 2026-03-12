@@ -2540,6 +2540,11 @@ function SceneContent({
         if (cloned instanceof THREE.Mesh && cloned.geometry) {
           cloned.geometry = cloned.geometry.clone()
           cloned.geometry.computeVertexNormals()
+          // GLTFExporter checks BufferAttribute.normalized, not the actual vector lengths.
+          // computeVertexNormals() produces unit vectors but leaves normalized=false,
+          // so we set it explicitly to suppress the warning.
+          const normalAttr = cloned.geometry.getAttribute("normal")
+          if (normalAttr) normalAttr.normalized = true
         }
         group.add(cloned)
       })

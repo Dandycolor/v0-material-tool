@@ -1789,13 +1789,29 @@ export default function MaterialTool() {
                           </div>
                         )}
 
-                        <button
-                          onClick={() => viewerRef.current?.exportGLB()}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white text-sm font-semibold transition-colors mt-2"
-                        >
-                          <Download className="w-4 h-4" />
-                          Save 3D Model (.glb)
-                        </button>
+                        <div className="flex flex-col gap-2 mt-4">
+                          <button
+                            onClick={() => viewerRef.current?.exportSTL()}
+                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white text-sm font-semibold transition-colors"
+                          >
+                            <Download className="w-4 h-4" />
+                            Export STL
+                          </button>
+                          <button
+                            onClick={() => viewerRef.current?.exportOBJ()}
+                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white text-sm font-semibold transition-colors"
+                          >
+                            <Download className="w-4 h-4" />
+                            Export OBJ
+                          </button>
+                          <button
+                            onClick={() => viewerRef.current?.exportGLB()}
+                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white text-sm font-semibold transition-colors"
+                          >
+                            <Download className="w-4 h-4" />
+                            Export GLB
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}

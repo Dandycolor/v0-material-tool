@@ -5,6 +5,8 @@ import { OrbitControls, Environment, TransformControls } from "@react-three/drei
 import * as THREE from "three"
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js"
+import { STLExporter } from "three/addons/exporters/STLExporter.js"
+import { OBJExporter } from "three/addons/exporters/OBJExporter.js"
 import { Suspense, useMemo, useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react"
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils"
 import { ModelMesh } from "./model-mesh"
@@ -2595,6 +2597,86 @@ function SceneContent({
     onExportGeometryReady(exportGLB)
   }, [scene, onExportGeometryReady])
 
+  // STL export — exports geometry as binary STL (no materials, pure geometry)
+  useEffect(() => {
+    const exportSTL = () => {
+      const stlExporter = new STLExporter()
+
+      // Collect all visible meshes in the scene
+      const meshesToExport: THREE.Object3D[] = []
+      scene.traverse((obj) => {
+        if (obj instanceof THREE.Mesh && obj.visible && obj.geometry) {
+          meshesToExport.push(obj)
+        }
+      })
+
+      console.log("[v0] STL export: found", meshesToExport.length, "visible meshes")
+
+      if (meshesToExport.length === 0) {
+        console.warn("[v0] No visible meshes to export")
+        return
+      }
+
+      // Create a group with all meshes to export
+      const exportGroup = new THREE.Group()
+      meshesToExport.forEach((mesh) => {
+        exportGroup.add(mesh)
+      })
+
+      const stlData = stlExporter.parse(exportGroup) as ArrayBuffer
+      console.log("[v0] STL export successful, file size:", stlData.byteLength, "bytes")
+
+      const blob = new Blob([stlData], { type: "application/octet-stream" })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `inflate-model-${Date.now()}.stl`
+      link.click()
+      URL.revokeObjectURL(url)
+    }
+    onExportGeometryReady(exportSTL)
+  }, [scene, onExportGeometryReady])
+
+  // OBJ export — exports geometry as OBJ (no materials, pure geometry)
+  useEffect(() => {
+    const exportOBJ = () => {
+      const objExporter = new OBJExporter()
+
+      // Collect all visible meshes in the scene
+      const meshesToExport: THREE.Object3D[] = []
+      scene.traverse((obj) => {
+        if (obj instanceof THREE.Mesh && obj.visible && obj.geometry) {
+          meshesToExport.push(obj)
+        }
+      })
+
+      console.log("[v0] OBJ export: found", meshesToExport.length, "visible meshes")
+
+      if (meshesToExport.length === 0) {
+        console.warn("[v0] No visible meshes to export")
+        return
+      }
+
+      // Create a group with all meshes to export
+      const exportGroup = new THREE.Group()
+      meshesToExport.forEach((mesh) => {
+        exportGroup.add(mesh)
+      })
+
+      const objData = objExporter.parse(exportGroup)
+      console.log("[v0] OBJ export successful, file size:", objData.length, "bytes")
+
+      const blob = new Blob([objData], { type: "text/plain" })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `inflate-model-${Date.now()}.obj`
+      link.click()
+      URL.revokeObjectURL(url)
+    }
+    onExportGeometryReady(exportOBJ)
+  }, [scene, onExportGeometryReady])
+
   const showMatcap = renderMode === "matcap" && matcapTexture
 
   const [matcapTextureLoaded, setMatcapTextureLoaded] = useState<THREE.Texture | null>(null)
@@ -2799,6 +2881,8 @@ function SceneContent({
 export interface PBRViewerRef {
   exportPNG: () => void
   exportGLB: () => void
+  exportSTL: () => void
+  exportOBJ: () => void
 }
 
 export const PBRViewer = forwardRef<
@@ -2846,6 +2930,8 @@ export const PBRViewer = forwardRef<
   ) {
   const exportFnRef = useRef<(() => void) | null>(null)
   const exportGeometryFnRef = useRef<(() => void) | null>(null)
+  const exportSTLFnRef = useRef<(() => void) | null>(null)
+  const exportOBJFnRef = useRef<(() => void) | null>(null)
 
   useImperativeHandle(ref, () => ({
     exportPNG: () => {
@@ -2858,6 +2944,16 @@ export const PBRViewer = forwardRef<
         exportGeometryFnRef.current()
       }
     },
+    exportSTL: () => {
+      if (exportSTLFnRef.current) {
+        exportSTLFnRef.current()
+      }
+    },
+    exportOBJ: () => {
+      if (exportOBJFnRef.current) {
+        exportOBJFnRef.current()
+      }
+    },
   }))
 
   const handleExportReady = (fn: () => void) => {
@@ -2866,6 +2962,14 @@ export const PBRViewer = forwardRef<
 
   const handleExportGeometryReady = (fn: () => void) => {
     exportGeometryFnRef.current = fn
+  }
+
+  const handleExportSTLReady = (fn: () => void) => {
+    exportSTLFnRef.current = fn
+  }
+
+  const handleExportOBJReady = (fn: () => void) => {
+    exportOBJFnRef.current = fn
   }
 
   return (
@@ -2888,6 +2992,8 @@ export const PBRViewer = forwardRef<
             lightingSettings={lightingSettings}
             onExportReady={handleExportReady}
             onExportGeometryReady={handleExportGeometryReady}
+            onExportSTLReady={handleExportSTLReady}
+            onExportOBJReady={handleExportOBJReady}
             renderMode={renderMode}
             matcapTexture={matcapTexture}
             matcapHueShift={matcapHueShift}

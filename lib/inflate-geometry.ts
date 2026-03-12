@@ -274,10 +274,23 @@ export function inflatePolygon(
     })
   }
 
+  // Generate UV coordinates for texturing
+  const uvs: number[] = []
+  for (let i = 0; i < positions.length; i += 3) {
+    // Simple planar UV mapping
+    const x = positions[i]
+    const y = positions[i + 1]
+    uvs.push((x + 1) * 0.5, (y + 1) * 0.5)
+  }
+
   const geo = new THREE.BufferGeometry()
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
   geo.setIndex(indexArr)
   geo.computeVertexNormals()
+  
+  // Compute tangents for normal mapping support
+  THREE.BufferGeometryUtils.computeTangents(geo)
 
   return geo
 }

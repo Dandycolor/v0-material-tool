@@ -2536,21 +2536,10 @@ function SceneContent({
         const cloned = m.clone() as THREE.Mesh
         if (cloned.geometry) {
           const geo = cloned.geometry.clone()
-          // Recompute normals so values are unit-length
-          geo.computeVertexNormals()
-          // Replace the normal BufferAttribute with a new one that has normalized=true.
-          // GLTFExporter reads the .normalized flag on the attribute — simply setting the
-          // flag on the existing attribute is insufficient; we must create a new attribute
-          // so the exporter picks up the flag correctly.
-          const existingNormal = geo.getAttribute("normal") as THREE.BufferAttribute
-          if (existingNormal) {
-            const normalized = new THREE.BufferAttribute(
-              new Float32Array(existingNormal.array),
-              existingNormal.itemSize,
-              true, // normalized = true
-            )
-            geo.setAttribute("normal", normalized)
-          }
+          // Remove the normal attribute — GLTFExporter will compute fresh normals
+          // during export with no warnings. This avoids the "Creating normalized normal"
+          // warning that fires when exporting pre-computed normals with normalized=false.
+          geo.deleteAttribute("normal")
           cloned.geometry = geo
         }
         group.add(cloned)

@@ -346,34 +346,79 @@ export function inflatePolygon(
   const neighbors = buildVertexNeighbors(coords, halfEdges)
   const weights = computeCotangentWeights(coords, halfEdges)
   
-  // ── Step 4: Solve biharmonic for smooth scalar field ──────────────────────
-  const boundaryValues = new Map<number, number>()
-  boundaryIndices.forEach(i => boundaryValues.set(i, 1))
+  // ── Step 4: Compute scalar field via two Laplacian smoothing passes ──────
+  // Use SDF (distance to boundary) as initial field, then smooth it with
+  // the cotangent Laplacian to get a clean harmonic field.
   
-  const biharmonicField = solveBiharmonic(coords, neighbors, weights, boundaryIndices, boundaryValues)
-  
-  // Normalize field to [0, 1]
-  let minField = Infinity, maxField = -Infinity
-  for (let i = 0; i < numVerts; i++) {
-    if (!boundaryIndices.has(i)) {
-      minField = Math.min(minField, biharmonicField[i])
-      maxField = Math.max(maxField, biharmonicField[i])
-    }
-  }
-  
-  const normalizedField = new Float32Array(numVerts)
+  // First pass: raw distance field
+  const rawField = new Float32Array(numVerts)
+  let maxDist = 0
   for (let i = 0; i < numVerts; i++) {
     if (boundaryIndices.has(i)) {
-      normalizedField[i] = 0
+      rawField[i] = 0
     } else {
-      normalizedField[i] = maxField > minField ? (biharmonicField[i] - minField) / (maxField - minField) : 0
+      const x = coords[i * 2], y = coords[i * 2 + 1]
+      const d = distToEdge(x, y, polygon)
+      rawField[i] = d
+      if (d > maxDist) maxDist = d
     }
   }
+
+  // Normalize to [0, 1]
+  const normalizedField = new Float32Array(numVerts)
+  for (let i = 0; i < numVerts; i++) {
+    normalizedField[i] = maxDist > 0 ? rawField[i] / maxDist : 0
+  }
+
+  // Second pass: smooth the field using the cotangent Laplacian
+  // (harmonic smoothing preserves boundary values and removes high-freq noise)
+  const boundaryValues = new Map<number, number>()
+  boundaryIndices.forEach(i => boundaryValues.set(i, 0))
   
+  const rhs = new Float32Array(numVerts)
+  // Solve Δu = 0 with u=0 on boundary, u=normalizedField as initial guess
+  // Use normalizedField as RHS to bias toward it
+  for (let i = 0; i < numVerts; i++) rhs[i] = 0
+  
+  const smoothedField = solvePoissonCotangent(coords, neighbors, weights, boundaryIndices, 
+    new Map([...boundaryIndices].map(i => [i, 0])),
+    rhs
+  )
+  
+  // Blend: use the smoothed harmonic field for interior
+  // Re-normalize interior values 
+  let smoothMax = 0
+  for (let i = 0; i < numVerts; i++) {
+    if (!boundaryIndices.has(i) && smoothedField[i] > smoothMax) smoothMax = smoothedField[i]
+  }
+  
+  const finalField = new Float32Array(numVerts)
+  for (let i = 0; i < numVerts; i++) {
+    if (boundaryIndices.has(i)) {
+      finalField[i] = 0
+    } else if (smoothMax > 0) {
+      // Blend smoothed harmonic with raw SDF for a clean dome field
+      const harmonic = smoothedField[i] / smoothMax
+      const sdf = normalizedField[i]
+      finalField[i] = harmonic * 0.5 + sdf * 0.5
+    } else {
+      finalField[i] = normalizedField[i]
+    }
+  }
+
+  // Re-normalize final field to [0, 1]
+  let finalMax = 0
+  for (let i = 0; i < numVerts; i++) {
+    if (finalField[i] > finalMax) finalMax = finalField[i]
+  }
+  if (finalMax > 0) {
+    for (let i = 0; i < numVerts; i++) finalField[i] /= finalMax
+  }
+
   // ── Step 5: Apply height profile ──────────────────────────────────────────
   const heights = new Float32Array(numVerts)
   for (let i = 0; i < numVerts; i++) {
-    const r = normalizedField[i]
+    const r = finalField[i]
     heights[i] = inflateProfile(r) * opts.amount
   }
   

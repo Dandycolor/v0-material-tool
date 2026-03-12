@@ -863,6 +863,7 @@ export default function MaterialTool() {
     inflateSmoothing: 3,
     inflateGridResolution: 150,
     inflateSharpRidge: false,
+    inflateRidgeSharpness: 5,
   })
 
   const [materialSettings, setMaterialSettings] = useState<MaterialSettings>({
@@ -1700,6 +1701,7 @@ export default function MaterialTool() {
                           <p className="text-xs text-zinc-500">Controls how much the shape inflates</p>
                         </div>
 
+                        {!geometrySettings.inflateSharpRidge && (
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <Label className="text-xs text-zinc-500">Smoothing</Label>
@@ -1715,6 +1717,7 @@ export default function MaterialTool() {
                           />
                           <p className="text-xs text-zinc-500">Laplacian smoothing iterations</p>
                         </div>
+                        )}
 
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
@@ -1767,6 +1770,24 @@ export default function MaterialTool() {
                             className="data-[state=checked]:bg-cyan-600"
                           />
                         </div>
+
+                        {geometrySettings.inflateSharpRidge && (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-xs text-zinc-500">Ridge Sharpness</Label>
+                              <span className="text-xs text-white font-mono">{geometrySettings.inflateRidgeSharpness ?? 5}</span>
+                            </div>
+                            <Slider
+                              value={[geometrySettings.inflateRidgeSharpness ?? 5]}
+                              onValueChange={([value]) => setGeometrySettings({ ...geometrySettings, inflateRidgeSharpness: value })}
+                              min={1}
+                              max={10}
+                              step={1}
+                              className="w-full"
+                            />
+                            <p className="text-xs text-zinc-500">Controls edge sharpness of voronoi ridges</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}

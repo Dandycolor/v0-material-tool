@@ -268,6 +268,7 @@ interface GeometrySettings {
   inflateSmoothing?: number    // 0-10, smoothing iterations
   inflateGridResolution?: number // 10-40, internal grid density
   inflateSharpRidge?: boolean  // voronoi-style sharp ridges toward medial axis
+  inflateRidgeSharpness?: number // 1-10, sharpness of voronoi ridges
 }
 
 export interface MaterialSettings {
@@ -1683,6 +1684,7 @@ function ExtrudedSVGMesh({
         gridResolution: geometrySettings.inflateGridResolution ?? 150,
         steinerPoints: 200,
         sharpRidge: geometrySettings.inflateSharpRidge ?? false,
+        ridgeSharpness: geometrySettings.inflateRidgeSharpness ?? 5,
       })
     }
     

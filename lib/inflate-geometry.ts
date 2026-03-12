@@ -26,7 +26,8 @@ export interface InflateOptions {
   doubleSided: boolean
   gridResolution: number // legacy, controls steiner point density
   steinerPoints?: number
-  sharpRidge?: boolean // voronoi-like sharp ridge along medial axis
+  sharpRidge?: boolean    // voronoi-like sharp ridge along medial axis
+  ridgeSharpness?: number // 1-10, controls power curve of ridge profile
 }
 
 const DEFAULT_OPTIONS: InflateOptions = {
@@ -36,6 +37,7 @@ const DEFAULT_OPTIONS: InflateOptions = {
   gridResolution: 150,
   steinerPoints: 200,
   sharpRidge: false,
+  ridgeSharpness: 5,
 }
 
 // ============================================================================
@@ -273,14 +275,16 @@ function inflateProfile(r: number, n = 2.47, m = 0.43): number {
   return Math.pow(1 - Math.pow(1 - clamped, n), m)
 }
 
-// Sharp ridge (voronoi) profile: linear SDF creates sharp tent/pyramid shape
-// The raw SDF distance to boundary, without smoothing, naturally produces
-// a sharp ridge along the medial axis (the voronoi skeleton of the polygon).
-// r=0 → boundary (zero), r=1 → medial axis peak (sharp)
-function sharpRidgeProfile(r: number): number {
+// Sharp ridge (voronoi) profile: raw SDF creates a tent/pyramid with a sharp
+// ridge along the medial axis of the polygon.
+// r=0 → boundary (zero height), r=1 → medial axis peak (sharp)
+// sharpness 1 = very soft cone, 10 = very sharp needle-like ridge
+function sharpRidgeProfile(r: number, sharpness = 5): number {
   const clamped = Math.max(0, Math.min(1, r))
-  // Use a power < 1 to keep the ridge sharp and tent-like
-  return Math.pow(clamped, 0.7)
+  // Map sharpness 1-10 → power 0.3-1.5
+  // Low power (<1) = sharp tent peak; high power (>1) = rounded cone
+  const power = 0.3 + (1 - (sharpness - 1) / 9) * 1.2
+  return Math.pow(clamped, power)
 }
 
 // ============================================================================
@@ -293,8 +297,6 @@ export function inflatePolygon(
 ): THREE.BufferGeometry | null {
   const opts = { ...DEFAULT_OPTIONS, ...options }
   
-  console.log('[v0] inflatePolygon opts.sharpRidge =', opts.sharpRidge, 'options.sharpRidge =', options.sharpRidge)
-
   if (polygon.length < 3) return null
 
   const bounds = getBounds(polygon)
@@ -434,13 +436,11 @@ export function inflatePolygon(
   // r=0 at boundary (zero height), r=1 at center (peak height)
   const heights = new Float32Array(numVerts)
 
-  console.log('[v0] Inflate mode:', opts.sharpRidge ? 'SHARP RIDGE' : 'smooth dome', 'maxSdf=', maxSdf)
-
   if (opts.sharpRidge) {
     // Sharp ridge mode: raw SDF — preserves sharp medial-axis ridges (voronoi effect)
     for (let i = 0; i < numVerts; i++) {
       const r = rawSdfField[i]
-      heights[i] = sharpRidgeProfile(r) * opts.amount
+      heights[i] = sharpRidgeProfile(r, opts.ridgeSharpness ?? 5) * opts.amount
     }
     // Minimal smoothing — just 1 pass to remove single-vertex spikes
     const smoothed = heights.slice()

@@ -6,8 +6,10 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  turbopack: {
-    root: '.',
+  experimental: {
+    turbopack: {
+      resolveAlias: {},
+    },
   },
 }
 

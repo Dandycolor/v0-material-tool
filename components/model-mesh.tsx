@@ -398,7 +398,7 @@ export function ModelMesh({
               side: THREE.FrontSide,
               clearcoat: materialSettings.clearcoat ?? 0,
               clearcoatRoughness: materialSettings.clearcoatRoughness ?? 0,
-              clearcoatNormalScale: materialSettings.clearcoatNormalScale ? new THREE.Vector2(materialSettings.clearcoatNormalScale, materialSettings.clearcoatNormalScale) : undefined,
+              clearcoatNormalScale: new THREE.Vector2(materialSettings.clearcoatNormalScale ?? 1, materialSettings.clearcoatNormalScale ?? 1),
               reflectivity: materialSettings.reflectivity ?? 0.5,
               iridescence: materialSettings.iridescence ?? 0,
               iridescenceIOR: materialSettings.iridescenceIOR ?? 1.3,
@@ -658,10 +658,10 @@ function createPBRMaterial(
       ? new THREE.Color(settings.attenuationColor || "#ffffff")
       : (settings.attenuationColor ? new THREE.Color(settings.attenuationColor) : new THREE.Color("#ffffff")),
     transparent: isGlass || false,
-    side: THREE.DoubleSide,
+    side: THREE.FrontSide,
     clearcoat: settings.clearcoat ?? 0,
     clearcoatRoughness: settings.clearcoatRoughness ?? 0,
-    clearcoatNormalScale: settings.clearcoatNormalScale ? new THREE.Vector2(settings.clearcoatNormalScale, settings.clearcoatNormalScale) : undefined,
+    clearcoatNormalScale: new THREE.Vector2(settings.clearcoatNormalScale ?? 1, settings.clearcoatNormalScale ?? 1),
     reflectivity: settings.reflectivity ?? 0.5,
     iridescence: settings.iridescence ?? 0,
     iridescenceIOR: settings.iridescenceIOR ?? 1.3,
@@ -772,6 +772,6 @@ function createMatcapMaterial(
     vertexShader,
     fragmentShader,
     extensions: { derivatives: true },
-    side: THREE.DoubleSide,
+    side: THREE.FrontSide,
   })
 }

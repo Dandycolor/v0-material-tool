@@ -8,6 +8,7 @@ import { Suspense, useMemo, useState, useEffect, useRef, useImperativeHandle, fo
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils"
 import { ModelMesh } from "./model-mesh"
 import { createGradientMaterial } from "./gradient-shader"
+import { inflatePolygon as createInflatedGeometryFromContour } from "@/lib/inflate-geometry"
 
 // Grid component with fade effect at edges
 function GridHelper({ visible = true }: { visible?: boolean }) {
@@ -239,7 +240,7 @@ function MatcapMaterialWithEffects({
 }
 
 interface GeometrySettings {
-  type: "sphere" | "extruded" | "model"
+  type: "sphere" | "extruded" | "model" | "inflate"
   primitiveType?: "sphere" | "cone" | "torus" | "torusKnot" | "capsule"
   svgPath: string
   svgSource?: "iconify" | "upload"
@@ -256,6 +257,18 @@ interface GeometrySettings {
   inflateSphereRadius: number
   flatBase?: boolean
   deformEnabled?: boolean
+  // Pottery wheel / lathe mode
+  usePotteryMode?: boolean
+  latheSegments?: number
+  latheAxis?: 'center' | 'left' | 'right' | 'top' | 'bottom'
+  // Inflate mode settings (for "inflate" type)
+  inflateContour?: { x: number; y: number }[]
+  inflateVolume?: number       // 0-200, controls the height of inflation
+  inflateBothSides?: boolean   // inflate both front and back
+  inflateSmoothing?: number    // 0-10, smoothing iterations
+  inflateGridResolution?: number // 10-40, internal grid density
+  inflateSharpRidge?: boolean  // voronoi-style sharp ridges toward medial axis
+  inflateRidgeSharpness?: number // 1-10, sharpness of voronoi ridges
 }
 
 export interface MaterialSettings {
@@ -1659,6 +1672,23 @@ function ExtrudedSVGMesh({
   }
 
   const geometry = useMemo(() => {
+    // Handle "inflate" type - uses contour points directly
+    if (geometrySettings.type === "inflate") {
+      const contour = geometrySettings.inflateContour
+      if (!contour || contour.length < 3) return null
+      
+      return createInflatedGeometryFromContour(contour, {
+        amount: geometrySettings.inflateVolume ?? 100,
+        doubleSided: geometrySettings.inflateBothSides ?? true,
+        smoothingIterations: geometrySettings.inflateSmoothing ?? 3,
+        gridResolution: geometrySettings.inflateGridResolution ?? 150,
+        steinerPoints: 200,
+        sharpRidge: geometrySettings.inflateSharpRidge ?? false,
+        ridgeSharpness: geometrySettings.inflateRidgeSharpness ?? 5,
+      })
+    }
+    
+    // For extruded type, require svgPath
     if (!geometrySettings.svgPath) return null
     
     if (geometrySettings.usePotteryMode) {
@@ -1669,17 +1699,18 @@ function ExtrudedSVGMesh({
       )
     }
     
-const baseGeometry = createExtrudedGeometry(
-  geometrySettings.svgPath,
-  geometrySettings.thickness,
-  geometrySettings.bevelSize,
-  geometrySettings.bevelSegments,
-  geometrySettings.bevelQuality,
-  geometrySettings.svgSource ?? "iconify",
+    const baseGeometry = createExtrudedGeometry(
+      geometrySettings.svgPath,
+      geometrySettings.thickness,
+      geometrySettings.bevelSize,
+      geometrySettings.bevelSegments,
+      geometrySettings.bevelQuality,
+      geometrySettings.svgSource ?? "iconify",
     )
     
     return baseGeometry
   }, [
+    geometrySettings.type,
     geometrySettings.svgPath,
     geometrySettings.thickness,
     geometrySettings.bevelSize,
@@ -1689,6 +1720,13 @@ const baseGeometry = createExtrudedGeometry(
     geometrySettings.usePotteryMode,
     geometrySettings.latheSegments,
     geometrySettings.latheAxis,
+    geometrySettings.inflateContour,
+    geometrySettings.inflateVolume,
+    geometrySettings.inflateBothSides,
+    geometrySettings.inflateSmoothing,
+    geometrySettings.inflateGridResolution,
+    geometrySettings.inflateSharpRidge,
+    geometrySettings.inflateRidgeSharpness,
   ])
 
   const meshRef = useRef<THREE.Mesh>(null)
@@ -2237,11 +2275,11 @@ function Material({
         transparent: true,
         opacity: 1,
         alphaMap: opacityMap,
-        side: THREE.DoubleSide,
+        side: THREE.FrontSide,
         envMapIntensity: materialSettings.envMapIntensity || 1.5,
         clearcoat: materialSettings.clearcoat,
         clearcoatRoughness: materialSettings.clearcoatRoughness,
-        clearcoatNormalScale: new THREE.Vector2(materialSettings.clearcoatNormalScale, materialSettings.clearcoatNormalScale),
+        clearcoatNormalScale: new THREE.Vector2(materialSettings.clearcoatNormalScale ?? 1, materialSettings.clearcoatNormalScale ?? 1),
         reflectivity: materialSettings.reflectivity,
         specularIntensity: 1,
         specularColor: new THREE.Color(0xffffff),
@@ -2479,73 +2517,65 @@ function SceneContent({
 
   const showMatcap = renderMode === "matcap" && matcapTexture
 
-  const matcapTextureLoaded = useMemo(() => {
-    if (!showMatcap || !matcapTexture) return null
+  const [matcapTextureLoaded, setMatcapTextureLoaded] = useState<THREE.Texture | null>(null)
 
+  useEffect(() => {
+    if (!showMatcap || !matcapTexture) {
+      setMatcapTextureLoaded(null)
+      return
+    }
+
+    let cancelled = false
     const loader = new THREE.TextureLoader()
-    const texture = new THREE.Texture()
-    texture.colorSpace = THREE.SRGBColorSpace
 
     loader.load(matcapTexture, (loadedTexture) => {
-      console.log("[v0] Matcap texture loaded, applying hue shift:", matcapHueShift)
+      if (cancelled) return
 
       if (matcapHueShift === 0) {
-        // No hue shift, use original texture
-        texture.image = loadedTexture.image
-        texture.needsUpdate = true
+        loadedTexture.colorSpace = THREE.SRGBColorSpace
+        setMatcapTextureLoaded(loadedTexture)
         return
       }
 
-      // Apply hue shift
+      // Apply hue shift via canvas
       const canvas = document.createElement("canvas")
       const ctx = canvas.getContext("2d")
       const image = loadedTexture.image
 
-      if (!ctx || !image) return
+      if (!ctx || !image) {
+        setMatcapTextureLoaded(loadedTexture)
+        return
+      }
 
       canvas.width = image.width
       canvas.height = image.height
-
-      // Draw original image
       ctx.drawImage(image, 0, 0)
 
-      // Get image data and apply hue shift
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
       const data = imageData.data
 
       for (let i = 0; i < data.length; i += 4) {
-        // Convert RGB to HSL
         const r = data[i] / 255
         const g = data[i + 1] / 255
         const b = data[i + 2] / 255
 
         const max = Math.max(r, g, b)
         const min = Math.min(r, g, b)
-        let h = 0
-        let s = 0
+        let h = 0, s = 0
         const l = (max + min) / 2
 
         if (max !== min) {
           const d = max - min
           s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
-
           switch (max) {
-            case r:
-              h = ((g - b) / d + (g < b ? 6 : 0)) / 6
-              break
-            case g:
-              h = ((b - r) / d + 2) / 6
-              break
-            case b:
-              h = ((r - g) / d + 4) / 6
-              break
+            case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break
+            case g: h = ((b - r) / d + 2) / 6; break
+            case b: h = ((r - g) / d + 4) / 6; break
           }
         }
 
-        // Apply hue shift
         h = (h + matcapHueShift / 360) % 1
 
-        // Convert back to RGB
         let r2, g2, b2
         if (s === 0) {
           r2 = g2 = b2 = l
@@ -2558,7 +2588,6 @@ function SceneContent({
             if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6
             return p
           }
-
           const q = l < 0.5 ? l * (1 + s) : l + s - l * s
           const p = 2 * l - q
           r2 = hue2rgb(p, q, h + 1 / 3)
@@ -2572,13 +2601,14 @@ function SceneContent({
       }
 
       ctx.putImageData(imageData, 0, 0)
-      texture.image = canvas
-      texture.needsUpdate = true
-
-      console.log("[v0] Hue shift applied successfully")
+      // CanvasTexture sets image immediately — no empty-texture warning
+      const canvasTex = new THREE.CanvasTexture(canvas)
+      canvasTex.colorSpace = THREE.SRGBColorSpace
+      if (cancelled) { canvasTex.dispose(); return }
+      setMatcapTextureLoaded(canvasTex)
     })
 
-    return texture
+    return () => { cancelled = true }
   }, [matcapTexture, showMatcap, matcapHueShift])
 
   // Load normal map texture for matcap

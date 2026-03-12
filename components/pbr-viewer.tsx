@@ -2315,6 +2315,8 @@ interface SceneContentProps {
   lightingSettings: LightingSettings
   onExportReady: (exportFn: () => void) => void
   onExportGeometryReady: (exportFn: () => void) => void
+  onExportSTLReady: (exportFn: () => void) => void
+  onExportOBJReady: (exportFn: () => void) => void
   renderMode?: "pbr" | "matcap"
   matcapTexture?: string
   matcapHueShift?: number
@@ -2354,6 +2356,8 @@ function SceneContent({
   lightingSettings,
   onExportReady,
   onExportGeometryReady,
+  onExportSTLReady,
+  onExportOBJReady,
   renderMode = "pbr",
   matcapTexture,
   matcapHueShift = 0,
@@ -2365,7 +2369,7 @@ function SceneContent({
   onModelLoadError,
   onGeometrySettingsChange,
   backgroundColor,
-}: SceneContentProps & { onExportReady: (fn: () => void) => void, onExportGeometryReady: (fn: () => void) => void, backgroundColor?: string }) {
+}: SceneContentProps & { onExportReady: (fn: () => void) => void, onExportGeometryReady: (fn: () => void) => void, onExportSTLReady: (fn: () => void) => void, onExportOBJReady: (fn: () => void) => void, backgroundColor?: string }) {
   const { gl, scene, camera } = useThree()
   
   // Apply background color
@@ -2540,24 +2544,18 @@ function SceneContent({
         return
       }
 
-      // Create a group with all meshes to export
+      // Create a group with CLONED meshes (don't move originals!)
       const exportGroup = new THREE.Group()
       meshesToExport.forEach((mesh) => {
         const clone = mesh.clone() as THREE.Mesh
+        clone.geometry = mesh.geometry.clone()
         // Ensure all meshes have a visible material for export
-        // If mesh has no material or material is not visible, assign a default MeshStandardMaterial
         if (!clone.material || (Array.isArray(clone.material) && clone.material.length === 0)) {
           clone.material = new THREE.MeshStandardMaterial({
             color: 0xcccccc,
             metalness: 0.5,
             roughness: 0.5,
           })
-        } else if (Array.isArray(clone.material)) {
-          clone.material = clone.material.map((mat) =>
-            mat && (mat as any).color
-              ? mat
-              : new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.5, roughness: 0.5 }),
-          )
         }
         exportGroup.add(clone)
       })
@@ -2603,7 +2601,7 @@ function SceneContent({
       const stlExporter = new STLExporter()
 
       // Collect all visible meshes in the scene
-      const meshesToExport: THREE.Object3D[] = []
+      const meshesToExport: THREE.Mesh[] = []
       scene.traverse((obj) => {
         if (obj instanceof THREE.Mesh && obj.visible && obj.geometry) {
           meshesToExport.push(obj)
@@ -2617,16 +2615,18 @@ function SceneContent({
         return
       }
 
-      // Create a group with all meshes to export
+      // Create a group with CLONED meshes (don't move originals!)
       const exportGroup = new THREE.Group()
       meshesToExport.forEach((mesh) => {
-        exportGroup.add(mesh)
+        const clone = mesh.clone()
+        clone.geometry = mesh.geometry.clone()
+        exportGroup.add(clone)
       })
 
-      const stlData = stlExporter.parse(exportGroup) as ArrayBuffer
-      console.log("[v0] STL export successful, file size:", stlData.byteLength, "bytes")
+      const stlData = stlExporter.parse(exportGroup, { binary: true })
+      console.log("[v0] STL export successful, file size:", (stlData as ArrayBuffer).byteLength, "bytes")
 
-      const blob = new Blob([stlData], { type: "application/octet-stream" })
+      const blob = new Blob([stlData as ArrayBuffer], { type: "application/octet-stream" })
       const url = URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = url
@@ -2634,8 +2634,8 @@ function SceneContent({
       link.click()
       URL.revokeObjectURL(url)
     }
-    onExportGeometryReady(exportSTL)
-  }, [scene, onExportGeometryReady])
+    onExportSTLReady(exportSTL)
+  }, [scene, onExportSTLReady])
 
   // OBJ export — exports geometry as OBJ (no materials, pure geometry)
   useEffect(() => {
@@ -2643,7 +2643,7 @@ function SceneContent({
       const objExporter = new OBJExporter()
 
       // Collect all visible meshes in the scene
-      const meshesToExport: THREE.Object3D[] = []
+      const meshesToExport: THREE.Mesh[] = []
       scene.traverse((obj) => {
         if (obj instanceof THREE.Mesh && obj.visible && obj.geometry) {
           meshesToExport.push(obj)
@@ -2657,10 +2657,12 @@ function SceneContent({
         return
       }
 
-      // Create a group with all meshes to export
+      // Create a group with CLONED meshes (don't move originals!)
       const exportGroup = new THREE.Group()
       meshesToExport.forEach((mesh) => {
-        exportGroup.add(mesh)
+        const clone = mesh.clone()
+        clone.geometry = mesh.geometry.clone()
+        exportGroup.add(clone)
       })
 
       const objData = objExporter.parse(exportGroup)
@@ -2674,8 +2676,8 @@ function SceneContent({
       link.click()
       URL.revokeObjectURL(url)
     }
-    onExportGeometryReady(exportOBJ)
-  }, [scene, onExportGeometryReady])
+    onExportOBJReady(exportOBJ)
+  }, [scene, onExportOBJReady])
 
   const showMatcap = renderMode === "matcap" && matcapTexture
 

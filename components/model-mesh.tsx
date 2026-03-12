@@ -398,7 +398,7 @@ export function ModelMesh({
               side: THREE.FrontSide,
               clearcoat: materialSettings.clearcoat ?? 0,
               clearcoatRoughness: materialSettings.clearcoatRoughness ?? 0,
-              clearcoatNormalScale: materialSettings.clearcoatNormalScale ? new THREE.Vector2(materialSettings.clearcoatNormalScale, materialSettings.clearcoatNormalScale) : undefined,
+              clearcoatNormalScale: new THREE.Vector2(materialSettings.clearcoatNormalScale ?? 1, materialSettings.clearcoatNormalScale ?? 1),
               reflectivity: materialSettings.reflectivity ?? 0.5,
               iridescence: materialSettings.iridescence ?? 0,
               iridescenceIOR: materialSettings.iridescenceIOR ?? 1.3,

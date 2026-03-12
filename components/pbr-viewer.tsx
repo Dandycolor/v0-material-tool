@@ -2279,7 +2279,7 @@ function Material({
         envMapIntensity: materialSettings.envMapIntensity || 1.5,
         clearcoat: materialSettings.clearcoat,
         clearcoatRoughness: materialSettings.clearcoatRoughness,
-        clearcoatNormalScale: new THREE.Vector2(materialSettings.clearcoatNormalScale, materialSettings.clearcoatNormalScale),
+        clearcoatNormalScale: new THREE.Vector2(materialSettings.clearcoatNormalScale ?? 1, materialSettings.clearcoatNormalScale ?? 1),
         reflectivity: materialSettings.reflectivity,
         specularIntensity: 1,
         specularColor: new THREE.Color(0xffffff),

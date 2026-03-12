@@ -292,6 +292,8 @@ export function inflatePolygon(
   options: Partial<InflateOptions> = {},
 ): THREE.BufferGeometry | null {
   const opts = { ...DEFAULT_OPTIONS, ...options }
+  
+  console.log('[v0] inflatePolygon opts.sharpRidge =', opts.sharpRidge, 'options.sharpRidge =', options.sharpRidge)
 
   if (polygon.length < 3) return null
 
@@ -431,6 +433,8 @@ export function inflatePolygon(
   // ── Step 5: Apply height profile ──────────────────────────────────────────
   // r=0 at boundary (zero height), r=1 at center (peak height)
   const heights = new Float32Array(numVerts)
+
+  console.log('[v0] Inflate mode:', opts.sharpRidge ? 'SHARP RIDGE' : 'smooth dome', 'maxSdf=', maxSdf)
 
   if (opts.sharpRidge) {
     // Sharp ridge mode: raw SDF — preserves sharp medial-axis ridges (voronoi effect)

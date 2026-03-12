@@ -2532,7 +2532,17 @@ function SceneContent({
       if (exportTargets.length === 0) return
 
       const group = new THREE.Group()
-      exportTargets.forEach((m) => group.add(m.clone()))
+      exportTargets.forEach((m) => {
+        const cloned = m.clone()
+        // Recompute normals on the cloned geometry to ensure they are unit-length.
+        // GLTFExporter warns and auto-normalizes if normals aren't normalized,
+        // so we do it explicitly to avoid the warning.
+        if (cloned instanceof THREE.Mesh && cloned.geometry) {
+          cloned.geometry = cloned.geometry.clone()
+          cloned.geometry.computeVertexNormals()
+        }
+        group.add(cloned)
+      })
 
       exporter.parse(
         group,

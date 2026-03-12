@@ -2545,9 +2545,25 @@ function SceneContent({
         group.add(cloned)
       })
 
+      // Temporarily suppress GLTFExporter warnings (normalized normals, merged textures)
+      // These are benign format optimizations and don't affect export quality
+      const originalWarn = console.warn
+      console.warn = (message?: any) => {
+        if (
+          typeof message === "string" &&
+          (message.includes("GLTFExporter:") || message.includes("normalized"))
+        ) {
+          return // suppress GLTFExporter warnings
+        }
+        originalWarn(message)
+      }
+
       exporter.parse(
         group,
         (result) => {
+          // Restore console.warn
+          console.warn = originalWarn
+
           const blob = new Blob([result as ArrayBuffer], { type: "model/gltf-binary" })
           const url = URL.createObjectURL(blob)
           const link = document.createElement("a")
@@ -2556,7 +2572,10 @@ function SceneContent({
           link.click()
           URL.revokeObjectURL(url)
         },
-        (error) => { console.error("GLB export error:", error) },
+        (error) => {
+          console.warn = originalWarn
+          console.error("GLB export error:", error)
+        },
         { binary: true },
       )
     }

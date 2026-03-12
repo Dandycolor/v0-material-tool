@@ -413,16 +413,29 @@ export function inflatePolygon(
       normalizedField[i] = range > 1e-10 ? (harmonicField[i] - minF) / range : 0
     }
   }
-  
+
+  // Raw SDF field: actual distance-to-boundary, NOT smoothed by Poisson.
+  // This produces sharp medial-axis ridges (voronoi skeleton effect).
+  const rawSdfField = new Float32Array(numVerts)
+  let maxSdf = 0
+  for (let i = 0; i < numVerts; i++) {
+    if (boundaryIndices.has(i)) { rawSdfField[i] = 0; continue }
+    const d = distToEdge(coords[i * 2], coords[i * 2 + 1], polygon)
+    rawSdfField[i] = d
+    if (d > maxSdf) maxSdf = d
+  }
+  if (maxSdf > 0) {
+    for (let i = 0; i < numVerts; i++) rawSdfField[i] /= maxSdf
+  }
+
   // ── Step 5: Apply height profile ──────────────────────────────────────────
   // r=0 at boundary (zero height), r=1 at center (peak height)
   const heights = new Float32Array(numVerts)
 
   if (opts.sharpRidge) {
-    // Sharp ridge mode: use raw SDF field directly (no Laplacian smoothing)
-    // This preserves the sharp medial-axis ridges that create the voronoi effect
+    // Sharp ridge mode: raw SDF — preserves sharp medial-axis ridges (voronoi effect)
     for (let i = 0; i < numVerts; i++) {
-      const r = normalizedField[i]
+      const r = rawSdfField[i]
       heights[i] = sharpRidgeProfile(r) * opts.amount
     }
     // Minimal smoothing — just 1 pass to remove single-vertex spikes

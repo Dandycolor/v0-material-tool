@@ -293,17 +293,24 @@ export function inflatePolygon(
   const cy = bounds.minY + h * 0.5
 
   // ── Step 1: Generate vertices ─────────────────────────────────────────────
-  // Add boundary vertices
+  // Add boundary vertices (subdivided for smoother edges)
   const coords: number[] = []
   const boundaryIndices = new Set<number>()
   
-  for (const p of polygon) {
-    boundaryIndices.add(coords.length / 2)
-    coords.push(p.x, p.y)
+  // Subdivide boundary edges for denser boundary sampling
+  const boundarySubdivide = Math.max(1, Math.floor(opts.gridResolution / 30))
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i]
+    const b = polygon[(i + 1) % polygon.length]
+    for (let s = 0; s < boundarySubdivide; s++) {
+      const t = s / boundarySubdivide
+      boundaryIndices.add(coords.length / 2)
+      coords.push(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)
+    }
   }
   
-  // Add Steiner points inside polygon
-  const steinerDensity = Math.floor(Math.sqrt(opts.steinerPoints || 200))
+  // Add Steiner points inside polygon using gridResolution for uniform density
+  const steinerDensity = Math.max(8, Math.floor(opts.gridResolution * 0.6))
   const step = size / steinerDensity
   
   for (let row = 0; row < steinerDensity; row++) {
@@ -383,7 +390,7 @@ export function inflatePolygon(
     }
   }
   
-  console.log('[v0] inflate field: numVerts=', numVerts, 'boundary=', boundaryIndices.size, 'interior minF=', minF, 'maxF=', maxF)
+
   
   const normalizedField = new Float32Array(numVerts)
   const range = maxF - minF
@@ -399,14 +406,27 @@ export function inflatePolygon(
   // r=0 → boundary (zero height), r=1 → center (peak height)
   // inflateProfile(r) = (1 - (1-r)^n)^m gives dome shape
   const heights = new Float32Array(numVerts)
-  let minH = Infinity, maxH = -Infinity
   for (let i = 0; i < numVerts; i++) {
-    const r = normalizedField[i]
+    const r = finalField[i]
     heights[i] = inflateProfile(r) * opts.amount
-    if (heights[i] < minH) minH = heights[i]
-    if (heights[i] > maxH) maxH = heights[i]
   }
-  console.log('[v0] inflate heights: min=', minH, 'max=', maxH, 'amount=', opts.amount)
+
+  // Laplacian smoothing on height field to eliminate faceting
+  // Boundary heights stay 0, interior heights get averaged with neighbors
+  const smoothIter = Math.max(2, opts.smoothingIterations * 3)
+  for (let iter = 0; iter < smoothIter; iter++) {
+    const smoothed = heights.slice()
+    for (let i = 0; i < numVerts; i++) {
+      if (boundaryIndices.has(i)) continue
+      const nbrs = neighbors[i]
+      if (nbrs.length === 0) continue
+      let sum = 0
+      for (const j of nbrs) sum += heights[j]
+      // Blend: 60% neighbor average + 40% original to preserve dome shape
+      smoothed[i] = sum / nbrs.length * 0.6 + heights[i] * 0.4
+    }
+    heights.set(smoothed)
+  }
   
   // ── Step 6: Build BufferGeometry ──────────────────────────────────────────
   const scale = 2 / size

@@ -1788,6 +1788,14 @@ export default function MaterialTool() {
                             <p className="text-xs text-zinc-500">Controls edge sharpness of voronoi ridges</p>
                           </div>
                         )}
+
+                        <button
+                          onClick={() => viewerRef.current?.exportGLB()}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white text-sm font-semibold transition-colors mt-2"
+                        >
+                          <Download className="w-4 h-4" />
+                          Save 3D Model (.glb)
+                        </button>
                       </div>
                     </div>
                   )}

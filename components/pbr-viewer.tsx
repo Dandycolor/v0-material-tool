@@ -4,6 +4,7 @@ import { Canvas, useLoader, useThree } from "@react-three/fiber"
 import { OrbitControls, Environment, TransformControls } from "@react-three/drei"
 import * as THREE from "three"
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
+import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js"
 import { Suspense, useMemo, useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react"
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils"
 import { ModelMesh } from "./model-mesh"
@@ -2311,6 +2312,7 @@ interface SceneContentProps {
   materialSettings: MaterialSettings
   lightingSettings: LightingSettings
   onExportReady: (exportFn: () => void) => void
+  onExportGeometryReady: (exportFn: () => void) => void
   renderMode?: "pbr" | "matcap"
   matcapTexture?: string
   matcapHueShift?: number
@@ -2349,6 +2351,7 @@ function SceneContent({
   materialSettings,
   lightingSettings,
   onExportReady,
+  onExportGeometryReady,
   renderMode = "pbr",
   matcapTexture,
   matcapHueShift = 0,
@@ -2360,7 +2363,7 @@ function SceneContent({
   onModelLoadError,
   onGeometrySettingsChange,
   backgroundColor,
-}: SceneContentProps & { onExportReady: (fn: () => void) => void, backgroundColor?: string }) {
+}: SceneContentProps & { onExportReady: (fn: () => void) => void, onExportGeometryReady: (fn: () => void) => void, backgroundColor?: string }) {
   const { gl, scene, camera } = useThree()
   
   // Apply background color
@@ -2514,6 +2517,40 @@ function SceneContent({
 
     onExportReady(exportPNG)
   }, [gl, scene, camera, onExportReady])
+
+  // GLB export — exports all meshes currently in the scene
+  useEffect(() => {
+    const exportGLB = () => {
+      const exporter = new GLTFExporter()
+      // Collect only visible mesh objects (skip lights, cameras, helpers)
+      const exportTargets: THREE.Object3D[] = []
+      scene.traverse((obj) => {
+        if (obj instanceof THREE.Mesh && obj.visible) {
+          exportTargets.push(obj)
+        }
+      })
+      if (exportTargets.length === 0) return
+
+      const group = new THREE.Group()
+      exportTargets.forEach((m) => group.add(m.clone()))
+
+      exporter.parse(
+        group,
+        (result) => {
+          const blob = new Blob([result as ArrayBuffer], { type: "model/gltf-binary" })
+          const url = URL.createObjectURL(blob)
+          const link = document.createElement("a")
+          link.href = url
+          link.download = `inflate-model-${Date.now()}.glb`
+          link.click()
+          URL.revokeObjectURL(url)
+        },
+        (error) => { console.error("GLB export error:", error) },
+        { binary: true },
+      )
+    }
+    onExportGeometryReady(exportGLB)
+  }, [scene, onExportGeometryReady])
 
   const showMatcap = renderMode === "matcap" && matcapTexture
 
@@ -2718,6 +2755,7 @@ function SceneContent({
 
 export interface PBRViewerRef {
   exportPNG: () => void
+  exportGLB: () => void
 }
 
 export const PBRViewer = forwardRef<
@@ -2764,6 +2802,7 @@ export const PBRViewer = forwardRef<
   ref,
   ) {
   const exportFnRef = useRef<(() => void) | null>(null)
+  const exportGeometryFnRef = useRef<(() => void) | null>(null)
 
   useImperativeHandle(ref, () => ({
     exportPNG: () => {
@@ -2771,10 +2810,19 @@ export const PBRViewer = forwardRef<
         exportFnRef.current()
       }
     },
+    exportGLB: () => {
+      if (exportGeometryFnRef.current) {
+        exportGeometryFnRef.current()
+      }
+    },
   }))
 
   const handleExportReady = (fn: () => void) => {
     exportFnRef.current = fn
+  }
+
+  const handleExportGeometryReady = (fn: () => void) => {
+    exportGeometryFnRef.current = fn
   }
 
   return (
@@ -2796,6 +2844,7 @@ export const PBRViewer = forwardRef<
             materialSettings={materialSettings}
             lightingSettings={lightingSettings}
             onExportReady={handleExportReady}
+            onExportGeometryReady={handleExportGeometryReady}
             renderMode={renderMode}
             matcapTexture={matcapTexture}
             matcapHueShift={matcapHueShift}

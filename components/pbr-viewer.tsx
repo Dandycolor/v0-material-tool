@@ -2533,18 +2533,25 @@ function SceneContent({
 
       const group = new THREE.Group()
       exportTargets.forEach((m) => {
-        const cloned = m.clone()
-        // Recompute normals on the cloned geometry to ensure they are unit-length.
-        // GLTFExporter warns and auto-normalizes if normals aren't normalized,
-        // so we do it explicitly to avoid the warning.
-        if (cloned instanceof THREE.Mesh && cloned.geometry) {
-          cloned.geometry = cloned.geometry.clone()
-          cloned.geometry.computeVertexNormals()
-          // GLTFExporter checks BufferAttribute.normalized, not the actual vector lengths.
-          // computeVertexNormals() produces unit vectors but leaves normalized=false,
-          // so we set it explicitly to suppress the warning.
-          const normalAttr = cloned.geometry.getAttribute("normal")
-          if (normalAttr) normalAttr.normalized = true
+        const cloned = m.clone() as THREE.Mesh
+        if (cloned.geometry) {
+          const geo = cloned.geometry.clone()
+          // Recompute normals so values are unit-length
+          geo.computeVertexNormals()
+          // Replace the normal BufferAttribute with a new one that has normalized=true.
+          // GLTFExporter reads the .normalized flag on the attribute — simply setting the
+          // flag on the existing attribute is insufficient; we must create a new attribute
+          // so the exporter picks up the flag correctly.
+          const existingNormal = geo.getAttribute("normal") as THREE.BufferAttribute
+          if (existingNormal) {
+            const normalized = new THREE.BufferAttribute(
+              new Float32Array(existingNormal.array),
+              existingNormal.itemSize,
+              true, // normalized = true
+            )
+            geo.setAttribute("normal", normalized)
+          }
+          cloned.geometry = geo
         }
         group.add(cloned)
       })

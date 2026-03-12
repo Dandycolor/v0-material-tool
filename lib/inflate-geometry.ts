@@ -171,7 +171,10 @@ function computeCotangentWeights(coords: number[], halfEdges: HalfEdge[]) {
     const cross = dx0 * dy1 - dy0 * dx1
     
     let cot = dot / (cross + 1e-10)
-    cot = Math.max(-10, Math.min(10, cot)) // Clamp for stability
+    // For obtuse triangles (cot < 0), use a fallback uniform weight
+    // to avoid negative Laplacian weights which cause inversions
+    if (cot < 0) cot = 0.1
+    cot = Math.min(10, cot) // Clamp for stability
     
     const key = `${Math.min(v0, v1)}:${Math.max(v0, v1)}`
     weights.set(key, (weights.get(key) || 0) + cot * 0.5)
@@ -380,6 +383,8 @@ export function inflatePolygon(
     }
   }
   
+  console.log('[v0] inflate field: numVerts=', numVerts, 'boundary=', boundaryIndices.size, 'interior minF=', minF, 'maxF=', maxF)
+  
   const normalizedField = new Float32Array(numVerts)
   const range = maxF - minF
   for (let i = 0; i < numVerts; i++) {
@@ -394,10 +399,14 @@ export function inflatePolygon(
   // r=0 → boundary (zero height), r=1 → center (peak height)
   // inflateProfile(r) = (1 - (1-r)^n)^m gives dome shape
   const heights = new Float32Array(numVerts)
+  let minH = Infinity, maxH = -Infinity
   for (let i = 0; i < numVerts; i++) {
     const r = normalizedField[i]
     heights[i] = inflateProfile(r) * opts.amount
+    if (heights[i] < minH) minH = heights[i]
+    if (heights[i] > maxH) maxH = heights[i]
   }
+  console.log('[v0] inflate heights: min=', minH, 'max=', maxH, 'amount=', opts.amount)
   
   // ── Step 6: Build BufferGeometry ──────────────────────────────────────────
   const scale = 2 / size

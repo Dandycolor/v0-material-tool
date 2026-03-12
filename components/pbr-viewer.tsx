@@ -1725,6 +1725,8 @@ function ExtrudedSVGMesh({
     geometrySettings.inflateBothSides,
     geometrySettings.inflateSmoothing,
     geometrySettings.inflateGridResolution,
+    geometrySettings.inflateSharpRidge,
+    geometrySettings.inflateRidgeSharpness,
   ])
 
   const meshRef = useRef<THREE.Mesh>(null)

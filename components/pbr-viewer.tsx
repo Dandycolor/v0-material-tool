@@ -2518,52 +2518,27 @@ function SceneContent({
     onExportReady(exportPNG)
   }, [gl, scene, camera, onExportReady])
 
-  // GLB export — exports all meshes currently in the scene
+  // GLB export — exports the scene as-is with all materials, lights, and geometry
   useEffect(() => {
     const exportGLB = () => {
       const exporter = new GLTFExporter()
-      // Collect only visible mesh objects (skip lights, cameras, helpers)
-      const exportTargets: THREE.Object3D[] = []
-      scene.traverse((obj) => {
-        if (obj instanceof THREE.Mesh && obj.visible) {
-          exportTargets.push(obj)
-        }
-      })
-      if (exportTargets.length === 0) return
-
-      const group = new THREE.Group()
-      exportTargets.forEach((m) => {
-        const cloned = m.clone() as THREE.Mesh
-        if (cloned.geometry) {
-          const geo = cloned.geometry.clone()
-          // Remove the normal attribute — GLTFExporter will compute fresh normals
-          // during export with no warnings. This avoids the "Creating normalized normal"
-          // warning that fires when exporting pre-computed normals with normalized=false.
-          geo.deleteAttribute("normal")
-          cloned.geometry = geo
-        }
-        group.add(cloned)
-      })
 
       // Temporarily suppress GLTFExporter warnings (normalized normals, merged textures)
-      // These are benign format optimizations and don't affect export quality
       const originalWarn = console.warn
       console.warn = (message?: any) => {
         if (
           typeof message === "string" &&
           (message.includes("GLTFExporter:") || message.includes("normalized"))
         ) {
-          return // suppress GLTFExporter warnings
+          return
         }
         originalWarn(message)
       }
 
       exporter.parse(
-        group,
+        scene,
         (result) => {
-          // Restore console.warn
           console.warn = originalWarn
-
           const blob = new Blob([result as ArrayBuffer], { type: "model/gltf-binary" })
           const url = URL.createObjectURL(blob)
           const link = document.createElement("a")

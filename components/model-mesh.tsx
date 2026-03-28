@@ -91,12 +91,6 @@ export function ModelMesh({
   const inflateControlRef = useRef<THREE.Group>(null)
   const [modelSize, setModelSize] = useState<number>(1)
 
-  useEffect(() => {
-    if (!modelUrl) {
-      setLoading(false)
-      return
-    }
-
   // Load model when modelUrl changes
   useEffect(() => {
     if (!modelUrl) {
@@ -110,7 +104,6 @@ export function ModelMesh({
     const loadModel = async () => {
       try {
         // Temporarily disable model loading due to GLTFLoader import issues
-        // Models will be loaded through standard 3D mesh primitive
         if (isMounted) {
           handleError("Model loading is temporarily disabled. Please use primitives or vector mode.")
           setLoading(false)

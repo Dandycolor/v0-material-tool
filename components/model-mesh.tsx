@@ -349,10 +349,7 @@ export function ModelMesh({
               thickness: materialSettings.thickness ?? 0.5,
               attenuationDistance: materialSettings.attenuationDistance ?? 100,
               attenuationColor: materialSettings.attenuationColor ? new THREE.Color(materialSettings.attenuationColor) : new THREE.Color("#ffffff"),
-              transparent: true,
               side: THREE.FrontSide,
-              depthWrite: true,
-              depthTest: true,
               clearcoat: materialSettings.clearcoat ?? 0,
               clearcoatRoughness: materialSettings.clearcoatRoughness ?? 0,
               clearcoatNormalScale: new THREE.Vector2(materialSettings.clearcoatNormalScale ?? 1, materialSettings.clearcoatNormalScale ?? 1),
@@ -361,7 +358,6 @@ export function ModelMesh({
               iridescenceIOR: materialSettings.iridescenceIOR ?? 1.3,
               iridescenceThicknessRange: [materialSettings.iridescenceThicknessMin ?? 100, materialSettings.iridescenceThicknessMax ?? 400],
             })
-            newMaterial.dispose()
             newMaterial = physicalMaterial
           } else if (newMaterial instanceof THREE.MeshStandardMaterial) {
             // Применяем только параметры без перезаписи текстур
@@ -546,7 +542,20 @@ export function ModelMesh({
     )
   }
 
-  return <primitive object={scene} />
+  const isGlass = materialSettings.transmission > 0
+
+  return (
+    <>
+      {/* Invisible mesh to activate R3F transmission render pass for glass */}
+      {isGlass && (
+        <mesh visible={false} scale={0.001}>
+          <sphereGeometry args={[1, 4, 4]} />
+          <meshPhysicalMaterial transmission={materialSettings.transmission} />
+        </mesh>
+      )}
+      <primitive object={scene} />
+    </>
+  )
 }
 
 function createPBRMaterial(
@@ -609,10 +618,7 @@ function createPBRMaterial(
     attenuationColor: isGlass
       ? new THREE.Color(settings.attenuationColor || "#ffffff")
       : (settings.attenuationColor ? new THREE.Color(settings.attenuationColor) : new THREE.Color("#ffffff")),
-    transparent: true,
     side: THREE.FrontSide,
-    depthWrite: true,
-    depthTest: true,
     clearcoat: settings.clearcoat ?? 0,
     clearcoatRoughness: settings.clearcoatRoughness ?? 0,
     clearcoatNormalScale: new THREE.Vector2(settings.clearcoatNormalScale ?? 1, settings.clearcoatNormalScale ?? 1),

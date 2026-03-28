@@ -2280,8 +2280,6 @@ function Material({
         thickness: materialSettings.thickness,
         attenuationDistance: materialSettings.attenuationDistance,
         attenuationColor: new THREE.Color(materialSettings.attenuationColor),
-        transparent: true,
-        opacity: 1,
         side: THREE.FrontSide,
         envMapIntensity: materialSettings.envMapIntensity || 1.5,
         clearcoat: materialSettings.clearcoat,
@@ -3002,7 +3000,6 @@ export const PBRViewer = forwardRef<
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: lightingSettings.exposure,
           preserveDrawingBuffer: true, // Required for toDataURL
-          alpha: true, // Enable alpha channel
           outputColorSpace: THREE.SRGBColorSpace,
         }}
       >

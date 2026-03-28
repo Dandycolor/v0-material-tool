@@ -4,6 +4,9 @@ import { Canvas, useLoader, useThree } from "@react-three/fiber"
 import { OrbitControls, Environment, TransformControls } from "@react-three/drei"
 import * as THREE from "three"
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
+import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js"
+import { STLExporter } from "three/addons/exporters/STLExporter.js"
+import { OBJExporter } from "three/addons/exporters/OBJExporter.js"
 import { Suspense, useMemo, useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react"
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils"
 import { ModelMesh } from "./model-mesh"
@@ -1754,7 +1757,7 @@ function ExtrudedSVGMesh({
 
   if (geometry) {
     return (
-      <mesh ref={meshRef} geometry={geometry}>
+      <mesh ref={meshRef} geometry={geometry} name="inflated-geometry">
         {!gradientSettings?.enabled && (
           useMatcap && matcapTexture ? (
             <MatcapMaterialWithEffects 
@@ -2227,7 +2230,9 @@ function Material({
         tex.wrapT = THREE.RepeatWrapping
         tex.repeat.set(textureScale, textureScale)
         tex.colorSpace = tex === colorMap ? THREE.SRGBColorSpace : THREE.LinearSRGBColorSpace
-        tex.needsUpdate = true
+        if (tex.image) {
+          tex.needsUpdate = true
+        }
       }
     })
   }, [colorMap, normalMap, roughnessMap, displacementMap, metalnessMap, opacityMap, textureScale])
@@ -2311,6 +2316,9 @@ interface SceneContentProps {
   materialSettings: MaterialSettings
   lightingSettings: LightingSettings
   onExportReady: (exportFn: () => void) => void
+  onExportGeometryReady: (exportFn: () => void) => void
+  onExportSTLReady: (exportFn: () => void) => void
+  onExportOBJReady: (exportFn: () => void) => void
   renderMode?: "pbr" | "matcap"
   matcapTexture?: string
   matcapHueShift?: number
@@ -2349,6 +2357,9 @@ function SceneContent({
   materialSettings,
   lightingSettings,
   onExportReady,
+  onExportGeometryReady,
+  onExportSTLReady,
+  onExportOBJReady,
   renderMode = "pbr",
   matcapTexture,
   matcapHueShift = 0,
@@ -2360,7 +2371,7 @@ function SceneContent({
   onModelLoadError,
   onGeometrySettingsChange,
   backgroundColor,
-}: SceneContentProps & { onExportReady: (fn: () => void) => void, backgroundColor?: string }) {
+}: SceneContentProps & { onExportReady: (fn: () => void) => void, onExportGeometryReady: (fn: () => void) => void, onExportSTLReady: (fn: () => void) => void, onExportOBJReady: (fn: () => void) => void, backgroundColor?: string }) {
   const { gl, scene, camera } = useThree()
   
   // Apply background color
@@ -2515,6 +2526,147 @@ function SceneContent({
     onExportReady(exportPNG)
   }, [gl, scene, camera, onExportReady])
 
+  // GLB export — exports the inflated geometry mesh specifically
+  useEffect(() => {
+    const exportGLB = () => {
+      const exporter = new GLTFExporter()
+
+      // Find the inflated geometry mesh by name
+      let inflatedMesh: THREE.Mesh | null = null
+      scene.traverse((obj) => {
+        if (obj instanceof THREE.Mesh && obj.name === "inflated-geometry" && obj.geometry) {
+          inflatedMesh = obj
+        }
+      })
+
+      if (!inflatedMesh) {
+        console.warn("[v0] GLB export: inflated-geometry mesh not found")
+        return
+      }
+
+      console.log("[v0] GLB export: found inflated-geometry mesh")
+
+      // Clone the mesh geometry for export
+      const clone = inflatedMesh.clone() as THREE.Mesh
+      clone.geometry = inflatedMesh.geometry.clone()
+      // Ensure mesh has a visible material for export
+      clone.material = new THREE.MeshStandardMaterial({
+        color: 0xcccccc,
+        metalness: 0.5,
+        roughness: 0.5,
+      })
+
+      // Temporarily suppress GLTFExporter warnings
+      const originalWarn = console.warn
+      console.warn = (message?: any) => {
+        if (
+          typeof message === "string" &&
+          (message.includes("GLTFExporter:") || message.includes("normalized"))
+        ) {
+          return
+        }
+        originalWarn(message)
+      }
+
+      exporter.parse(
+        clone,
+        (result) => {
+          console.warn = originalWarn
+          console.log("[v0] GLB export successful, file size:", (result as ArrayBuffer).byteLength, "bytes")
+          const blob = new Blob([result as ArrayBuffer], { type: "model/gltf-binary" })
+          const url = URL.createObjectURL(blob)
+          const link = document.createElement("a")
+          link.href = url
+          link.download = `inflate-model-${Date.now()}.glb`
+          link.click()
+          URL.revokeObjectURL(url)
+        },
+        (error) => {
+          console.warn = originalWarn
+          console.error("[v0] GLB export error:", error)
+        },
+        { binary: true },
+      )
+    }
+    onExportGeometryReady(exportGLB)
+  }, [scene, onExportGeometryReady])
+
+  // STL export — exports the inflated geometry mesh specifically
+  useEffect(() => {
+    const exportSTL = () => {
+      const stlExporter = new STLExporter()
+
+      // Find the inflated geometry mesh by name
+      let inflatedMesh: THREE.Mesh | null = null
+      scene.traverse((obj) => {
+        if (obj instanceof THREE.Mesh && obj.name === "inflated-geometry" && obj.geometry) {
+          inflatedMesh = obj
+        }
+      })
+
+      if (!inflatedMesh) {
+        console.warn("[v0] STL export: inflated-geometry mesh not found")
+        return
+      }
+
+      console.log("[v0] STL export: found inflated-geometry mesh")
+
+      // Clone the mesh geometry for export
+      const clone = inflatedMesh.clone()
+      clone.geometry = inflatedMesh.geometry.clone()
+
+      const stlData = stlExporter.parse(clone, { binary: true })
+      console.log("[v0] STL export successful, file size:", (stlData as ArrayBuffer).byteLength, "bytes")
+
+      const blob = new Blob([stlData as ArrayBuffer], { type: "application/octet-stream" })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `inflate-model-${Date.now()}.stl`
+      link.click()
+      URL.revokeObjectURL(url)
+    }
+    onExportSTLReady(exportSTL)
+  }, [scene, onExportSTLReady])
+
+  // OBJ export — exports the inflated geometry mesh specifically
+  useEffect(() => {
+    const exportOBJ = () => {
+      const objExporter = new OBJExporter()
+
+      // Find the inflated geometry mesh by name
+      let inflatedMesh: THREE.Mesh | null = null
+      scene.traverse((obj) => {
+        if (obj instanceof THREE.Mesh && obj.name === "inflated-geometry" && obj.geometry) {
+          inflatedMesh = obj
+        }
+      })
+
+      if (!inflatedMesh) {
+        console.warn("[v0] OBJ export: inflated-geometry mesh not found")
+        return
+      }
+
+      console.log("[v0] OBJ export: found inflated-geometry mesh")
+
+      // Clone the mesh geometry for export
+      const clone = inflatedMesh.clone()
+      clone.geometry = inflatedMesh.geometry.clone()
+
+      const objData = objExporter.parse(clone)
+      console.log("[v0] OBJ export successful, file size:", objData.length, "bytes")
+
+      const blob = new Blob([objData], { type: "text/plain" })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `inflate-model-${Date.now()}.obj`
+      link.click()
+      URL.revokeObjectURL(url)
+    }
+    onExportOBJReady(exportOBJ)
+  }, [scene, onExportOBJReady])
+
   const showMatcap = renderMode === "matcap" && matcapTexture
 
   const [matcapTextureLoaded, setMatcapTextureLoaded] = useState<THREE.Texture | null>(null)
@@ -2625,7 +2777,9 @@ function SceneContent({
   useEffect(() => {
     if (matcapNormalMap && matcapSettings?.normalRepeat) {
       matcapNormalMap.repeat.set(matcapSettings.normalRepeat, matcapSettings.normalRepeat)
-      matcapNormalMap.needsUpdate = true
+      if (matcapNormalMap.image) {
+        matcapNormalMap.needsUpdate = true
+      }
     }
   }, [matcapNormalMap, matcapSettings?.normalRepeat])
 
@@ -2718,6 +2872,9 @@ function SceneContent({
 
 export interface PBRViewerRef {
   exportPNG: () => void
+  exportGLB: () => void
+  exportSTL: () => void
+  exportOBJ: () => void
 }
 
 export const PBRViewer = forwardRef<
@@ -2764,6 +2921,9 @@ export const PBRViewer = forwardRef<
   ref,
   ) {
   const exportFnRef = useRef<(() => void) | null>(null)
+  const exportGeometryFnRef = useRef<(() => void) | null>(null)
+  const exportSTLFnRef = useRef<(() => void) | null>(null)
+  const exportOBJFnRef = useRef<(() => void) | null>(null)
 
   useImperativeHandle(ref, () => ({
     exportPNG: () => {
@@ -2771,10 +2931,37 @@ export const PBRViewer = forwardRef<
         exportFnRef.current()
       }
     },
+    exportGLB: () => {
+      if (exportGeometryFnRef.current) {
+        exportGeometryFnRef.current()
+      }
+    },
+    exportSTL: () => {
+      if (exportSTLFnRef.current) {
+        exportSTLFnRef.current()
+      }
+    },
+    exportOBJ: () => {
+      if (exportOBJFnRef.current) {
+        exportOBJFnRef.current()
+      }
+    },
   }))
 
   const handleExportReady = (fn: () => void) => {
     exportFnRef.current = fn
+  }
+
+  const handleExportGeometryReady = (fn: () => void) => {
+    exportGeometryFnRef.current = fn
+  }
+
+  const handleExportSTLReady = (fn: () => void) => {
+    exportSTLFnRef.current = fn
+  }
+
+  const handleExportOBJReady = (fn: () => void) => {
+    exportOBJFnRef.current = fn
   }
 
   return (
@@ -2796,6 +2983,9 @@ export const PBRViewer = forwardRef<
             materialSettings={materialSettings}
             lightingSettings={lightingSettings}
             onExportReady={handleExportReady}
+            onExportGeometryReady={handleExportGeometryReady}
+            onExportSTLReady={handleExportSTLReady}
+            onExportOBJReady={handleExportOBJReady}
             renderMode={renderMode}
             matcapTexture={matcapTexture}
             matcapHueShift={matcapHueShift}

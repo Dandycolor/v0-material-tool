@@ -626,7 +626,10 @@ function createPBRMaterial(
       tex.repeat.set(textureScale, textureScale)
       // colorMap должен использовать sRGB, остальные - Linear
       tex.colorSpace = index === 0 ? THREE.SRGBColorSpace : THREE.LinearSRGBColorSpace
-      tex.needsUpdate = true
+      // Only mark for update if texture has image data
+      if (tex.image) {
+        tex.needsUpdate = true
+      }
     }
   })
 

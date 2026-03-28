@@ -11,12 +11,9 @@ import type { GradientConfig, PBRConfig } from "@/lib/types"
 // ── Grid ──────────────────────────────────────────────────────────────────────
 function Grid({ visible }: { visible: boolean }) {
   if (!visible) return null
-  return (
-    <gridHelper
-      args={[20, 20, "#2a2a2a", "#1e1e1e"]}
-      position={[0, -1.2, 0]}
-    />
-  )
+  const grid = new THREE.GridHelper(20, 20, "#2a2a2a", "#1e1e1e")
+  grid.position.y = -1.2
+  return <primitive object={grid} />
 }
 
 // ── Material builder ───────────────────────────────────────────────────────────

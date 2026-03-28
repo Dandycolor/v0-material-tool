@@ -7,6 +7,7 @@ import * as THREE from "three"
 import { Mesh } from "three"
 import { useThree } from "@react-three/fiber"
 import { TransformControls } from "@react-three/drei"
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
 import { createGradientMaterial } from "./gradient-shader"
 
 interface ModelMeshProps {
@@ -101,22 +102,52 @@ export function ModelMesh({
     setLoading(true)
     let isMounted = true
     
-    const loadModel = async () => {
-      try {
-        // Temporarily disable model loading due to GLTFLoader import issues
-        if (isMounted) {
-          handleError("Model loading is temporarily disabled. Please use primitives or vector mode.")
+    const loader = new GLTFLoader()
+    
+    loader.load(
+      modelUrl,
+      (gltf) => {
+        if (!isMounted) return
+        
+        try {
+          const loadedScene = gltf.scene
+          
+          // Center and scale the model
+          const box = new THREE.Box3().setFromObject(loadedScene)
+          const center = box.getCenter(new THREE.Vector3())
+          const size = box.getSize(new THREE.Vector3())
+          const maxDim = Math.max(size.x, size.y, size.z)
+          const scale = 2 / maxDim
+          
+          loadedScene.position.sub(center)
+          loadedScene.scale.setScalar(scale)
+          setModelSize(maxDim * scale)
+          
+          // Store original geometry for inflation
+          loadedScene.traverse((child) => {
+            if (child instanceof Mesh) {
+              child.userData.originalGeometry = child.geometry.clone()
+              child.castShadow = true
+              child.receiveShadow = true
+            }
+          })
+          
+          setScene(loadedScene)
+          setLoading(false)
+        } catch (err) {
+          handleError("Error processing model")
           setLoading(false)
         }
-      } catch (err) {
+      },
+      undefined,
+      (error) => {
         if (isMounted) {
-          handleError("Unexpected error loading model")
+          console.error("[v0] GLTF load error:", error)
+          handleError("Failed to load model. Please check the file format.")
           setLoading(false)
         }
       }
-    }
-    
-    loadModel()
+    )
     
     return () => {
       isMounted = false

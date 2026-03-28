@@ -513,7 +513,7 @@ export function ModelMesh({
   return <primitive object={scene} />
 }
 
-function createPBRMaterial(
+export function createPBRMaterial(
   settings: any,
   colorMap: THREE.Texture | null | undefined,
   normalMap: THREE.Texture | null | undefined,

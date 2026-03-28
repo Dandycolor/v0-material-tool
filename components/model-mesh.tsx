@@ -98,13 +98,6 @@ export function ModelMesh({
       return
     }
 
-  // Load model when modelUrl changes
-  useEffect(() => {
-    if (!modelUrl) {
-      setLoading(false)
-      return
-    }
-
     setLoading(true)
     let isMounted = true
     

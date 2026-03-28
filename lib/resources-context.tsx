@@ -39,7 +39,7 @@ interface ResourcesContextType {
   resetToDefaults: () => void
 }
 
-const DATA_VERSION = 2 // Increment when data structure changes
+const DATA_VERSION = 3 // Increment when data structure changes
 
 const ResourcesContext = createContext<ResourcesContextType | undefined>(undefined)
 

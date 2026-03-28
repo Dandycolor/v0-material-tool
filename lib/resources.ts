@@ -148,6 +148,19 @@ export const MATERIAL_PRESETS = {
     ior: 1.52,
     defaultTint: "#ffffff",
   },
+  scratchedGlass: {
+    id: "scratchedGlass",
+    name: "Scratched Glass",
+    type: "pbr" as const,
+    baseColor: null,
+    normalMap: "/images/scratched-glass-normal.jpg",
+    roughnessMap: "/images/scratched-glass-roughness.jpg",
+    metalness: 0,
+    roughness: 0.1,
+    transmission: 0.98,
+    ior: 1.52,
+    defaultTint: "#ffffff",
+  },
 }
 
 export const MATCAP_PRESETS = {

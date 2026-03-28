@@ -1,0 +1,68 @@
+[
+  {
+    "id": "model-damaged-helmet",
+    "name": "Damaged Helmet",
+    "slug": "damaged-helmet",
+    "glb_url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/DamagedHelmet/glTF-Binary/DamagedHelmet.glb",
+    "thumbnail_url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/DamagedHelmet/screenshot/screenshot.png",
+    "categories": ["object", "sci-fi"],
+    "author": "theblueturtle_",
+    "enabled": true,
+    "created_at": "2025-01-01T00:00:00Z"
+  },
+  {
+    "id": "model-flight-helmet",
+    "name": "Flight Helmet",
+    "slug": "flight-helmet",
+    "glb_url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/FlightHelmet/glTF/FlightHelmet.gltf",
+    "thumbnail_url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/FlightHelmet/screenshot/screenshot.jpg",
+    "categories": ["object"],
+    "author": "Microsoft",
+    "enabled": true,
+    "created_at": "2025-01-01T00:00:00Z"
+  },
+  {
+    "id": "model-avocado",
+    "name": "Avocado",
+    "slug": "avocado",
+    "glb_url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/Avocado/glTF-Binary/Avocado.glb",
+    "thumbnail_url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/Avocado/screenshot/screenshot.jpg",
+    "categories": ["food"],
+    "author": "Microsoft",
+    "enabled": true,
+    "created_at": "2025-01-01T00:00:00Z"
+  },
+  {
+    "id": "model-duck",
+    "name": "Duck",
+    "slug": "duck",
+    "glb_url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/Duck/glTF-Binary/Duck.glb",
+    "thumbnail_url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/Duck/screenshot/screenshot.jpg",
+    "categories": ["animal"],
+    "author": "Sony",
+    "enabled": true,
+    "created_at": "2025-01-01T00:00:00Z"
+  },
+  {
+    "id": "model-sci-fi-helmet",
+    "name": "Sci-Fi Helmet",
+    "slug": "sci-fi-helmet",
+    "glb_url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/SciFiHelmet/glTF-Binary/SciFiHelmet.glb",
+    "thumbnail_url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/SciFiHelmet/screenshot/screenshot.jpg",
+    "categories": ["object", "sci-fi"],
+    "author": "Michael Pavlovic",
+    "enabled": true,
+    "created_at": "2025-01-01T00:00:00Z"
+  },
+  {
+    "id": "model-water-bottle",
+    "name": "Water Bottle",
+    "slug": "water-bottle",
+    "glb_url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/WaterBottle/glTF-Binary/WaterBottle.glb",
+    "thumbnail_url": "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/WaterBottle/screenshot/screenshot.jpg",
+    "categories": ["object"],
+    "author": "Mozi3D",
+    "enabled": true,
+    "created_at": "2025-01-01T00:00:00Z"
+  }
+]

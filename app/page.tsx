@@ -1481,6 +1481,26 @@ export default function MaterialTool() {
                       </button>
                       <span className="text-xs font-normal text-zinc-500">Inflate</span>
                     </div>
+
+                    <div className="flex flex-col items-center gap-3">
+                      <button
+                        onClick={() => {
+                          setGeometrySettings({ ...geometrySettings, type: "3dicons" })
+                        }}
+                        className={`w-24 h-24 flex items-center justify-center rounded-lg border-2 transition-all overflow-hidden ${
+                          geometrySettings.type === "3dicons"
+                            ? "border-white bg-[#1f1f1f]"
+                            : "border-[#2a2a2a] bg-[#1a1a1a] hover:border-[#3a3a3a]"
+                        }`}
+                      >
+                        <img
+                          src="/geometry-modes/3dicons.jpg"
+                          alt="3D Icons"
+                          className="w-full h-full object-cover"
+                        />
+                      </button>
+                      <span className="text-xs font-normal text-zinc-500">3D Icons</span>
+                    </div>
                   </div>
 
                   {geometrySettings.type === "sphere" && (
@@ -1664,6 +1684,59 @@ export default function MaterialTool() {
                       {modelLoadError && (
                         <div className="p-3 bg-red-900/20 border border-red-900/50 rounded-lg">
                           <p className="text-xs text-red-400">{modelLoadError}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 3D Icons Mode - Select from curated 3D icon library */}
+                  {geometrySettings.type === "3dicons" && (
+                    <div className="space-y-4">
+                      <p className="text-xs text-zinc-500">Select a 3D icon to load. Materials and lighting can be applied as usual.</p>
+                      <div className="grid grid-cols-4 gap-2">
+                        {[
+                          { name: "Star", url: "https://vazxmixjsiawhamofees.supabase.co/storage/v1/object/public/models/star/model.gltf", preview: "https://market-assets.fra1.cdn.digitaloceanspaces.com/market-assets/models/star/thumbnail.png" },
+                          { name: "Heart", url: "https://vazxmixjsiawhamofees.supabase.co/storage/v1/object/public/models/heart/model.gltf", preview: "https://market-assets.fra1.cdn.digitaloceanspaces.com/market-assets/models/heart/thumbnail.png" },
+                          { name: "Rocket", url: "https://vazxmixjsiawhamofees.supabase.co/storage/v1/object/public/models/rocket/model.gltf", preview: "https://market-assets.fra1.cdn.digitaloceanspaces.com/market-assets/models/rocket/thumbnail.png" },
+                          { name: "Trophy", url: "https://vazxmixjsiawhamofees.supabase.co/storage/v1/object/public/models/trophy/model.gltf", preview: "https://market-assets.fra1.cdn.digitaloceanspaces.com/market-assets/models/trophy/thumbnail.png" },
+                          { name: "Diamond", url: "https://vazxmixjsiawhamofees.supabase.co/storage/v1/object/public/models/diamond/model.gltf", preview: "https://market-assets.fra1.cdn.digitaloceanspaces.com/market-assets/models/diamond/thumbnail.png" },
+                          { name: "Lightning", url: "https://vazxmixjsiawhamofees.supabase.co/storage/v1/object/public/models/lightning/model.gltf", preview: "https://market-assets.fra1.cdn.digitaloceanspaces.com/market-assets/models/lightning/thumbnail.png" },
+                          { name: "Crown", url: "https://vazxmixjsiawhamofees.supabase.co/storage/v1/object/public/models/crown/model.gltf", preview: "https://market-assets.fra1.cdn.digitaloceanspaces.com/market-assets/models/crown/thumbnail.png" },
+                          { name: "Gift", url: "https://vazxmixjsiawhamofees.supabase.co/storage/v1/object/public/models/gift/model.gltf", preview: "https://market-assets.fra1.cdn.digitaloceanspaces.com/market-assets/models/gift/thumbnail.png" },
+                        ].map((icon) => (
+                          <button
+                            key={icon.name}
+                            onClick={() => {
+                              setGeometrySettings({
+                                ...geometrySettings,
+                                modelUrl: icon.url,
+                                modelName: icon.name,
+                              })
+                            }}
+                            className={`aspect-square rounded-lg border-2 transition-all overflow-hidden flex items-center justify-center bg-[#1a1a1a] ${
+                              geometrySettings.modelName === icon.name && geometrySettings.type === "3dicons"
+                                ? "border-cyan-500"
+                                : "border-[#2a2a2a] hover:border-[#3a3a3a]"
+                            }`}
+                            title={icon.name}
+                          >
+                            <img 
+                              src={icon.preview} 
+                              alt={icon.name}
+                              className="w-full h-full object-contain p-1"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                                (e.target as HTMLImageElement).parentElement!.innerHTML = `<span class="text-xs text-zinc-400">${icon.name}</span>`;
+                              }}
+                            />
+                          </button>
+                        ))}
+                      </div>
+                      
+                      {geometrySettings.modelName && (
+                        <div className="p-3 bg-[#2a2a2a] rounded-lg">
+                          <p className="text-sm text-white font-medium">{geometrySettings.modelName}</p>
+                          <p className="text-xs text-zinc-500 mt-1">Currently loaded 3D icon</p>
                         </div>
                       )}
                     </div>

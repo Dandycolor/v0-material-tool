@@ -243,7 +243,7 @@ function MatcapMaterialWithEffects({
 }
 
 interface GeometrySettings {
-  type: "sphere" | "extruded" | "model" | "inflate"
+  type: "sphere" | "extruded" | "model" | "inflate" | "3dicons"
   primitiveType?: "sphere" | "cone" | "torus" | "torusKnot" | "capsule"
   svgPath: string
   svgSource?: "iconify" | "upload"
@@ -1968,7 +1968,7 @@ function PBRMesh({
           <PrimitiveGeometry primitiveType={geometrySettings.primitiveType || "sphere"} />
           <Material materialSettings={materialSettings} />
         </mesh>
-      ) : geometrySettings.type === "model" ? (
+      ) : geometrySettings.type === "model" || geometrySettings.type === "3dicons" ? (
         geometrySettings.modelUrl && (
           <ModelMesh
             key={`${fullTextureKey}-${geometrySettings.modelUrl}`}
@@ -2807,7 +2807,7 @@ function SceneContent({
             rimColor={matcapSettings?.rimColor || "#ffffff"}
           />
         </mesh>
-      ) : geometrySettings.type === "model" ? (
+      ) : geometrySettings.type === "model" || geometrySettings.type === "3dicons" ? (
             geometrySettings.modelUrl && (
             <ModelMesh
               modelUrl={geometrySettings.modelUrl}

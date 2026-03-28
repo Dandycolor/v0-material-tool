@@ -2,7 +2,7 @@
 
 import { useRef } from "react"
 import { useEffect, useState } from "react"
-import { useLoader, useFrame } from "@react-three/fiber"
+import { useLoader } from "@react-three/fiber"
 import * as THREE from "three"
 import { Mesh } from "three"
 import { useThree } from "@react-three/fiber"
@@ -88,28 +88,9 @@ export function ModelMesh({
   const [scene, setScene] = useState<THREE.Group | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const { controls, gl, scene: threeScene } = useThree()
+  const { controls } = useThree()
   const inflateControlRef = useRef<THREE.Group>(null)
   const [modelSize, setModelSize] = useState<number>(1)
-
-  // For glass: transmission requires envMap. Sync it from the scene every frame.
-  useFrame(() => {
-    if (!scene || materialSettings.transmission <= 0) return
-    const envMap = threeScene.environment
-    if (!envMap) return
-    scene.traverse((child) => {
-      if (child instanceof Mesh) {
-        const mat = Array.isArray(child.material) ? child.material : [child.material]
-        mat.forEach((m) => {
-          if (m instanceof THREE.MeshPhysicalMaterial && m.transmission > 0) {
-            m.envMap = envMap
-            m.envMapIntensity = materialSettings.envMapIntensity ?? 1.5
-            m.needsUpdate = true
-          }
-        })
-      }
-    })
-  })
 
   // Load model when modelUrl changes
   useEffect(() => {
@@ -320,7 +301,6 @@ export function ModelMesh({
             textureScale
           )
         } else if (hasOriginal) {
-
           const original = child.userData.originalMaterial || child.userData.originalMaterials
           
           if (Array.isArray(original)) {
@@ -343,13 +323,16 @@ export function ModelMesh({
               roughness: materialSettings.roughness ?? 0.05,
               metalness: materialSettings.metalness ?? 0,
               envMapIntensity: 1.5,
-              // Glass properties - transmission handles transparency, not alpha
+              // Glass properties
               transmission: materialSettings.transmission ?? 0,
               ior: materialSettings.ior ?? 1.5,
               thickness: materialSettings.thickness ?? 0.5,
               attenuationDistance: materialSettings.attenuationDistance ?? 100,
               attenuationColor: materialSettings.attenuationColor ? new THREE.Color(materialSettings.attenuationColor) : new THREE.Color("#ffffff"),
+              transparent: true,
+              opacity: 1,
               side: THREE.FrontSide,
+              depthWrite: true,
               clearcoat: materialSettings.clearcoat ?? 0,
               clearcoatRoughness: materialSettings.clearcoatRoughness ?? 0,
               clearcoatNormalScale: new THREE.Vector2(materialSettings.clearcoatNormalScale ?? 1, materialSettings.clearcoatNormalScale ?? 1),
@@ -358,6 +341,7 @@ export function ModelMesh({
               iridescenceIOR: materialSettings.iridescenceIOR ?? 1.3,
               iridescenceThicknessRange: [materialSettings.iridescenceThicknessMin ?? 100, materialSettings.iridescenceThicknessMax ?? 400],
             })
+            newMaterial.dispose()
             newMaterial = physicalMaterial
           } else if (newMaterial instanceof THREE.MeshStandardMaterial) {
             // Применяем только параметры без перезаписи текстур
@@ -542,20 +526,7 @@ export function ModelMesh({
     )
   }
 
-  const isGlass = materialSettings.transmission > 0
-
-  return (
-    <>
-      {/* Invisible mesh to activate R3F transmission render pass for glass */}
-      {isGlass && (
-        <mesh visible={false} scale={0.001}>
-          <sphereGeometry args={[1, 4, 4]} />
-          <meshPhysicalMaterial transmission={materialSettings.transmission} />
-        </mesh>
-      )}
-      <primitive object={scene} />
-    </>
-  )
+  return <primitive object={scene} />
 }
 
 function createPBRMaterial(
@@ -618,7 +589,10 @@ function createPBRMaterial(
     attenuationColor: isGlass
       ? new THREE.Color(settings.attenuationColor || "#ffffff")
       : (settings.attenuationColor ? new THREE.Color(settings.attenuationColor) : new THREE.Color("#ffffff")),
+    transparent: true,
+    opacity: 1,
     side: THREE.FrontSide,
+    depthWrite: true,
     clearcoat: settings.clearcoat ?? 0,
     clearcoatRoughness: settings.clearcoatRoughness ?? 0,
     clearcoatNormalScale: new THREE.Vector2(settings.clearcoatNormalScale ?? 1, settings.clearcoatNormalScale ?? 1),

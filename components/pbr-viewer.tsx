@@ -1,7 +1,7 @@
 "use client"
 
 import { Canvas, useLoader, useThree } from "@react-three/fiber"
-import { OrbitControls, Environment, TransformControls, MeshTransmissionMaterial } from "@react-three/drei"
+import { OrbitControls, Environment, TransformControls } from "@react-three/drei"
 import * as THREE from "three"
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js"
@@ -2263,34 +2263,31 @@ function Material({
 
     if (isGlass) {
       return {
-        // Don't spread baseProps - glass needs clean settings
+        ...baseProps,
+        map: null,
         color:
           materialSettings.glassColorIntensity > 0
             ? new THREE.Color(materialSettings.glassColor)
             : new THREE.Color(0xffffff),
-        map: null,
-        normalMap: normalMap, // Keep normal for scratched/dirty glass
-        normalScale: new THREE.Vector2(materialSettings.normalScale * 0.3, materialSettings.normalScale * 0.3), // Reduce normal for glass
-        roughnessMap: null, // No roughness map for glass
-        metalnessMap: null,
-        roughness: materialSettings.roughness,
-        metalness: 0,
         transmission: materialSettings.transmission,
         ior: materialSettings.ior,
         thickness: materialSettings.thickness,
         attenuationDistance: materialSettings.attenuationDistance,
         attenuationColor: new THREE.Color(materialSettings.attenuationColor),
+        transparent: true,
+        opacity: 1,
+        alphaMap: opacityMap,
         side: THREE.FrontSide,
         envMapIntensity: materialSettings.envMapIntensity || 1.5,
         clearcoat: materialSettings.clearcoat,
         clearcoatRoughness: materialSettings.clearcoatRoughness,
         clearcoatNormalScale: new THREE.Vector2(materialSettings.clearcoatNormalScale ?? 1, materialSettings.clearcoatNormalScale ?? 1),
-        reflectivity: materialSettings.reflectivity ?? 0.5,
+        reflectivity: materialSettings.reflectivity,
         specularIntensity: 1,
         specularColor: new THREE.Color(0xffffff),
-        iridescence: materialSettings.iridescence ?? 0,
-        iridescenceIOR: materialSettings.iridescenceIOR ?? 1.3,
-        iridescenceThicknessRange: [materialSettings.iridescenceThicknessMin ?? 100, materialSettings.iridescenceThicknessMax ?? 400],
+        iridescence: materialSettings.iridescence,
+        iridescenceIOR: materialSettings.iridescenceIOR,
+        iridescenceThicknessRange: [materialSettings.iridescenceThicknessMin, materialSettings.iridescenceThicknessMax],
       }
     }
 
@@ -2308,31 +2305,7 @@ function Material({
     isExtruded,
   ])
 
-  if (isGlass) {
-    return (
-      <MeshTransmissionMaterial
-        transmission={materialSettings.transmission}
-        thickness={materialSettings.thickness}
-        roughness={materialSettings.roughness}
-        ior={materialSettings.ior}
-        chromaticAberration={0.02}
-        anisotropicBlur={0.1}
-        attenuationDistance={materialSettings.attenuationDistance}
-        attenuationColor={materialSettings.attenuationColor as string}
-        color={
-          materialSettings.glassColorIntensity > 0
-            ? (materialSettings.glassColor as string)
-            : "#ffffff"
-        }
-        clearcoat={materialSettings.clearcoat}
-        clearcoatRoughness={materialSettings.clearcoatRoughness}
-        envMapIntensity={materialSettings.envMapIntensity || 1.5}
-        side={THREE.FrontSide}
-      />
-    )
-  }
-
-  return <meshStandardMaterial {...materialProps} />
+  return isGlass ? <meshPhysicalMaterial {...materialProps} /> : <meshStandardMaterial {...materialProps} />
 }
 
 interface SceneContentProps {
@@ -2872,12 +2845,6 @@ function SceneContent({
         </>
       ) : (
         <>
-          {/* Environment must be rendered for transmission to work */}
-          <Environment
-            preset={lightingSettings.envMap as any}
-            environmentRotation={[0, lightingSettings.envRotation, 0]}
-            background={false}
-          />
           <PBRMesh
             geometrySettings={geometrySettings}
             materialSettings={materialSettings}
@@ -2885,6 +2852,10 @@ function SceneContent({
             onModelLoadError={onModelLoadError}
             onGeometrySettingsChange={onGeometrySettingsChange}
             gradientSettings={gradientSettings}
+          />
+          <Environment
+            preset={lightingSettings.envMap as any}
+            environmentRotation={[0, lightingSettings.envRotation, 0]}
           />
         </>
       )}
@@ -2994,13 +2965,12 @@ export const PBRViewer = forwardRef<
     <div className="w-full h-full">
       <Canvas
         camera={{ position: [0, 0, 3], fov: 50 }}
-        dpr={[1, 2]}
         gl={{
           antialias: true,
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: lightingSettings.exposure,
           preserveDrawingBuffer: true, // Required for toDataURL
-          outputColorSpace: THREE.SRGBColorSpace,
+          alpha: true, // Enable alpha channel
         }}
       >
         <color attach="background" args={["#18181b"]} />

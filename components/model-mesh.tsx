@@ -315,14 +315,14 @@ export function ModelMesh({
           if (isGlass && newMaterial instanceof THREE.MeshStandardMaterial) {
             // Создаем новый MeshPhysicalMaterial с теми же текстурами
             const physicalMaterial = new THREE.MeshPhysicalMaterial({
-              color: new THREE.Color(0xffffff),
-              map: null,
-              normalMap: null,
+              map: newMaterial.map,
+              normalMap: newMaterial.normalMap,
+              normalScale: newMaterial.normalScale,
               roughnessMap: null,
               metalnessMap: null,
-              roughness: materialSettings.roughness ?? 0.05,
+              roughness: materialSettings.roughness ?? 0.5,
               metalness: materialSettings.metalness ?? 0,
-              envMapIntensity: 1.5,
+              envMapIntensity: envIntensity,
               // Glass properties
               transmission: materialSettings.transmission ?? 0,
               ior: materialSettings.ior ?? 1.5,
@@ -330,9 +330,7 @@ export function ModelMesh({
               attenuationDistance: materialSettings.attenuationDistance ?? 100,
               attenuationColor: materialSettings.attenuationColor ? new THREE.Color(materialSettings.attenuationColor) : new THREE.Color("#ffffff"),
               transparent: true,
-              opacity: 1,
               side: THREE.FrontSide,
-              depthWrite: true,
               clearcoat: materialSettings.clearcoat ?? 0,
               clearcoatRoughness: materialSettings.clearcoatRoughness ?? 0,
               clearcoatNormalScale: new THREE.Vector2(materialSettings.clearcoatNormalScale ?? 1, materialSettings.clearcoatNormalScale ?? 1),
@@ -589,10 +587,8 @@ function createPBRMaterial(
     attenuationColor: isGlass
       ? new THREE.Color(settings.attenuationColor || "#ffffff")
       : (settings.attenuationColor ? new THREE.Color(settings.attenuationColor) : new THREE.Color("#ffffff")),
-    transparent: true,
-    opacity: 1,
+    transparent: isGlass || false,
     side: THREE.FrontSide,
-    depthWrite: true,
     clearcoat: settings.clearcoat ?? 0,
     clearcoatRoughness: settings.clearcoatRoughness ?? 0,
     clearcoatNormalScale: new THREE.Vector2(settings.clearcoatNormalScale ?? 1, settings.clearcoatNormalScale ?? 1),

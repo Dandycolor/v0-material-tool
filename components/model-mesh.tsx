@@ -152,7 +152,8 @@ export function ModelMesh({
     return () => {
       isMounted = false
     }
-  }, [modelUrl, handleError])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelUrl])
 
   // Применяем inflation при изменении inflationAmount и параметров сферы
   useEffect(() => {

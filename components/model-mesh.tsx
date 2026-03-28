@@ -333,7 +333,7 @@ export function ModelMesh({
               attenuationDistance: materialSettings.attenuationDistance ?? 100,
               attenuationColor: materialSettings.attenuationColor ? new THREE.Color(materialSettings.attenuationColor) : new THREE.Color("#ffffff"),
               transparent: true, // Required for transmission to work
-              side: THREE.BackSide, // Render back faces for proper glass refraction
+              side: THREE.FrontSide, // FrontSide for correct orientation
               depthWrite: true, // Keep depth writing for proper sorting
               clearcoat: materialSettings.clearcoat ?? 0,
               clearcoatRoughness: materialSettings.clearcoatRoughness ?? 0,
@@ -600,7 +600,7 @@ function createPBRMaterial(
       ? new THREE.Color(settings.attenuationColor || "#ffffff")
       : (settings.attenuationColor ? new THREE.Color(settings.attenuationColor) : new THREE.Color("#ffffff")),
     transparent: true, // Required for transmission to work
-    side: isGlass ? THREE.BackSide : THREE.FrontSide, // BackSide for proper glass refraction
+    side: THREE.FrontSide, // Always FrontSide for correct orientation
     depthWrite: true, // Always write to depth buffer for proper sorting
     clearcoat: settings.clearcoat ?? 0,
     clearcoatRoughness: settings.clearcoatRoughness ?? 0,

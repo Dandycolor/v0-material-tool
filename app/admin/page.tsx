@@ -48,22 +48,8 @@ export default function AdminPage() {
                 <CardTitle className="text-white">Matcap Textures</CardTitle>
                 <CardDescription>Manage matcap lighting environments</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4">
-                  {matcaps.map((matcap) => (
-                    <div key={matcap.id} className="p-4 bg-slate-700 rounded-lg flex items-center justify-between">
-                      <div>
-                        <p className="text-white font-medium">{matcap.name}</p>
-                        <p className="text-slate-400 text-sm text-truncate">{matcap.url}</p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="ghost">Edit</Button>
-                        <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300">Delete</Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <Button className="w-full bg-cyan-600 hover:bg-cyan-700 text-white">Upload Matcap</Button>
+              <CardContent>
+                <p className="text-slate-400 text-sm">Matcap management coming soon...</p>
               </CardContent>
             </Card>
           </TabsContent>

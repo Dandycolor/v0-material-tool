@@ -104,13 +104,12 @@ export function ModelMesh({
     
     const loadModel = async () => {
       try {
-        if (!modelUrl) return
-        
         // Temporarily disable model loading due to GLTFLoader import issues
         // Models will be loaded through standard 3D mesh primitive
-        handleError("Model loading is temporarily disabled. Please use primitives or vector mode.")
-        setLoading(false)
-        return
+        if (isMounted) {
+          handleError("Model loading is temporarily disabled. Please use primitives or vector mode.")
+          setLoading(false)
+        }
       } catch (err) {
         if (isMounted) {
           handleError("Unexpected error loading model")
@@ -124,7 +123,7 @@ export function ModelMesh({
     return () => {
       isMounted = false
     }
-  }, [modelUrl])
+  }, [modelUrl, handleError])
 
   // Применяем inflation при изменении inflationAmount и параметров сферы
   useEffect(() => {

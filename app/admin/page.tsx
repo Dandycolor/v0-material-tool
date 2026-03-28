@@ -9,14 +9,20 @@ import { MatcapsManager } from "@/components/admin/matcaps-manager"
 import { CustomTexturesManager } from "@/components/admin/custom-textures-manager"
 import { Icons3DManager } from "@/components/icons-3d-manager"
 import { MATERIAL_PRESETS, MATCAP_PRESETS, CUSTOM_TEXTURES } from "@/lib/resources"
+import { useResources } from "@/lib/resources-context"
+import { RotateCcw } from "lucide-react"
 import Link from "next/link"
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState("materials")
+  const { resetToDefaults, getActiveMaterials, getActiveMatcaps } = useResources()
   
   const materialsCount = Object.keys(MATERIAL_PRESETS).length
   const matcapsCount = Object.keys(MATCAP_PRESETS).length
   const texturesCount = CUSTOM_TEXTURES.normal.length + CUSTOM_TEXTURES.roughness.length + CUSTOM_TEXTURES.metalness.length
+  
+  const activeMaterialsCount = getActiveMaterials().length
+  const activeMatcapsCount = getActiveMatcaps().length
 
   return (
     <div className="min-h-screen bg-[#0a0a0a]">
@@ -27,11 +33,21 @@ export default function AdminPage() {
             <h1 className="text-2xl font-bold text-white">Admin Panel</h1>
             <p className="text-zinc-500 text-sm">Manage materials, textures, and 3D resources</p>
           </div>
-          <Link href="/">
-            <Button variant="outline" className="border-[#404040] text-zinc-300 hover:text-white">
-              Back to Editor
+          <div className="flex items-center gap-3">
+            <Button 
+              variant="outline" 
+              onClick={resetToDefaults}
+              className="border-orange-600 text-orange-400 hover:bg-orange-600 hover:text-white"
+            >
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Reset All
             </Button>
-          </Link>
+            <Link href="/">
+              <Button variant="outline" className="border-[#404040] text-zinc-300 hover:text-white">
+                Back to Editor
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
 

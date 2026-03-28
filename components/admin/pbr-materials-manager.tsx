@@ -163,7 +163,9 @@ export function PBRMaterialsManager() {
               <div className="flex items-center gap-4">
                 {/* Preview */}
                 <div className="w-14 h-14 rounded-lg overflow-hidden bg-[#1a1a1a] flex-shrink-0">
-                  {material.normalMap ? (
+                  {material.baseColor ? (
+                    <img src={material.baseColor} alt={material.name} className="w-full h-full object-cover" />
+                  ) : material.normalMap ? (
                     <img src={material.normalMap} alt={material.name} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-zinc-600 to-zinc-800" />
@@ -257,6 +259,31 @@ export function PBRMaterialsManager() {
                   <div>
                     <Label className="text-zinc-400 mb-3 block">Texture Maps</Label>
                     <div className="grid grid-cols-4 gap-3">
+                      {/* Base Color */}
+                      <div>
+                        <p className="text-xs text-zinc-500 mb-1">Base Color</p>
+                        <div 
+                          className="aspect-square bg-[#1a1a1a] rounded-lg border border-[#404040] relative overflow-hidden cursor-pointer hover:border-cyan-500 transition-colors"
+                          onClick={() => setTexturePickerFor({ materialId: material.id, mapType: 'baseColor' })}
+                        >
+                          {material.baseColor ? (
+                            <>
+                              <img src={material.baseColor} alt="Base Color" className="w-full h-full object-cover" />
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleRemoveTexture(material.id, 'baseColor'); }}
+                                className="absolute top-1 right-1 w-5 h-5 bg-red-600 rounded-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity"
+                              >
+                                <X className="w-3 h-3 text-white" />
+                              </button>
+                            </>
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-zinc-600">
+                              <Plus className="w-6 h-6" />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
                       {/* Normal Map */}
                       <div>
                         <p className="text-xs text-zinc-500 mb-1">Normal Map</p>

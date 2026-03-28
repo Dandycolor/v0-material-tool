@@ -10,6 +10,7 @@ interface Material {
   roughness: number
   ior?: number
   transmission?: number
+  baseColor?: string
   normalMap?: string
   roughnessMap?: string
   metalnessMap?: string
@@ -35,7 +36,10 @@ interface ResourcesContextType {
   addMatcap: (matcap: Matcap) => void
   getActiveMaterials: () => Material[]
   getActiveMatcaps: () => Matcap[]
+  resetToDefaults: () => void
 }
+
+const DATA_VERSION = 2 // Increment when data structure changes
 
 const ResourcesContext = createContext<ResourcesContextType | undefined>(undefined)
 
@@ -46,6 +50,18 @@ export function ResourcesProvider({ children }: { children: React.ReactNode }) {
 
   // Initialize from localStorage on mount
   useEffect(() => {
+    const savedVersion = localStorage.getItem('app-data-version')
+    const currentVersion = String(DATA_VERSION)
+    
+    // If version mismatch, reset to defaults
+    if (savedVersion !== currentVersion) {
+      console.log('[v0] Data version mismatch, reinitializing...')
+      initializeMaterials()
+      initializeMatcaps()
+      localStorage.setItem('app-data-version', currentVersion)
+      return
+    }
+
     const savedMaterials = localStorage.getItem('app-materials')
     const savedMatcaps = localStorage.getItem('app-matcaps')
 
@@ -83,6 +99,7 @@ export function ResourcesProvider({ children }: { children: React.ReactNode }) {
         roughness: preset.roughness ?? 0.5,
         ior: preset.ior,
         transmission: preset.transmission,
+        baseColor: preset.baseColor,
         normalMap: preset.normalMap,
         roughnessMap: preset.roughnessMap,
         metalnessMap: preset.metalnessMap,
@@ -169,6 +186,15 @@ export function ResourcesProvider({ children }: { children: React.ReactNode }) {
     return Object.values(matcaps).filter((m) => m.active)
   }
 
+  const resetToDefaults = () => {
+    localStorage.removeItem('app-materials')
+    localStorage.removeItem('app-matcaps')
+    localStorage.removeItem('app-data-version')
+    initializeMaterials()
+    initializeMatcaps()
+    localStorage.setItem('app-data-version', String(DATA_VERSION))
+  }
+
   return (
     <ResourcesContext.Provider
       value={{
@@ -183,6 +209,7 @@ export function ResourcesProvider({ children }: { children: React.ReactNode }) {
         addMatcap,
         getActiveMaterials,
         getActiveMatcaps,
+        resetToDefaults,
       }}
     >
       {children}

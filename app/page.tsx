@@ -2036,7 +2036,7 @@ export default function MaterialTool() {
                           {activeMaterials.map((material) => (
                             <MaterialPreview
                               key={material.id}
-                              baseColorUrl={material.normalMap || "/placeholder.svg"}
+                              baseColorUrl={material.baseColor || material.normalMap || "/placeholder.svg"}
                               isSelected={selectedPreset === material.id}
                               onClick={() => handlePresetChange(material.id)}
                               name={material.name}

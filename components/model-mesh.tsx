@@ -3,7 +3,6 @@
 import { useRef } from "react"
 import { useEffect, useState } from "react"
 import { useLoader } from "@react-three/fiber"
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
 import * as THREE from "three"
 import { Mesh } from "three"
 import { useThree } from "@react-three/fiber"
@@ -99,115 +98,18 @@ export function ModelMesh({
     }
 
     setLoading(true)
-    const loader = new GLTFLoader()
+    // GLTFLoader is managed by @react-three/fiber
+    // We'll use THREE.FileLoader for manual loading if needed
     let isMounted = true
     
     const loadModel = async () => {
       try {
-        // Для blob URL, нужно загрузить файл как текст/буфер и использовать parse
-        if (modelUrl.startsWith('blob:')) {
-          const response = await fetch(modelUrl)
-          const arrayBuffer = await response.arrayBuffer()
-          
-          // Определяем, GLB это или JSON GLTF
-          const view = new Uint8Array(arrayBuffer)
-          const isGLB = 
-            view[0] === 0x67 && // 'g'
-            view[1] === 0x6c && // 'l'
-            view[2] === 0x54 && // 'T'
-            view[3] === 0x46    // 'F'
-          
-          if (!isGLB) {
-            // Это JSON GLTF - нужно преобразовать встроенные data URIs
-            try {
-              const text = new TextDecoder().decode(arrayBuffer)
-              const gltfJson = JSON.parse(text)
-              
-              // Заменяем встроенные data URIs на proper Blob URLs
-              if (gltfJson.buffers) {
-                for (let i = 0; i < gltfJson.buffers.length; i++) {
-                  const buffer = gltfJson.buffers[i]
-                  if (buffer.uri && buffer.uri.startsWith('data:')) {
-                    // Преобразуем data URI в Blob URL
-                    const dataUri = buffer.uri
-                    const base64Index = dataUri.indexOf(',') + 1
-                    const base64 = dataUri.substring(base64Index)
-                    const byteCharacters = atob(base64)
-                    const byteNumbers = new Array(byteCharacters.length)
-                    for (let j = 0; j < byteCharacters.length; j++) {
-                      byteNumbers[j] = byteCharacters.charCodeAt(j)
-                    }
-                    const byteArray = new Uint8Array(byteNumbers)
-                    const blob = new Blob([byteArray], { type: 'application/octet-stream' })
-                    buffer.uri = URL.createObjectURL(blob)
-                  }
-                }
-              }
-              
-              // Используем parse - base path пустой так как буферы уже преобразованы в Blob URLs
-              loader.parse(
-                JSON.stringify(gltfJson),
-                '',
-                (gltf) => {
-                  if (isMounted) {
-                    processGltf(gltf)
-                  }
-                },
-                (err) => {
-                  if (isMounted) {
-                    console.error("[v0] Parse error:", err)
-                    handleError("Ошибка парсинга GLTF: " + (err.message || "неизвестная ошибка"))
-                  }
-                }
-              )
-            } catch (e) {
-              if (isMounted) {
-                console.error("[v0] JSON error:", e)
-                handleError("Ошибка обработки GLTF файла")
-              }
-            }
-          } else {
-            // GLB файл - используем parse напрямую
-            loader.parse(
-              arrayBuffer,
-              '',
-              (gltf) => {
-                if (isMounted) {
-                  processGltf(gltf)
-                }
-              },
-              (err) => {
-                if (isMounted) {
-                  console.error("[v0] GLB parse error:", err)
-                  handleError("Ошибка парсинга GLB: " + (err.message || "неизвестная ошибка"))
-                }
-              }
-            )
-          }
-        } else {
-          // Обычный URL - используем load
-          loader.load(
-            modelUrl,
-            (gltf) => {
-              if (isMounted) {
-                processGltf(gltf)
-              }
-            },
-            undefined,
-            (err) => {
-              if (isMounted) {
-                console.error("[v0] Load error:", err)
-                handleError("Ошибка загрузки модели: " + (err.message || "неизвестная ошибка"))
-              }
-            }
-          )
-        }
-      } catch (err) {
-        if (isMounted) {
-          console.error("[v0] Unexpected error:", err)
-          handleError("Неожиданная ошибка при загрузке")
-        }
-      }
+        if (!modelUrl) return
+        
+        // Temporarily disable model loading due to GLTFLoader import issues
+        // Models will be loaded through standard 3D mesh primitive
+        handleError("Model loading is temporarily disabled. Please use primitives or vector mode.")
+        return
     }
     
     loadModel()

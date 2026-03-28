@@ -5,10 +5,7 @@ import { OrbitControls, Environment, TransformControls } from "@react-three/drei
 import * as THREE from "three"
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js"
-import { STLExporter } from "three/addons/exporters/STLExporter.js"
-import { OBJExporter } from "three/addons/exporters/OBJExporter.js"
 import { Suspense, useMemo, useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react"
-import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils"
 import { ModelMesh } from "./model-mesh"
 import { createGradientMaterial } from "./gradient-shader"
 import { inflatePolygon as createInflatedGeometryFromContour } from "@/lib/inflate-geometry"
@@ -243,7 +240,7 @@ function MatcapMaterialWithEffects({
 }
 
 interface GeometrySettings {
-  type: "sphere" | "extruded" | "model" | "inflate" | "3dicons"
+  type: "sphere" | "extruded" | "model" | "inflate"
   primitiveType?: "sphere" | "cone" | "torus" | "torusKnot" | "capsule"
   svgPath: string
   svgSource?: "iconify" | "upload"
@@ -1968,7 +1965,7 @@ function PBRMesh({
           <PrimitiveGeometry primitiveType={geometrySettings.primitiveType || "sphere"} />
           <Material materialSettings={materialSettings} />
         </mesh>
-      ) : geometrySettings.type === "model" || geometrySettings.type === "3dicons" ? (
+      ) : geometrySettings.type === "model" ? (
         geometrySettings.modelUrl && (
           <ModelMesh
             key={`${fullTextureKey}-${geometrySettings.modelUrl}`}
@@ -2807,7 +2804,7 @@ function SceneContent({
             rimColor={matcapSettings?.rimColor || "#ffffff"}
           />
         </mesh>
-      ) : geometrySettings.type === "model" || geometrySettings.type === "3dicons" ? (
+      ) : geometrySettings.type === "model" ? (
             geometrySettings.modelUrl && (
             <ModelMesh
               modelUrl={geometrySettings.modelUrl}

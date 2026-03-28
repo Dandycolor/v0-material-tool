@@ -1366,7 +1366,7 @@ export default function MaterialTool() {
 
       <div className="fixed top-0 right-0 h-screen w-[340px] border-l border-[#2a2a2a] bg-[#1a1a1a] overflow-y-auto z-50">
         <div className="py-5 space-y-4">
-          <div className="pb-4 flex items-center justify-between px-4">
+          <div className="pb-[2px] flex items-center justify-between px-4">
             <img src="/logo-polya.png" alt="pólya" className="h-24 mx-[30px]" />
           </div>
 

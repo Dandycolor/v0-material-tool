@@ -2243,8 +2243,6 @@ function Material({
     : new THREE.Color(materialSettings.colorTint)
 
   const isGlass = materialSettings.transmission > 0
-  
-  console.log("[v0] Material isGlass:", isGlass, "transmission:", materialSettings.transmission)
 
   const materialProps = useMemo(() => {
     const effectiveDisplacementScale = isExtruded ? 0 : materialSettings.displacementScale
@@ -2264,7 +2262,6 @@ function Material({
     }
 
     if (isGlass) {
-      console.log("[v0] Creating glass material with transmission:", materialSettings.transmission)
       return {
         // Don't spread baseProps - glass needs clean settings
         color:
@@ -2853,6 +2850,12 @@ function SceneContent({
         </>
       ) : (
         <>
+          {/* Environment must be rendered for transmission to work */}
+          <Environment
+            preset={lightingSettings.envMap as any}
+            environmentRotation={[0, lightingSettings.envRotation, 0]}
+            background={false}
+          />
           <PBRMesh
             geometrySettings={geometrySettings}
             materialSettings={materialSettings}
@@ -2860,10 +2863,6 @@ function SceneContent({
             onModelLoadError={onModelLoadError}
             onGeometrySettingsChange={onGeometrySettingsChange}
             gradientSettings={gradientSettings}
-          />
-          <Environment
-            preset={lightingSettings.envMap as any}
-            environmentRotation={[0, lightingSettings.envRotation, 0]}
           />
         </>
       )}
@@ -2973,12 +2972,14 @@ export const PBRViewer = forwardRef<
     <div className="w-full h-full">
       <Canvas
         camera={{ position: [0, 0, 3], fov: 50 }}
+        dpr={[1, 2]}
         gl={{
           antialias: true,
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: lightingSettings.exposure,
           preserveDrawingBuffer: true, // Required for toDataURL
           alpha: true, // Enable alpha channel
+          outputColorSpace: THREE.SRGBColorSpace,
         }}
       >
         <color attach="background" args={["#18181b"]} />

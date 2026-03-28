@@ -2970,7 +2970,6 @@ export const PBRViewer = forwardRef<
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: lightingSettings.exposure,
           preserveDrawingBuffer: true, // Required for toDataURL
-          alpha: true, // Enable alpha channel
         }}
       >
         <color attach="background" args={["#18181b"]} />

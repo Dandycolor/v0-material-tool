@@ -10,7 +10,12 @@ interface Material {
   roughness: number
   ior?: number
   transmission?: number
-  baseColor?: string
+  thickness?: number
+  attenuationDistance?: number
+  attenuationColor?: string
+  clearcoat?: number
+  clearcoatRoughness?: number
+  baseColor?: string | null
   normalMap?: string
   roughnessMap?: string
   metalnessMap?: string
@@ -39,7 +44,7 @@ interface ResourcesContextType {
   resetToDefaults: () => void
 }
 
-const DATA_VERSION = 3 // Increment when data structure changes
+const DATA_VERSION = 4 // Increment when data structure changes
 
 const ResourcesContext = createContext<ResourcesContextType | undefined>(undefined)
 
@@ -97,8 +102,13 @@ export function ResourcesProvider({ children }: { children: React.ReactNode }) {
         name: preset.name,
         metalness: preset.metalness ?? 0,
         roughness: preset.roughness ?? 0.5,
-        ior: preset.ior,
-        transmission: preset.transmission,
+        ior: (preset as any).ior,
+        transmission: (preset as any).transmission,
+        thickness: (preset as any).thickness,
+        attenuationDistance: (preset as any).attenuationDistance,
+        attenuationColor: (preset as any).attenuationColor,
+        clearcoat: (preset as any).clearcoat,
+        clearcoatRoughness: (preset as any).clearcoatRoughness,
         baseColor: preset.baseColor,
         normalMap: preset.normalMap,
         roughnessMap: preset.roughnessMap,

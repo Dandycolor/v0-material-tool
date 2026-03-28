@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { PBRViewer, type PBRViewerRef } from "@/components/pbr-viewer"
 import { MatcapPreview } from "@/components/matcap-preview"
-import { ChevronDown, ChevronUp, Upload, Download, Search, Loader2, X, Info, Settings } from "lucide-react"
+import { ChevronDown, ChevronUp, Upload, Download, Search, Loader2, X, Info } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
@@ -21,8 +21,6 @@ import { MaterialPreview } from "@/components/material-preview"
 
 import { LightRotationControl } from "@/components/light-rotation-control"
 import { InflateCanvas } from "@/components/inflate-canvas"
-import Link from "next/link"
-import { useResources } from "@/lib/resources-context"
 
 interface IconifyIcon {
   id: string // format: "prefix:name" e.g. "mdi:flower"
@@ -835,11 +833,6 @@ interface MaterialSettings {
 }
 
 export default function MaterialTool() {
-  // Get resources from context (synced with admin panel)
-  const { materials, matcaps, getActiveMaterials, getActiveMatcaps } = useResources()
-  const activeMaterials = getActiveMaterials()
-  const activeMatcaps = getActiveMatcaps()
-
   const [geometrySettings, setGeometrySettings] = useState({
     type: "sphere" as "sphere" | "extruded" | "model",
     primitiveType: "sphere" as "sphere" | "cone" | "torus" | "torusKnot" | "capsule",
@@ -956,7 +949,6 @@ export default function MaterialTool() {
   )
   const [backgroundColor, setBackgroundColor] = useState("#1a1a1a")
   const [showGrid, setShowGrid] = useState(false)
-  const [infoMenuOpen, setInfoMenuOpen] = useState(false)
   const [showRotateControls, setShowRotateControls] = useState(false)
   
   // Custom material selections
@@ -1218,42 +1210,38 @@ export default function MaterialTool() {
 
   // Find the preset change handler and add new properties
   const handlePresetChange = (presetKey: string) => {
-    // First try to get from context (admin-managed materials)
-    const contextMaterial = materials[presetKey]
-    // Fallback to hardcoded presets
-    const preset = contextMaterial || MATERIAL_PRESETS[presetKey as keyof typeof MATERIAL_PRESETS]
-    
+    const preset = MATERIAL_PRESETS[presetKey as keyof typeof MATERIAL_PRESETS]
     if (preset) {
-      setSelectedPreset(presetKey as keyof typeof MATERIAL_PRESETS | "custom")
+      setSelectedPreset(presetKey as keyof typeof MATERIAL_PRESETS)
       setMaterialSettings({
         ...materialSettings,
-        colorMap: (preset as any).baseColor || null,
-        normalMap: preset.normalMap || null,
-        roughnessMap: preset.roughnessMap || null,
-        displacementMap: (preset as any).displacementMap || null,
-        metalnessMap: preset.metalnessMap || null,
-        metalness: preset.metalness ?? 0,
-        roughness: preset.roughness ?? 0.5,
-        normalScale: (preset as any).normalScale ?? 1.0,
-        displacementScale: (preset as any).displacementScale ?? 0.02,
-        colorTint: (preset as any).defaultTint || "#ffffff",
-        useHueShift: (preset as any).useHueShift !== false,
-        transmission: (preset as any).transmission || 0,
+        colorMap: preset.baseColor,
+        normalMap: preset.normalMap,
+        roughnessMap: preset.roughnessMap,
+        displacementMap: preset.displacementMap,
+        metalnessMap: preset.metalnessMap,
+        metalness: preset.metalness,
+        roughness: preset.roughness,
+        normalScale: preset.normalScale,
+        displacementScale: preset.displacementScale,
+        colorTint: preset.defaultTint || "#ffffff",
+        useHueShift: preset.useHueShift !== false,
+        transmission: preset.transmission || 0,
         ior: preset.ior || 1.5,
-        thickness: (preset as any).thickness || 0.5,
-        attenuationDistance: (preset as any).attenuationDistance || 2.0,
-        attenuationColor: (preset as any).attenuationColor || "#ffffff",
-        opacityMap: (preset as any).opacityMap || null,
-        useOpacityMap: !!(preset as any).opacityMap,
-        clearcoat: (preset as any).clearcoat || 0,
-        clearcoatRoughness: (preset as any).clearcoatRoughness || 0.1,
+        thickness: preset.thickness || 0.5,
+        attenuationDistance: preset.attenuationDistance || 2.0,
+        attenuationColor: preset.attenuationColor || "#ffffff",
+        opacityMap: preset.opacityMap || null,
+        useOpacityMap: !!preset.opacityMap,
+        clearcoat: preset.clearcoat || 0,
+        clearcoatRoughness: preset.clearcoatRoughness || 0.1,
         // Merge new defaults for glass presets
-        glassColor: (preset as any).glassColor || "#ffffff",
-        glassColorIntensity: (preset as any).glassColorIntensity || 0,
-        iridescence: (preset as any).iridescence || 0,
-        iridescenceIOR: (preset as any).iridescenceIOR || 1.3,
-        iridescenceThicknessMin: (preset as any).iridescenceThicknessMin || 100,
-        iridescenceThicknessMax: (preset as any).iridescenceThicknessMax || 400,
+        glassColor: preset.glassColor || "#ffffff",
+        glassColorIntensity: preset.glassColorIntensity || 0,
+        iridescence: preset.iridescence || 0,
+        iridescenceIOR: preset.iridescenceIOR || 1.3,
+        iridescenceThicknessMin: preset.iridescenceThicknessMin || 100,
+        iridescenceThicknessMax: preset.iridescenceThicknessMax || 400,
         textureScale: materialSettings.textureScale, // Keep existing textureScale
       })
     }
@@ -1352,7 +1340,7 @@ export default function MaterialTool() {
           materialSettings={materialSettings}
           lightingSettings={lightingSettings}
           renderMode={renderMode}
-          matcapTexture={renderMode === "matcap" ? (matcaps[selectedMatcap]?.matcap || matcapTexture) : undefined}
+          matcapTexture={renderMode === "matcap" ? MATCAP_PRESETS[selectedMatcap]?.matcap : undefined}
                 matcapHueShift={matcapHueShift}
                 matcapSettings={matcapSettings}
                 backgroundColor={backgroundColor}
@@ -1493,7 +1481,6 @@ export default function MaterialTool() {
                       </button>
                       <span className="text-xs font-normal text-zinc-500">Inflate</span>
                     </div>
-
                   </div>
 
                   {geometrySettings.type === "sphere" && (
@@ -2033,13 +2020,13 @@ export default function MaterialTool() {
                       <div className="pb-4 space-y-3">
                         <Label className="text-xs text-zinc-500 pt-3 block">Material Presets</Label>
                         <div className="grid grid-cols-4 gap-2">
-                          {activeMaterials.map((material) => (
+                          {Object.entries(MATERIAL_PRESETS).map(([key, preset]) => (
                             <MaterialPreview
-                              key={material.id}
-                              baseColorUrl={material.baseColor || material.normalMap || "/placeholder.svg"}
-                              isSelected={selectedPreset === material.id}
-                              onClick={() => handlePresetChange(material.id)}
-                              name={material.name}
+                              key={key}
+                              baseColorUrl={preset.baseColor || "/placeholder.svg"}
+                              isSelected={selectedPreset === key}
+                              onClick={() => handlePresetChange(key)}
+                              name={preset.name}
                             />
                           ))}
                         </div>
@@ -2270,23 +2257,23 @@ export default function MaterialTool() {
                         <div className="p-4">
                           <h3 className="text-sm font-medium text-white mb-3">Matcap Materials</h3>
                           <div className="grid grid-cols-4 gap-2">
-                            {activeMatcaps.map((matcap) => (
+                            {Object.entries(MATCAP_PRESETS).map(([key, preset]) => (
                               <MatcapPreview
-                                key={matcap.id}
-                                matcapUrl={matcap.matcap}
-                                isSelected={selectedMatcap === matcap.id}
+                                key={key}
+                                matcapUrl={preset.matcap}
+                                isSelected={selectedMatcap === key}
                                 onClick={() => {
-                                  setSelectedMatcap(matcap.id)
-                                  setMatcapTexture(matcap.matcap)
+                                  setSelectedMatcap(key)
+                                  setMatcapTexture(preset.matcap)
                                   setRenderMode("matcap")
                                 }}
-                                name={matcap.name}
+                                name={preset.name}
                               />
                             ))}
                           </div>
                           {selectedMatcap && (
                             <div className="mt-3 pt-3 border-t border-[#2a2a2a]">
-                              <p className="text-xs text-zinc-500">{matcaps[selectedMatcap]?.name || "Unknown"}</p>
+                              <p className="text-xs text-zinc-500">{MATCAP_PRESETS[selectedMatcap]?.name || "Unknown"}</p>
                               <p className="text-xs text-zinc-600 mt-0.5">Selected material</p>
 
                               <div className="mt-4 space-y-2">
@@ -3262,38 +3249,15 @@ export default function MaterialTool() {
 
       {/* Info icon and Background color picker in bottom-left corner */}
       <div className="fixed bottom-4 left-4 z-40 flex gap-2 items-center">
-        <div className="relative">
-          <button
-            onClick={() => setInfoMenuOpen(!infoMenuOpen)}
-            className="w-9 h-9 rounded-lg border border-[#404040] bg-[#2a2a2a] hover:bg-[#353535] flex items-center justify-center text-zinc-400 hover:text-white transition-all"
-            title="Info menu"
-          >
-            <Info className="w-4 h-4" />
-          </button>
-          
-          {infoMenuOpen && (
-            <div className="absolute bottom-full left-0 mb-2 w-36 bg-[#2a2a2a] border border-[#404040] rounded-lg shadow-xl overflow-hidden">
-              <Link 
-                href="/admin"
-                onClick={() => setInfoMenuOpen(false)}
-                className="flex items-center gap-2 px-3 py-2.5 text-sm text-white hover:bg-[#353535] transition-colors"
-              >
-                <Settings className="w-4 h-4" />
-                Admin
-              </Link>
-              <a
-                href="https://buildin.ai/sava/share/4745d01a-eba4-43a4-bcbe-bd42cb780ac7?code=11A3SR"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setInfoMenuOpen(false)}
-                className="flex items-center gap-2 px-3 py-2.5 text-sm text-white hover:bg-[#353535] transition-colors border-t border-[#404040]"
-              >
-                <Info className="w-4 h-4" />
-                About
-              </a>
-            </div>
-          )}
-        </div>
+        <a
+          href="https://buildin.ai/sava/share/4745d01a-eba4-43a4-bcbe-bd42cb780ac7?code=11A3SR"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-9 h-9 rounded-lg border border-[#404040] bg-[#2a2a2a] hover:bg-[#353535] flex items-center justify-center text-zinc-400 hover:text-white transition-all"
+          title="View Buildin.AI project"
+        >
+          <Info className="w-4 h-4" />
+        </a>
         
         <label className="flex items-center gap-2 px-3 py-2 bg-[#2a2a2a] hover:bg-[#353535] text-white text-sm rounded-lg border border-[#404040] transition-all cursor-pointer">
           <div 

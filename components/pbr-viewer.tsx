@@ -5,7 +5,10 @@ import { OrbitControls, Environment, TransformControls } from "@react-three/drei
 import * as THREE from "three"
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js"
+import { STLExporter } from "three/addons/exporters/STLExporter.js"
+import { OBJExporter } from "three/addons/exporters/OBJExporter.js"
 import { Suspense, useMemo, useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react"
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils"
 import { ModelMesh } from "./model-mesh"
 import { createGradientMaterial } from "./gradient-shader"
 import { inflatePolygon as createInflatedGeometryFromContour } from "@/lib/inflate-geometry"
@@ -2970,6 +2973,7 @@ export const PBRViewer = forwardRef<
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: lightingSettings.exposure,
           preserveDrawingBuffer: true, // Required for toDataURL
+          alpha: true, // Enable alpha channel
         }}
       >
         <color attach="background" args={["#18181b"]} />

@@ -3,11 +3,11 @@
 import { useRef } from "react"
 import { useEffect, useState } from "react"
 import { useLoader } from "@react-three/fiber"
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
 import * as THREE from "three"
 import { Mesh } from "three"
 import { useThree } from "@react-three/fiber"
 import { TransformControls } from "@react-three/drei"
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
 import { createGradientMaterial } from "./gradient-shader"
 
 interface ModelMeshProps {
@@ -92,7 +92,6 @@ export function ModelMesh({
   const inflateControlRef = useRef<THREE.Group>(null)
   const [modelSize, setModelSize] = useState<number>(1)
 
-  // Load model when modelUrl changes
   useEffect(() => {
     if (!modelUrl) {
       setLoading(false)
@@ -100,59 +99,122 @@ export function ModelMesh({
     }
 
     setLoading(true)
+    const loader = new GLTFLoader()
     let isMounted = true
     
-    const loader = new GLTFLoader()
-    
-    loader.load(
-      modelUrl,
-      (gltf) => {
-        if (!isMounted) return
-        
-        try {
-          const loadedScene = gltf.scene
+    const loadModel = async () => {
+      try {
+        // Для blob URL, нужно загрузить файл как текст/буфер и использовать parse
+        if (modelUrl.startsWith('blob:')) {
+          const response = await fetch(modelUrl)
+          const arrayBuffer = await response.arrayBuffer()
           
-          // Center and scale the model
-          const box = new THREE.Box3().setFromObject(loadedScene)
-          const center = box.getCenter(new THREE.Vector3())
-          const size = box.getSize(new THREE.Vector3())
-          const maxDim = Math.max(size.x, size.y, size.z)
-          const scale = 2 / maxDim
+          // Определяем, GLB это или JSON GLTF
+          const view = new Uint8Array(arrayBuffer)
+          const isGLB = 
+            view[0] === 0x67 && // 'g'
+            view[1] === 0x6c && // 'l'
+            view[2] === 0x54 && // 'T'
+            view[3] === 0x46    // 'F'
           
-          loadedScene.position.sub(center)
-          loadedScene.scale.setScalar(scale)
-          setModelSize(maxDim * scale)
-          
-          // Store original geometry for inflation
-          loadedScene.traverse((child) => {
-            if (child instanceof Mesh) {
-              child.userData.originalGeometry = child.geometry.clone()
-              child.castShadow = true
-              child.receiveShadow = true
+          if (!isGLB) {
+            // Это JSON GLTF - нужно преобразовать встроенные data URIs
+            try {
+              const text = new TextDecoder().decode(arrayBuffer)
+              const gltfJson = JSON.parse(text)
+              
+              // Заменяем встроенные data URIs на proper Blob URLs
+              if (gltfJson.buffers) {
+                for (let i = 0; i < gltfJson.buffers.length; i++) {
+                  const buffer = gltfJson.buffers[i]
+                  if (buffer.uri && buffer.uri.startsWith('data:')) {
+                    // Преобразуем data URI в Blob URL
+                    const dataUri = buffer.uri
+                    const base64Index = dataUri.indexOf(',') + 1
+                    const base64 = dataUri.substring(base64Index)
+                    const byteCharacters = atob(base64)
+                    const byteNumbers = new Array(byteCharacters.length)
+                    for (let j = 0; j < byteCharacters.length; j++) {
+                      byteNumbers[j] = byteCharacters.charCodeAt(j)
+                    }
+                    const byteArray = new Uint8Array(byteNumbers)
+                    const blob = new Blob([byteArray], { type: 'application/octet-stream' })
+                    buffer.uri = URL.createObjectURL(blob)
+                  }
+                }
+              }
+              
+              // Используем parse - base path пустой так как буферы уже преобразованы в Blob URLs
+              loader.parse(
+                JSON.stringify(gltfJson),
+                '',
+                (gltf) => {
+                  if (isMounted) {
+                    processGltf(gltf)
+                  }
+                },
+                (err) => {
+                  if (isMounted) {
+                    console.error("[v0] Parse error:", err)
+                    handleError("Ошибка парсинга GLTF: " + (err.message || "неизвестная ошибка"))
+                  }
+                }
+              )
+            } catch (e) {
+              if (isMounted) {
+                console.error("[v0] JSON error:", e)
+                handleError("Ошибка обработки GLTF файла")
+              }
             }
-          })
-          
-          setScene(loadedScene)
-          setLoading(false)
-        } catch (err) {
-          handleError("Error processing model")
-          setLoading(false)
+          } else {
+            // GLB файл - используем parse напрямую
+            loader.parse(
+              arrayBuffer,
+              '',
+              (gltf) => {
+                if (isMounted) {
+                  processGltf(gltf)
+                }
+              },
+              (err) => {
+                if (isMounted) {
+                  console.error("[v0] GLB parse error:", err)
+                  handleError("Ошибка парсинга GLB: " + (err.message || "неизвестная ошибка"))
+                }
+              }
+            )
+          }
+        } else {
+          // Обычный URL - используем load
+          loader.load(
+            modelUrl,
+            (gltf) => {
+              if (isMounted) {
+                processGltf(gltf)
+              }
+            },
+            undefined,
+            (err) => {
+              if (isMounted) {
+                console.error("[v0] Load error:", err)
+                handleError("Ошибка загрузки модели: " + (err.message || "неизвестная ошибка"))
+              }
+            }
+          )
         }
-      },
-      undefined,
-      (error) => {
+      } catch (err) {
         if (isMounted) {
-          console.error("[v0] GLTF load error:", error)
-          handleError("Failed to load model. Please check the file format.")
-          setLoading(false)
+          console.error("[v0] Unexpected error:", err)
+          handleError("Неожиданная ошибка при загрузке")
         }
       }
-    )
+    }
+    
+    loadModel()
     
     return () => {
       isMounted = false
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelUrl])
 
   // Применяем inflation при изменении inflationAmount и параметров сферы
@@ -277,6 +339,8 @@ export function ModelMesh({
     // Проверяем есть ли пользовательские текстуры
     const hasCustomTextures = !!(colorMap || normalMap || roughnessMap || metalnessMap || hueShiftedColorMap)
     
+    console.log("[v0] Applying materials - hasCustomTextures:", hasCustomTextures, "renderMode:", renderMode)
+
     scene.traverse((child) => {
       if (child instanceof Mesh) {
         const hasOriginal = !!(child.userData.originalMaterial || child.userData.originalMaterials)
@@ -301,6 +365,7 @@ export function ModelMesh({
             textureScale
           )
         } else if (hasOriginal) {
+          console.log("[v0] Using original GLB material")
           const original = child.userData.originalMaterial || child.userData.originalMaterials
           
           if (Array.isArray(original)) {
@@ -342,6 +407,13 @@ export function ModelMesh({
             newMaterial.dispose()
             newMaterial = physicalMaterial
           } else if (newMaterial instanceof THREE.MeshStandardMaterial) {
+            console.log("[v0] Original material maps:", {
+              map: !!newMaterial.map,
+              normalMap: !!newMaterial.normalMap,
+              roughnessMap: !!newMaterial.roughnessMap,
+              metalnessMap: !!newMaterial.metalnessMap,
+            })
+            
             // Применяем только параметры без перезаписи текстур
             if (materialSettings.roughness !== undefined) {
               newMaterial.roughness = materialSettings.roughness
@@ -352,6 +424,7 @@ export function ModelMesh({
             newMaterial.envMapIntensity = envIntensity
           }
         } else {
+          console.log("[v0] Creating base PBR material")
           newMaterial = createPBRMaterial(
             materialSettings,
             colorMap,
@@ -578,11 +651,11 @@ function createPBRMaterial(
     metalnessMap: isGlass ? null : (metalnessMap || null),
     roughness: settings.roughness ?? 0.5,
     metalness: settings.metalness ?? 0,
-    envMapIntensity: isGlass ? 1.5 : envIntensity,
+    envMapIntensity: envIntensity,
     // Glass properties
     transmission: settings.transmission ?? 0,
     ior: settings.ior ?? 1.5,
-    thickness: settings.thickness ?? 0.5,
+    thickness: isGlass ? (settings.thickness ?? 0.5) * 0.5 : (settings.thickness ?? 0.5),
     attenuationDistance: settings.attenuationDistance ?? 2.0,
     attenuationColor: isGlass
       ? new THREE.Color(settings.attenuationColor || "#ffffff")

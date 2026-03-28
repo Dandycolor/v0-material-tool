@@ -92,17 +92,21 @@ export function ModelMesh({
   const inflateControlRef = useRef<THREE.Group>(null)
   const [modelSize, setModelSize] = useState<number>(1)
 
-  // Patch envMap for glass materials — transmission requires envMap from the scene
+  // For glass: transmission requires envMap. Sync it from the scene every frame.
   useFrame(() => {
     if (!scene || materialSettings.transmission <= 0) return
     const envMap = threeScene.environment
     if (!envMap) return
     scene.traverse((child) => {
-      if (child instanceof Mesh && child.material instanceof THREE.MeshPhysicalMaterial) {
-        if (!child.material.envMap) {
-          child.material.envMap = envMap
-          child.material.needsUpdate = true
-        }
+      if (child instanceof Mesh) {
+        const mat = Array.isArray(child.material) ? child.material : [child.material]
+        mat.forEach((m) => {
+          if (m instanceof THREE.MeshPhysicalMaterial && m.transmission > 0) {
+            m.envMap = envMap
+            m.envMapIntensity = materialSettings.envMapIntensity ?? 1.5
+            m.needsUpdate = true
+          }
+        })
       }
     })
   })
@@ -292,8 +296,6 @@ export function ModelMesh({
     // Проверяем есть ли пользовательские текстуры
     const hasCustomTextures = !!(colorMap || normalMap || roughnessMap || metalnessMap || hueShiftedColorMap)
     
-    console.log("[v0] Applying materials - hasCustomTextures:", hasCustomTextures, "renderMode:", renderMode)
-
     scene.traverse((child) => {
       if (child instanceof Mesh) {
         const hasOriginal = !!(child.userData.originalMaterial || child.userData.originalMaterials)
@@ -318,7 +320,7 @@ export function ModelMesh({
             textureScale
           )
         } else if (hasOriginal) {
-          console.log("[v0] Using original GLB material")
+
           const original = child.userData.originalMaterial || child.userData.originalMaterials
           
           if (Array.isArray(original)) {
@@ -347,9 +349,10 @@ export function ModelMesh({
               thickness: materialSettings.thickness ?? 0.5,
               attenuationDistance: materialSettings.attenuationDistance ?? 100,
               attenuationColor: materialSettings.attenuationColor ? new THREE.Color(materialSettings.attenuationColor) : new THREE.Color("#ffffff"),
-              transparent: false, // Do NOT set transparent=true — it overrides transmission
+              transparent: true,
               side: THREE.FrontSide,
               depthWrite: true,
+              depthTest: true,
               clearcoat: materialSettings.clearcoat ?? 0,
               clearcoatRoughness: materialSettings.clearcoatRoughness ?? 0,
               clearcoatNormalScale: new THREE.Vector2(materialSettings.clearcoatNormalScale ?? 1, materialSettings.clearcoatNormalScale ?? 1),
@@ -361,13 +364,6 @@ export function ModelMesh({
             newMaterial.dispose()
             newMaterial = physicalMaterial
           } else if (newMaterial instanceof THREE.MeshStandardMaterial) {
-            console.log("[v0] Original material maps:", {
-              map: !!newMaterial.map,
-              normalMap: !!newMaterial.normalMap,
-              roughnessMap: !!newMaterial.roughnessMap,
-              metalnessMap: !!newMaterial.metalnessMap,
-            })
-            
             // Применяем только параметры без перезаписи текстур
             if (materialSettings.roughness !== undefined) {
               newMaterial.roughness = materialSettings.roughness
@@ -378,7 +374,6 @@ export function ModelMesh({
             newMaterial.envMapIntensity = envIntensity
           }
         } else {
-          console.log("[v0] Creating base PBR material")
           newMaterial = createPBRMaterial(
             materialSettings,
             colorMap,
@@ -614,9 +609,10 @@ function createPBRMaterial(
     attenuationColor: isGlass
       ? new THREE.Color(settings.attenuationColor || "#ffffff")
       : (settings.attenuationColor ? new THREE.Color(settings.attenuationColor) : new THREE.Color("#ffffff")),
-    transparent: false, // Do NOT set transparent=true — it overrides transmission
+    transparent: true,
     side: THREE.FrontSide,
     depthWrite: true,
+    depthTest: true,
     clearcoat: settings.clearcoat ?? 0,
     clearcoatRoughness: settings.clearcoatRoughness ?? 0,
     clearcoatNormalScale: new THREE.Vector2(settings.clearcoatNormalScale ?? 1, settings.clearcoatNormalScale ?? 1),

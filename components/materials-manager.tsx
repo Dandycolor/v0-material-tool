@@ -2,203 +2,109 @@
 
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Slider } from "@/components/ui/slider"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-
-interface Material {
-  id: number
-  name: string
-  type: "pbr" | "matcap"
-  metalness?: number
-  roughness?: number
-  ior?: number
-  transmission?: number
-  matcapUrl?: string
-}
+import { MATERIAL_PRESETS, CUSTOM_TEXTURES } from "@/lib/resources"
 
 export function MaterialsManager() {
-  const [materials, setMaterials] = useState<Material[]>([
-    { id: 1, name: "Glossy Red", type: "pbr", metalness: 0.1, roughness: 0.2 },
-    { id: 2, name: "Brushed Steel", type: "pbr", metalness: 0.8, roughness: 0.6 },
-    { id: 3, name: "Glass", type: "pbr", metalness: 0, roughness: 0.1, ior: 1.5, transmission: 0.95 },
-  ])
-
-  const [newMaterial, setNewMaterial] = useState<Partial<Material>>({
-    name: "",
-    type: "pbr",
-    metalness: 0.5,
-    roughness: 0.5,
-  })
-
-  const handleAddMaterial = () => {
-    if (!newMaterial.name) return
-
-    const material: Material = {
-      id: Math.max(...materials.map(m => m.id), 0) + 1,
-      name: newMaterial.name,
-      type: newMaterial.type || "pbr",
-      metalness: newMaterial.metalness || 0.5,
-      roughness: newMaterial.roughness || 0.5,
-      ior: newMaterial.ior || 1.5,
-      transmission: newMaterial.transmission || 0,
-    }
-
-    setMaterials([...materials, material])
-    setNewMaterial({ name: "", type: "pbr", metalness: 0.5, roughness: 0.5 })
-  }
-
-  const handleDeleteMaterial = (id: number) => {
-    setMaterials(materials.filter(m => m.id !== id))
-  }
+  const materials = Object.values(MATERIAL_PRESETS)
+  const customTextures = CUSTOM_TEXTURES
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-4">
-        {materials.map((material) => (
-          <Card key={material.id} className="bg-slate-800 border-slate-700">
-            <CardContent className="pt-6">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-white font-semibold">{material.name}</h3>
-                  <p className="text-slate-400 text-sm capitalize">{material.type} Material</p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-red-400 hover:text-red-300 hover:bg-red-950"
-                  onClick={() => handleDeleteMaterial(material.id)}
-                >
-                  Delete
-                </Button>
-              </div>
-
-              {material.type === "pbr" && (
-                <div className="space-y-3">
-                  <div>
-                    <Label className="text-xs text-slate-300">Metalness: {material.metalness}</Label>
-                    <Slider
-                      value={[material.metalness || 0.5]}
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      className="mt-1"
+    <div className="space-y-6">
+      {/* PBR Materials */}
+      <Card className="bg-[#1a1a1a] border-[#2a2a2a]">
+        <CardHeader>
+          <CardTitle className="text-white">PBR Materials ({materials.length})</CardTitle>
+          <CardDescription className="text-zinc-400">Textured materials with normal, roughness, and metalness maps</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            {materials.map((material) => (
+              <div 
+                key={material.id} 
+                className="p-3 bg-[#252525] rounded-lg border border-[#333] hover:border-[#444] transition-colors group"
+              >
+                {/* Preview */}
+                <div className="aspect-square rounded-md overflow-hidden mb-3 bg-[#1a1a1a]">
+                  {material.baseColor ? (
+                    <img 
+                      src={material.baseColor} 
+                      alt={material.name}
+                      className="w-full h-full object-cover"
                     />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-slate-300">Roughness: {material.roughness}</Label>
-                    <Slider
-                      value={[material.roughness || 0.5]}
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      className="mt-1"
-                    />
-                  </div>
-                  {material.transmission !== undefined && material.transmission > 0 && (
-                    <>
-                      <div>
-                        <Label className="text-xs text-slate-300">IOR: {material.ior}</Label>
-                        <Slider
-                          value={[material.ior || 1.5]}
-                          min={1}
-                          max={2.5}
-                          step={0.01}
-                          className="mt-1"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs text-slate-300">Transmission: {material.transmission}</Label>
-                        <Slider
-                          value={[material.transmission || 0]}
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          className="mt-1"
-                        />
-                      </div>
-                    </>
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-zinc-600 text-xs">
+                      No texture
+                    </div>
                   )}
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <Dialog>
-        <DialogTrigger asChild>
-          <Button className="w-full bg-cyan-600 hover:bg-cyan-700 text-white">Add New Material</Button>
-        </DialogTrigger>
-        <DialogContent className="bg-slate-800 border-slate-700">
-          <DialogHeader>
-            <DialogTitle className="text-white">Add New Material</DialogTitle>
-            <DialogDescription>Create a new PBR or Matcap material</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label className="text-slate-300">Material Name</Label>
-              <Input
-                placeholder="e.g. Polished Gold"
-                value={newMaterial.name || ""}
-                onChange={(e) => setNewMaterial({ ...newMaterial, name: e.target.value })}
-                className="bg-slate-700 border-slate-600 text-white mt-1"
-              />
-            </div>
-
-            <div>
-              <Label className="text-slate-300">Type</Label>
-              <Select value={newMaterial.type || "pbr"} onValueChange={(type) => setNewMaterial({ ...newMaterial, type: type as "pbr" | "matcap" })}>
-                <SelectTrigger className="bg-slate-700 border-slate-600 text-white mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-700 border-slate-600">
-                  <SelectItem value="pbr">PBR Material</SelectItem>
-                  <SelectItem value="matcap">Matcap</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {newMaterial.type === "pbr" && (
-              <>
-                <div>
-                  <Label className="text-slate-300">Metalness: {(newMaterial.metalness || 0.5).toFixed(2)}</Label>
-                  <Slider
-                    value={[newMaterial.metalness || 0.5]}
-                    onValueChange={([v]) => setNewMaterial({ ...newMaterial, metalness: v })}
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    className="mt-1"
-                  />
+                
+                {/* Info */}
+                <div className="space-y-1">
+                  <p className="text-white text-sm font-medium truncate">{material.name}</p>
+                  <div className="flex gap-2 text-xs text-zinc-500">
+                    <span>M: {material.metalness}</span>
+                    <span>R: {material.roughness}</span>
+                  </div>
                 </div>
-                <div>
-                  <Label className="text-slate-300">Roughness: {(newMaterial.roughness || 0.5).toFixed(2)}</Label>
-                  <Slider
-                    value={[newMaterial.roughness || 0.5]}
-                    onValueChange={([v]) => setNewMaterial({ ...newMaterial, roughness: v })}
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    className="mt-1"
-                  />
-                </div>
-              </>
-            )}
-
-            <Button
-              onClick={handleAddMaterial}
-              className="w-full bg-cyan-600 hover:bg-cyan-700 text-white"
-              disabled={!newMaterial.name}
-            >
-              Create Material
-            </Button>
+              </div>
+            ))}
           </div>
-        </DialogContent>
-      </Dialog>
+        </CardContent>
+      </Card>
+
+      {/* Custom Textures */}
+      <Card className="bg-[#1a1a1a] border-[#2a2a2a]">
+        <CardHeader>
+          <CardTitle className="text-white">Custom PBR Textures</CardTitle>
+          <CardDescription className="text-zinc-400">Individual texture maps for custom material creation</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Normal Maps */}
+          <div>
+            <h4 className="text-sm font-medium text-zinc-300 mb-3">Normal Maps ({customTextures.normal.length})</h4>
+            <div className="grid grid-cols-4 md:grid-cols-7 gap-2">
+              {customTextures.normal.map((tex) => (
+                <div key={tex.id} className="group relative">
+                  <div className="aspect-square rounded-md overflow-hidden bg-[#252525] border border-[#333]">
+                    <img src={tex.url} alt={tex.name} className="w-full h-full object-cover" />
+                  </div>
+                  <p className="text-xs text-zinc-500 mt-1 truncate text-center">{tex.name}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Roughness Maps */}
+          <div>
+            <h4 className="text-sm font-medium text-zinc-300 mb-3">Roughness Maps ({customTextures.roughness.length})</h4>
+            <div className="grid grid-cols-4 md:grid-cols-7 gap-2">
+              {customTextures.roughness.map((tex) => (
+                <div key={tex.id} className="group relative">
+                  <div className="aspect-square rounded-md overflow-hidden bg-[#252525] border border-[#333]">
+                    <img src={tex.url} alt={tex.name} className="w-full h-full object-cover" />
+                  </div>
+                  <p className="text-xs text-zinc-500 mt-1 truncate text-center">{tex.name}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Metalness Maps */}
+          <div>
+            <h4 className="text-sm font-medium text-zinc-300 mb-3">Metalness Maps ({customTextures.metalness.length})</h4>
+            <div className="grid grid-cols-4 md:grid-cols-7 gap-2">
+              {customTextures.metalness.map((tex) => (
+                <div key={tex.id} className="group relative">
+                  <div className="aspect-square rounded-md overflow-hidden bg-[#252525] border border-[#333]">
+                    <img src={tex.url} alt={tex.name} className="w-full h-full object-cover" />
+                  </div>
+                  <p className="text-xs text-zinc-500 mt-1 truncate text-center">{tex.name}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

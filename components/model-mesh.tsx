@@ -2,7 +2,7 @@
 
 import { useRef } from "react"
 import { useEffect, useState } from "react"
-import { useLoader } from "@react-three/fiber"
+import { useLoader, useFrame } from "@react-three/fiber"
 import * as THREE from "three"
 import { Mesh } from "three"
 import { useThree } from "@react-three/fiber"
@@ -88,9 +88,24 @@ export function ModelMesh({
   const [scene, setScene] = useState<THREE.Group | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const { controls } = useThree()
+  const { controls, gl, scene: threeScene } = useThree()
   const inflateControlRef = useRef<THREE.Group>(null)
   const [modelSize, setModelSize] = useState<number>(1)
+
+  // Patch envMap for glass materials — transmission requires envMap from the scene
+  useFrame(() => {
+    if (!scene || materialSettings.transmission <= 0) return
+    const envMap = threeScene.environment
+    if (!envMap) return
+    scene.traverse((child) => {
+      if (child instanceof Mesh && child.material instanceof THREE.MeshPhysicalMaterial) {
+        if (!child.material.envMap) {
+          child.material.envMap = envMap
+          child.material.needsUpdate = true
+        }
+      }
+    })
+  })
 
   // Load model when modelUrl changes
   useEffect(() => {
@@ -332,9 +347,9 @@ export function ModelMesh({
               thickness: materialSettings.thickness ?? 0.5,
               attenuationDistance: materialSettings.attenuationDistance ?? 100,
               attenuationColor: materialSettings.attenuationColor ? new THREE.Color(materialSettings.attenuationColor) : new THREE.Color("#ffffff"),
-              transparent: true, // Required for transmission to work
-              side: THREE.FrontSide, // FrontSide for correct orientation
-              depthWrite: true, // Keep depth writing for proper sorting
+              transparent: false, // Do NOT set transparent=true — it overrides transmission
+              side: THREE.FrontSide,
+              depthWrite: true,
               clearcoat: materialSettings.clearcoat ?? 0,
               clearcoatRoughness: materialSettings.clearcoatRoughness ?? 0,
               clearcoatNormalScale: new THREE.Vector2(materialSettings.clearcoatNormalScale ?? 1, materialSettings.clearcoatNormalScale ?? 1),
@@ -599,9 +614,9 @@ function createPBRMaterial(
     attenuationColor: isGlass
       ? new THREE.Color(settings.attenuationColor || "#ffffff")
       : (settings.attenuationColor ? new THREE.Color(settings.attenuationColor) : new THREE.Color("#ffffff")),
-    transparent: true, // Required for transmission to work
-    side: THREE.FrontSide, // Always FrontSide for correct orientation
-    depthWrite: true, // Always write to depth buffer for proper sorting
+    transparent: false, // Do NOT set transparent=true — it overrides transmission
+    side: THREE.FrontSide,
+    depthWrite: true,
     clearcoat: settings.clearcoat ?? 0,
     clearcoatRoughness: settings.clearcoatRoughness ?? 0,
     clearcoatNormalScale: new THREE.Vector2(settings.clearcoatNormalScale ?? 1, settings.clearcoatNormalScale ?? 1),

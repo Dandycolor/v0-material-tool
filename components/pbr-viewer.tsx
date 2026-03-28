@@ -1,7 +1,7 @@
 "use client"
 
 import { Canvas, useLoader, useThree } from "@react-three/fiber"
-import { OrbitControls, Environment, TransformControls } from "@react-three/drei"
+import { OrbitControls, Environment, TransformControls, MeshTransmissionMaterial } from "@react-three/drei"
 import * as THREE from "three"
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js"
@@ -2310,7 +2310,31 @@ function Material({
     isExtruded,
   ])
 
-  return isGlass ? <meshPhysicalMaterial {...materialProps} /> : <meshStandardMaterial {...materialProps} />
+  if (isGlass) {
+    return (
+      <MeshTransmissionMaterial
+        transmission={materialSettings.transmission}
+        thickness={materialSettings.thickness}
+        roughness={materialSettings.roughness}
+        ior={materialSettings.ior}
+        chromaticAberration={0.02}
+        anisotropicBlur={0.1}
+        attenuationDistance={materialSettings.attenuationDistance}
+        attenuationColor={materialSettings.attenuationColor as string}
+        color={
+          materialSettings.glassColorIntensity > 0
+            ? (materialSettings.glassColor as string)
+            : "#ffffff"
+        }
+        clearcoat={materialSettings.clearcoat}
+        clearcoatRoughness={materialSettings.clearcoatRoughness}
+        envMapIntensity={materialSettings.envMapIntensity || 1.5}
+        side={THREE.FrontSide}
+      />
+    )
+  }
+
+  return <meshStandardMaterial {...materialProps} />
 }
 
 interface SceneContentProps {

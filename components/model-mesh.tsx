@@ -109,7 +109,14 @@ export function ModelMesh({
         // Temporarily disable model loading due to GLTFLoader import issues
         // Models will be loaded through standard 3D mesh primitive
         handleError("Model loading is temporarily disabled. Please use primitives or vector mode.")
+        setLoading(false)
         return
+      } catch (err) {
+        if (isMounted) {
+          handleError("Unexpected error loading model")
+          setLoading(false)
+        }
+      }
     }
     
     loadModel()

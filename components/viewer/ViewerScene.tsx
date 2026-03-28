@@ -10,10 +10,24 @@ import type { GradientConfig, PBRConfig } from "@/lib/types"
 
 // ── Grid ──────────────────────────────────────────────────────────────────────
 function Grid({ visible }: { visible: boolean }) {
-  if (!visible) return null
-  const grid = new THREE.GridHelper(20, 20, "#2a2a2a", "#1e1e1e")
-  grid.position.y = -1.2
-  return <primitive object={grid} />
+  const { scene } = useThree()
+
+  useEffect(() => {
+    if (!visible) {
+      scene.children = scene.children.filter(child => !(child instanceof THREE.GridHelper))
+      return
+    }
+
+    const grid = new THREE.GridHelper(20, 20, "#2a2a2a", "#1e1e1e")
+    grid.position.y = -1.2
+    scene.add(grid)
+
+    return () => {
+      scene.remove(grid)
+    }
+  }, [visible, scene])
+
+  return null
 }
 
 // ── Material builder ───────────────────────────────────────────────────────────

@@ -311,8 +311,10 @@ export function ModelMesh({
           
           // Конвертируем в MeshPhysicalMaterial для поддержки transmission
           const isGlass = materialSettings.transmission > 0
+          console.log("[v0] hasOriginal branch - isGlass:", isGlass, "transmission:", materialSettings.transmission, "material type:", newMaterial.type)
           
           if (isGlass && newMaterial instanceof THREE.MeshStandardMaterial) {
+            console.log("[v0] Creating glass material with transmission:", materialSettings.transmission)
             // Создаем новый MeshPhysicalMaterial с теми же текстурами
             const physicalMaterial = new THREE.MeshPhysicalMaterial({
               map: newMaterial.map,
@@ -338,6 +340,11 @@ export function ModelMesh({
               iridescence: materialSettings.iridescence ?? 0,
               iridescenceIOR: materialSettings.iridescenceIOR ?? 1.3,
               iridescenceThicknessRange: [materialSettings.iridescenceThicknessMin ?? 100, materialSettings.iridescenceThicknessMax ?? 400],
+            })
+            console.log("[v0] Glass physicalMaterial created:", {
+              transmission: physicalMaterial.transmission,
+              transparent: physicalMaterial.transparent,
+              ior: physicalMaterial.ior
             })
             newMaterial.dispose()
             newMaterial = physicalMaterial

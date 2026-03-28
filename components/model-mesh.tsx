@@ -326,16 +326,15 @@ export function ModelMesh({
               roughness: materialSettings.roughness ?? 0.05,
               metalness: materialSettings.metalness ?? 0,
               envMapIntensity: 1.5,
-              // Glass properties
+              // Glass properties - transmission handles transparency, not alpha
               transmission: materialSettings.transmission ?? 0,
               ior: materialSettings.ior ?? 1.5,
               thickness: materialSettings.thickness ?? 0.5,
               attenuationDistance: materialSettings.attenuationDistance ?? 100,
               attenuationColor: materialSettings.attenuationColor ? new THREE.Color(materialSettings.attenuationColor) : new THREE.Color("#ffffff"),
-              transparent: true,
-              opacity: 1,
-              side: THREE.DoubleSide,
-              depthWrite: false,
+              transparent: false, // Transmission handles this, not alpha transparency
+              side: THREE.FrontSide, // Use FrontSide to avoid self-intersection issues
+              depthWrite: true, // Keep depth writing for proper sorting
               clearcoat: materialSettings.clearcoat ?? 0,
               clearcoatRoughness: materialSettings.clearcoatRoughness ?? 0,
               clearcoatNormalScale: new THREE.Vector2(materialSettings.clearcoatNormalScale ?? 1, materialSettings.clearcoatNormalScale ?? 1),
@@ -600,10 +599,9 @@ function createPBRMaterial(
     attenuationColor: isGlass
       ? new THREE.Color(settings.attenuationColor || "#ffffff")
       : (settings.attenuationColor ? new THREE.Color(settings.attenuationColor) : new THREE.Color("#ffffff")),
-    transparent: true,
-    opacity: isGlass ? 1 : 1,
-    side: isGlass ? THREE.DoubleSide : THREE.FrontSide,
-    depthWrite: !isGlass,
+    transparent: !isGlass, // Only use alpha transparency for non-glass
+    side: THREE.FrontSide, // Always use FrontSide to avoid self-intersection
+    depthWrite: true, // Always write to depth buffer for proper sorting
     clearcoat: settings.clearcoat ?? 0,
     clearcoatRoughness: settings.clearcoatRoughness ?? 0,
     clearcoatNormalScale: new THREE.Vector2(settings.clearcoatNormalScale ?? 1, settings.clearcoatNormalScale ?? 1),

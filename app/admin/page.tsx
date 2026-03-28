@@ -4,9 +4,11 @@ import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { MaterialsManager } from "@/components/materials-manager"
 import { Icons3DManager } from "@/components/icons-3d-manager"
-import { MATERIAL_PRESETS, MATCAP_PRESETS, CUSTOM_TEXTURES } from "@/lib/resources"
+import { MATCAP_PRESETS, CUSTOM_TEXTURES } from "@/lib/resources"
 import Link from "next/link"
 
 export default function AdminPage() {
@@ -50,7 +52,7 @@ export default function AdminPage() {
           <TabsContent value="matcaps" className="space-y-4 mt-6">
             <Card className="bg-[#1a1a1a] border-[#2a2a2a]">
               <CardHeader>
-                <CardTitle className="text-white">Matcap Textures ({matcapsCount})</CardTitle>
+                <CardTitle className="text-white">Matcap Textures ({Object.values(MATCAP_PRESETS).length})</CardTitle>
                 <CardDescription className="text-zinc-400">Pre-baked lighting environments for stylized rendering</CardDescription>
               </CardHeader>
               <CardContent>

@@ -97,9 +97,14 @@ export function ModelMesh({
       return
     }
 
+  // Load model when modelUrl changes
+  useEffect(() => {
+    if (!modelUrl) {
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
-    // GLTFLoader is managed by @react-three/fiber
-    // We'll use THREE.FileLoader for manual loading if needed
     let isMounted = true
     
     const loadModel = async () => {

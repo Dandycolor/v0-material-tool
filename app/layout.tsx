@@ -2,6 +2,7 @@ import React from "react"
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import { ResourcesProvider } from '@/lib/resources-context'
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -38,7 +39,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <body className={`font-sans antialiased bg-[#121212]`}>
-        {children}
+        <ResourcesProvider>
+          {children}
+        </ResourcesProvider>
         <Analytics />
       </body>
     </html>

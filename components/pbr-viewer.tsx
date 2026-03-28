@@ -2243,6 +2243,8 @@ function Material({
     : new THREE.Color(materialSettings.colorTint)
 
   const isGlass = materialSettings.transmission > 0
+  
+  console.log("[v0] Material isGlass:", isGlass, "transmission:", materialSettings.transmission)
 
   const materialProps = useMemo(() => {
     const effectiveDisplacementScale = isExtruded ? 0 : materialSettings.displacementScale
@@ -2262,13 +2264,20 @@ function Material({
     }
 
     if (isGlass) {
+      console.log("[v0] Creating glass material with transmission:", materialSettings.transmission)
       return {
-        ...baseProps,
-        map: null,
+        // Don't spread baseProps - glass needs clean settings
         color:
           materialSettings.glassColorIntensity > 0
             ? new THREE.Color(materialSettings.glassColor)
             : new THREE.Color(0xffffff),
+        map: null,
+        normalMap: normalMap, // Keep normal for scratched/dirty glass
+        normalScale: new THREE.Vector2(materialSettings.normalScale * 0.3, materialSettings.normalScale * 0.3), // Reduce normal for glass
+        roughnessMap: null, // No roughness map for glass
+        metalnessMap: null,
+        roughness: materialSettings.roughness,
+        metalness: 0,
         transmission: materialSettings.transmission,
         ior: materialSettings.ior,
         thickness: materialSettings.thickness,
@@ -2276,18 +2285,17 @@ function Material({
         attenuationColor: new THREE.Color(materialSettings.attenuationColor),
         transparent: true,
         opacity: 1,
-        alphaMap: opacityMap,
         side: THREE.FrontSide,
         envMapIntensity: materialSettings.envMapIntensity || 1.5,
         clearcoat: materialSettings.clearcoat,
         clearcoatRoughness: materialSettings.clearcoatRoughness,
         clearcoatNormalScale: new THREE.Vector2(materialSettings.clearcoatNormalScale ?? 1, materialSettings.clearcoatNormalScale ?? 1),
-        reflectivity: materialSettings.reflectivity,
+        reflectivity: materialSettings.reflectivity ?? 0.5,
         specularIntensity: 1,
         specularColor: new THREE.Color(0xffffff),
-        iridescence: materialSettings.iridescence,
-        iridescenceIOR: materialSettings.iridescenceIOR,
-        iridescenceThicknessRange: [materialSettings.iridescenceThicknessMin, materialSettings.iridescenceThicknessMax],
+        iridescence: materialSettings.iridescence ?? 0,
+        iridescenceIOR: materialSettings.iridescenceIOR ?? 1.3,
+        iridescenceThicknessRange: [materialSettings.iridescenceThicknessMin ?? 100, materialSettings.iridescenceThicknessMax ?? 400],
       }
     }
 

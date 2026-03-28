@@ -950,6 +950,7 @@ export default function MaterialTool() {
   )
   const [backgroundColor, setBackgroundColor] = useState("#1a1a1a")
   const [showGrid, setShowGrid] = useState(false)
+  const [infoMenuOpen, setInfoMenuOpen] = useState(false)
   const [showRotateControls, setShowRotateControls] = useState(false)
   
   // Custom material selections
@@ -1364,16 +1365,6 @@ export default function MaterialTool() {
         <Download className="w-4 h-4" />
         Export PNG
       </button>
-
-      <Link href="/admin">
-        <button
-          className="fixed top-4 left-32 z-50 flex items-center gap-2 px-3 py-2 bg-[#2a2a2a] hover:bg-[#353535] text-white text-sm rounded-lg border border-[#404040] transition-all shadow-lg"
-          title="Go to admin panel"
-        >
-          <Settings className="w-4 h-4" />
-          Admin
-        </button>
-      </Link>
 
       <div className="fixed top-0 right-0 h-screen w-[340px] border-l border-[#2a2a2a] bg-[#1a1a1a] overflow-y-auto z-50">
         <div className="py-5 space-y-4">
@@ -3261,15 +3252,38 @@ export default function MaterialTool() {
 
       {/* Info icon and Background color picker in bottom-left corner */}
       <div className="fixed bottom-4 left-4 z-40 flex gap-2 items-center">
-        <a
-          href="https://buildin.ai/sava/share/4745d01a-eba4-43a4-bcbe-bd42cb780ac7?code=11A3SR"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="w-9 h-9 rounded-lg border border-[#404040] bg-[#2a2a2a] hover:bg-[#353535] flex items-center justify-center text-zinc-400 hover:text-white transition-all"
-          title="View Buildin.AI project"
-        >
-          <Info className="w-4 h-4" />
-        </a>
+        <div className="relative">
+          <button
+            onClick={() => setInfoMenuOpen(!infoMenuOpen)}
+            className="w-9 h-9 rounded-lg border border-[#404040] bg-[#2a2a2a] hover:bg-[#353535] flex items-center justify-center text-zinc-400 hover:text-white transition-all"
+            title="Info menu"
+          >
+            <Info className="w-4 h-4" />
+          </button>
+          
+          {infoMenuOpen && (
+            <div className="absolute bottom-full left-0 mb-2 w-36 bg-[#2a2a2a] border border-[#404040] rounded-lg shadow-xl overflow-hidden">
+              <Link 
+                href="/admin"
+                onClick={() => setInfoMenuOpen(false)}
+                className="flex items-center gap-2 px-3 py-2.5 text-sm text-white hover:bg-[#353535] transition-colors"
+              >
+                <Settings className="w-4 h-4" />
+                Admin
+              </Link>
+              <a
+                href="https://buildin.ai/sava/share/4745d01a-eba4-43a4-bcbe-bd42cb780ac7?code=11A3SR"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setInfoMenuOpen(false)}
+                className="flex items-center gap-2 px-3 py-2.5 text-sm text-white hover:bg-[#353535] transition-colors border-t border-[#404040]"
+              >
+                <Info className="w-4 h-4" />
+                About
+              </a>
+            </div>
+          )}
+        </div>
         
         <label className="flex items-center gap-2 px-3 py-2 bg-[#2a2a2a] hover:bg-[#353535] text-white text-sm rounded-lg border border-[#404040] transition-all cursor-pointer">
           <div 

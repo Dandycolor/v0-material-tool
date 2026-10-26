@@ -14,6 +14,7 @@ import { Icon, IconButton, Range, Field, Switch, SwitchRow, ColorField, Segmente
 import { LightRig } from "@/components/knopika/light-rig"
 import { THEME_DEFAULT, GROUNDS, TUNER_ROWS, FONTS_DISPLAY, FONTS_UI, fmtRow, themeVars, exportCss, exportJson, type KnopikaTheme } from "@/lib/knopika/theme"
 import { WEIGHTS } from "@/lib/knopika/icons"
+import { installUISounds, setSoundEnabled, UISound } from "@/lib/knopika/sounds"
 
 interface IconifyIcon {
   id: string // format: "prefix:name" e.g. "mdi:flower"
@@ -1329,6 +1330,26 @@ export default function MaterialTool() {
   const [sourceOpen, setSourceOpen] = useState(false)
   const [theme, setTheme] = useState<KnopikaTheme>(THEME_DEFAULT)
   const [isPhone, setIsPhone] = useState(false)
+  const [showDots, setShowDots] = useState(true)
+  const [soundOn, setSoundOn] = useState(true)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const soundBtnRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("polya-sound") === "off") setSoundOn(false)
+      if (localStorage.getItem("polya-dots") === "off") setShowDots(false)
+    } catch {}
+    if (!rootRef.current) return
+    return installUISounds(rootRef.current, () => soundBtnRef.current)
+  }, [])
+  useEffect(() => {
+    setSoundEnabled(soundOn)
+    try {
+      localStorage.setItem("polya-sound", soundOn ? "on" : "off")
+      localStorage.setItem("polya-dots", showDots ? "on" : "off")
+    } catch {}
+  }, [soundOn, showDots])
 
   useEffect(() => {
     try {
@@ -1452,6 +1473,7 @@ export default function MaterialTool() {
       <div
         className={`wrap polya ${tv.dark ? "kk-ground-dark" : ""} ${theme.style === "expressive" ? "kk-expressive" : ""} ${theme.style === "block" ? "kk-block" : ""} ${theme.caps ? "caps" : ""}`}
         data-xp-shape={theme.shape}
+        ref={rootRef}
         style={tv.vars as React.CSSProperties}
       >
         <div className={stageClass}>
@@ -1467,6 +1489,8 @@ export default function MaterialTool() {
               matcapHueShift={matcapHueShift}
               matcapSettings={matcapSettings}
               backgroundColor={backgroundColor}
+              dotGrid={showDots}
+              dotColor={tv.vars["--on-ground-faint"]}
               showGrid={showGrid}
               showRotateControls={showRotateControls}
               gradientSettings={gradientSettings}
@@ -1523,7 +1547,8 @@ export default function MaterialTool() {
               </div>
             </div>
             <div className="kk-pillgroup" style={{ padding: "0 6px" }}>
-              <IconButton variant="ground" icon="grid" label="Grid" on={showGrid} pressed={showGrid} onClick={() => setShowGrid(!showGrid)} />
+              <IconButton variant="ground" icon="dots" label="Dot grid" on={showDots} pressed={showDots} onClick={() => setShowDots(!showDots)} />
+              <IconButton variant="ground" icon="grid" label="Floor grid" on={showGrid} pressed={showGrid} onClick={() => setShowGrid(!showGrid)} />
             </div>
           </div>
 
@@ -1531,6 +1556,22 @@ export default function MaterialTool() {
             <a className="kk-ibtn kk-ibtn--ground" href="https://buildin.ai/sava/share/4745d01a-eba4-43a4-bcbe-bd42cb780ac7?code=11A3SR" target="_blank" rel="noopener noreferrer" title="About pólya" aria-label="About pólya">
               <Icon name="info" />
             </a>
+            <button
+              ref={soundBtnRef}
+              type="button"
+              className={`kk-ibtn kk-ibtn--ground ${soundOn ? "is-on" : ""}`}
+              aria-pressed={soundOn}
+              aria-label="Interface sounds"
+              title={soundOn ? "Sounds on" : "Sounds off"}
+              onClick={() => {
+                const next = !soundOn
+                setSoundEnabled(next)
+                setSoundOn(next)
+                if (next) UISound.on()
+              }}
+            >
+              <Icon name="speaker" />
+            </button>
             <IconButton variant="ground" icon="sliders" label="Theme" on={panel === "theme"} onClick={() => togglePanel("theme")} />
             <button type="button" className="kk-pill kk-pill--ink" id="export" onClick={handleExportPNG} title="Export PNG with transparent background">
               <Icon name="download" />

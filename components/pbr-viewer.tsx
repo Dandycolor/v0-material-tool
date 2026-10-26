@@ -1,6 +1,6 @@
 "use client"
 
-import { Canvas, useLoader, useThree } from "@react-three/fiber"
+import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber"
 import { OrbitControls, Environment, TransformControls } from "@react-three/drei"
 import * as THREE from "three"
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
@@ -2371,15 +2371,63 @@ function SceneContent({
   onModelLoadError,
   onGeometrySettingsChange,
   backgroundColor,
-}: SceneContentProps & { onExportReady: (fn: () => void) => void, onExportGeometryReady: (fn: () => void) => void, onExportSTLReady: (fn: () => void) => void, onExportOBJReady: (fn: () => void) => void, backgroundColor?: string }) {
+  dotGrid = false,
+  dotColor = "rgba(0,0,0,0.18)",
+}: SceneContentProps & { onExportReady: (fn: () => void) => void, onExportGeometryReady: (fn: () => void) => void, onExportSTLReady: (fn: () => void) => void, onExportOBJReady: (fn: () => void) => void, backgroundColor?: string, dotGrid?: boolean, dotColor?: string }) {
   const { gl, scene, camera } = useThree()
-  
-  // Apply background color
+  const size = useThree((s) => s.size)
+  const dpr = useThree((s) => s.viewport.dpr)
+  const bgToneFixed = useRef<THREE.Material | null>(null)
+
+  // Apply background: flat colour, or the Knopika dot grid drawn into a screen-sized texture.
+  // Being the scene background, the dots are seen through glass and drop out of transparent PNG export.
   useEffect(() => {
-    if (backgroundColor) {
+    if (!backgroundColor) return
+    if (!dotGrid) {
       scene.background = new THREE.Color(backgroundColor)
+      return
     }
-  }, [backgroundColor, scene])
+    const w = Math.max(2, Math.round(size.width * dpr))
+    const h = Math.max(2, Math.round(size.height * dpr))
+    const c = document.createElement("canvas")
+    c.width = w
+    c.height = h
+    const ctx = c.getContext("2d")!
+    ctx.fillStyle = backgroundColor
+    ctx.fillRect(0, 0, w, h)
+    const step = 28 * dpr
+    const r = 1.45 * dpr
+    const ox = (w / 2) % step
+    const oy = (h / 2) % step
+    ctx.fillStyle = dotColor
+    ctx.beginPath()
+    for (let y = oy; y < h + step; y += step)
+      for (let x = ox; x < w + step; x += step) {
+        ctx.moveTo(x + r, y)
+        ctx.arc(x, y, r, 0, Math.PI * 2)
+      }
+    ctx.fill()
+    const tex = new THREE.CanvasTexture(c)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.generateMipmaps = false
+    tex.minFilter = THREE.LinearFilter
+    tex.magFilter = THREE.LinearFilter
+    scene.background = tex
+    return () => tex.dispose()
+  }, [backgroundColor, dotGrid, dotColor, size.width, size.height, dpr, scene])
+
+  // A background texture is drawn by three's internal plane, which tone-maps by default — that would tint the ground.
+  // Find that plane in the render list once and switch tone mapping off so dots sit on the exact ground colour.
+  useFrame(() => {
+    if (bgToneFixed.current) return
+    const rl = (gl as any).renderLists?.get?.(scene, 0)
+    const item = rl?.opaque?.find((i: any) => i?.material?.name === "BackgroundMaterial")
+    if (item) {
+      item.material.toneMapped = false
+      item.material.needsUpdate = true
+      bgToneFixed.current = item.material
+    }
+  })
 
   // Apply gradient material if enabled
   useEffect(() => {
@@ -2895,6 +2943,8 @@ export const PBRViewer = forwardRef<
     rimColor: string
   }
   backgroundColor?: string
+  dotGrid?: boolean
+  dotColor?: string
   showGrid?: boolean
   showRotateControls?: boolean
   gradientSettings?: {
@@ -2917,7 +2967,7 @@ export const PBRViewer = forwardRef<
   onGeometrySettingsChange?: (settings: Partial<GeometrySettings>) => void
   }
 >(function PBRViewer(
-  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, showGrid, showRotateControls, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
+  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, dotGrid, dotColor, showGrid, showRotateControls, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
   ref,
   ) {
   const exportFnRef = useRef<(() => void) | null>(null)
@@ -2993,6 +3043,8 @@ export const PBRViewer = forwardRef<
             showGrid={showGrid}
             showRotateControls={showRotateControls}
             backgroundColor={backgroundColor}
+            dotGrid={dotGrid}
+            dotColor={dotColor}
             gradientSettings={gradientSettings}
             customMaterial={customMaterial}
             onModelLoadError={onModelLoadError}

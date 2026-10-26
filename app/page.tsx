@@ -4,23 +4,16 @@ import { useState, useCallback, useRef, useEffect } from "react"
 import type React from "react"
 import useSWR from "swr"
 
-import { Label } from "@/components/ui/label"
-import { Slider } from "@/components/ui/slider"
-import { Switch } from "@/components/ui/switch"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { PBRViewer, type PBRViewerRef } from "@/components/pbr-viewer"
-import { MatcapPreview } from "@/components/matcap-preview"
-import { ChevronDown, ChevronUp, Upload, Download, Search, Loader2, X, Info } from "lucide-react"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Input } from "@/components/ui/input"
+import { Loader2 } from "lucide-react"
 import { ModelSearch } from "@/components/model-search"
-
-// Import MaterialPreview component
-import { MaterialPreview } from "@/components/material-preview"
-
-import { LightRotationControl } from "@/components/light-rotation-control"
 import { InflateCanvas } from "@/components/inflate-canvas"
+
+// Knopika design system
+import { Icon, IconButton, Range, Field, Switch, SwitchRow, ColorField, Segmented, PanelHead, Caption, Tile, IconWeightContext } from "@/components/knopika/kk"
+import { LightRig } from "@/components/knopika/light-rig"
+import { THEME_DEFAULT, GROUNDS, themeVars, type KnopikaTheme } from "@/lib/knopika/theme"
+import { WEIGHTS } from "@/lib/knopika/icons"
 
 interface IconifyIcon {
   id: string // format: "prefix:name" e.g. "mdi:flower"
@@ -943,11 +936,11 @@ export default function MaterialTool() {
   })
 
   const [selectedPreset, setSelectedPreset] = useState<keyof typeof MATERIAL_PRESETS | "custom">("plastic")
-  const [activeTab, setActiveTab] = useState("geometry")
+  const [activeTab, setActiveTab] = useState("material") // tabs are gone: the material panel is always the context
   const [materialTypeTab, setMaterialTypeTab] = useState<"pbr" | "custom" | "gradient" | "matcap">(
     selectedPreset === "custom" ? "custom" : "pbr"
   )
-  const [backgroundColor, setBackgroundColor] = useState("#1a1a1a")
+  const [backgroundColor, setBackgroundColor] = useState("#9724f5") // Knopika "Violet" ground
   const [showGrid, setShowGrid] = useState(false)
   const [showRotateControls, setShowRotateControls] = useState(false)
   
@@ -1331,1974 +1324,813 @@ export default function MaterialTool() {
   //   fetchSvg()
   // }
 
-  return (
-    <div className="h-screen w-full bg-[#121212]">
-      <div className="w-full h-full">
-        <PBRViewer
-          ref={viewerRef}
-          geometrySettings={geometrySettings}
-          materialSettings={materialSettings}
-          lightingSettings={lightingSettings}
-          renderMode={renderMode}
-          matcapTexture={renderMode === "matcap" ? MATCAP_PRESETS[selectedMatcap]?.matcap : undefined}
-                matcapHueShift={matcapHueShift}
-                matcapSettings={matcapSettings}
-                backgroundColor={backgroundColor}
-          showGrid={showGrid}
-          showRotateControls={showRotateControls}
-          gradientSettings={gradientSettings}
-          customMaterial={customMaterial}
-          onModelLoadError={setModelLoadError}
-          onGeometrySettingsChange={(updates) => 
-            setGeometrySettings({ ...geometrySettings, ...updates })
-          }
-        />
-      </div>
+  // ---------- Knopika shell state ----------
+  const [panel, setPanel] = useState<"material" | "light" | "rotate" | "theme" | null>("material")
+  const [sourceOpen, setSourceOpen] = useState(false)
+  const [theme, setTheme] = useState<KnopikaTheme>(THEME_DEFAULT)
+  const [isPhone, setIsPhone] = useState(false)
 
-      <button
-        onClick={handleExportPNG}
-        className="fixed top-4 left-4 z-50 flex items-center gap-2 px-3 py-2 bg-[#2a2a2a] hover:bg-[#353535] text-white text-sm rounded-lg border border-[#404040] transition-all shadow-lg"
-        title="Export PNG with transparent background"
-      >
-        <Download className="w-4 h-4" />
-        Export PNG
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("polya-knopika-theme")
+      if (raw) setTheme({ ...THEME_DEFAULT, ...JSON.parse(raw) })
+      const bg = localStorage.getItem("polya-knopika-ground")
+      if (bg && /^#[0-9a-f]{6}$/i.test(bg)) setBackgroundColor(bg)
+    } catch {}
+    const mq = window.matchMedia("(max-width: 720px)")
+    const upd = () => setIsPhone(mq.matches)
+    upd()
+    mq.addEventListener("change", upd)
+    return () => mq.removeEventListener("change", upd)
+  }, [])
+  useEffect(() => {
+    try {
+      localStorage.setItem("polya-knopika-theme", JSON.stringify(theme))
+      localStorage.setItem("polya-knopika-ground", backgroundColor)
+    } catch {}
+  }, [theme, backgroundColor])
+
+  // the rotate gizmo lives in the 3D view; the Rotate panel simply switches it on
+  useEffect(() => {
+    setShowRotateControls(panel === "rotate")
+  }, [panel])
+
+  const setT = <K extends keyof KnopikaTheme>(k: K, v: KnopikaTheme[K]) => setTheme((t) => ({ ...t, [k]: v }))
+  const tv = themeVars(backgroundColor, theme)
+  const togglePanel = (p: "material" | "light" | "rotate" | "theme") => setPanel((cur) => (cur === p ? "material" : p))
+
+  const setGeo = (u: Partial<typeof geometrySettings>) => setGeometrySettings({ ...geometrySettings, ...u })
+  const setMat = (u: Partial<MaterialSettings>) => setMaterialSettings({ ...materialSettings, ...u })
+  const setLight = (u: Partial<typeof lightingSettings>) => setLightingSettings({ ...lightingSettings, ...u })
+
+  const geoType = geometrySettings.type as string
+  const pickMode = (t: "sphere" | "extruded" | "model" | "inflate") => {
+    if (t === geoType) {
+      if (t !== "sphere") setSourceOpen((o) => !o)
+      return
+    }
+    if (t === "extruded") {
+      setGeometrySettings({ ...geometrySettings, type: "extruded" })
+      setMaterialSettings((prev) => ({ ...prev, useDisplacementMap: false, displacementScale: 0 }))
+    } else {
+      setGeometrySettings({ ...geometrySettings, type: t as any })
+    }
+    setSourceOpen(t !== "sphere")
+  }
+
+  const MODES = [
+    { t: "sphere", icon: "circle", label: "Primitives" },
+    { t: "extruded", icon: "pen", label: "Vector" },
+    { t: "model", icon: "cube", label: "3D model" },
+    { t: "inflate", icon: "inflate", label: "Inflate" },
+  ] as const
+  const PRIMS: { type: "sphere" | "cone" | "torus" | "torusKnot" | "capsule"; label: string; svg: React.ReactNode }[] = [
+    { type: "sphere", label: "Sphere", svg: <circle cx="12" cy="12" r="8.5" /> },
+    { type: "cone", label: "Cone", svg: <path d="M12 3.5 19.5 18.5c0 1.4-3.4 2.5-7.5 2.5s-7.5-1.1-7.5-2.5z" /> },
+    { type: "torus", label: "Torus", svg: <path fillRule="evenodd" stroke="none" d="M2.5 12a9.5 6.5 0 1 0 19 0 9.5 6.5 0 1 0-19 0zm5.5 0a4 2.2 0 1 0 8 0 4 2.2 0 1 0-8 0z" /> },
+    { type: "torusKnot", label: "Knot", svg: <path fill="none" strokeWidth="3" strokeLinecap="round" d="M7 9c2.5-5 10-3 8.5 2.5S8 19 6.5 15s4-9 8-6 2.5 9-2 9.5" /> },
+    { type: "capsule", label: "Capsule", svg: <rect x="7" y="2.8" width="10" height="18.4" rx="5" /> },
+  ]
+  const curPrim = PRIMS.find((p) => p.type === geometrySettings.primitiveType) || PRIMS[0]
+  const curMode = MODES.find((m) => m.t === geoType) || MODES[0]
+
+  const isGlass = selectedPreset === "dirtyGlass" || selectedPreset === "scratchedGlass" || selectedPreset === "clearGlass"
+  const presetName =
+    selectedPreset === "custom" ? "Custom material" : MATERIAL_PRESETS[selectedPreset as keyof typeof MATERIAL_PRESETS]?.name || "Material"
+  const MAT_TABS = [
+    { v: "pbr", icon: "drop", label: "PBR presets" },
+    { v: "custom", icon: "palette", label: "Custom PBR" },
+    { v: "gradient", icon: "layers", label: "Gradient" },
+    { v: "matcap", icon: "eye", label: "Matcap" },
+  ] as const
+
+  // bottom bar pill with an ink slider
+  const GP = (p: { icon: string; label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void; fmt?: (v: number) => string }) => (
+    <label className="kk-pillgroup gp" title={p.label} key={p.label}>
+      <Icon name={p.icon} />
+      <Range ink label={p.label} value={p.value} min={p.min} max={p.max} step={p.step} onChange={p.onChange} format={p.fmt} />
+      <output>{p.fmt ? p.fmt(p.value) : p.step < 1 ? p.value.toFixed(p.step < 0.1 ? 2 : 1) : p.value}</output>
+    </label>
+  )
+  const GT = (p: { icon: string; label: string; on: boolean; onChange: (v: boolean) => void }) => (
+    <span className="kk-pillgroup gtog" key={p.label}>
+      <button type="button" className={`kk-ibtn kk-ibtn--ground ${p.on ? "is-on" : ""}`} aria-pressed={p.on} title={p.label} aria-label={p.label} onClick={() => p.onChange(!p.on)}>
+        <Icon name={p.icon} />
       </button>
+      <span className="gtog-l">{p.label}</span>
+    </span>
+  )
 
-      <div className="fixed top-0 right-0 h-screen w-[340px] border-l border-[#2a2a2a] bg-[#1a1a1a] overflow-y-auto z-50">
-        <div className="py-5 space-y-4">
-          <div className="pb-[2px] flex items-center justify-between px-4">
-            <img src="/logo-polya.png" alt="pólya" className="h-24 mx-[30px]" />
+  const stageClass = [
+    "stage",
+    "kk-root",
+    panel === "light" ? "lightmode" : "",
+    panel === "rotate" ? "rotmode" : "",
+    isPhone && panel ? "sheet-open" : "",
+    sourceOpen ? "src-open" : "",
+  ].join(" ")
+
+  return (
+    <IconWeightContext.Provider value={theme.iconWeight}>
+      <div
+        className={`wrap polya ${tv.dark ? "kk-ground-dark" : ""} ${theme.style === "expressive" ? "kk-expressive" : ""} ${theme.style === "block" ? "kk-block" : ""} ${theme.caps ? "caps" : ""}`}
+        data-xp-shape={theme.shape}
+        style={tv.vars as React.CSSProperties}
+      >
+        <div className={stageClass}>
+          {/* 3D view fills the whole ground */}
+          <div className="viewer">
+            <PBRViewer
+              ref={viewerRef}
+              geometrySettings={geometrySettings}
+              materialSettings={materialSettings}
+              lightingSettings={lightingSettings}
+              renderMode={renderMode}
+              matcapTexture={renderMode === "matcap" ? MATCAP_PRESETS[selectedMatcap]?.matcap : undefined}
+              matcapHueShift={matcapHueShift}
+              matcapSettings={matcapSettings}
+              backgroundColor={backgroundColor}
+              showGrid={showGrid}
+              showRotateControls={showRotateControls}
+              gradientSettings={gradientSettings}
+              customMaterial={customMaterial}
+              onModelLoadError={setModelLoadError}
+              onGeometrySettingsChange={(updates) => setGeometrySettings({ ...geometrySettings, ...updates })}
+            />
           </div>
 
-          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value)}>
-            <TabsList className="flex w-full bg-transparent p-0 px-4 mb-5 gap-1">
-              <TabsTrigger
-                value="geometry"
-                className="text-zinc-500 text-sm py-2 px-4 rounded-lg data-[state=active]:bg-[#2d2d2d] data-[state=active]:text-white hover:text-zinc-300 transition-colors"
-              >
-                Geometry
-              </TabsTrigger>
-              <TabsTrigger
-                value="material"
-                className="text-zinc-500 text-sm py-2 px-4 rounded-lg data-[state=active]:bg-[#2d2d2d] data-[state=active]:text-white hover:text-zinc-300 transition-colors"
-              >
-                Material
-              </TabsTrigger>
-              <TabsTrigger
-                value="lighting"
-                className="text-zinc-500 text-sm py-2 px-4 rounded-lg data-[state=active]:bg-[#2d2d2d] data-[state=active]:text-white hover:text-zinc-300 transition-colors"
-              >
-                Lighting
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="geometry">
-              <div className="space-y-4 px-4">
-                {/* Geometry Settings */}
-                <div className="flex flex-col gap-6">
-                  <div className="grid grid-cols-3 gap-6">
-                    <div className="flex flex-col items-center gap-3">
-                      <button
-                        onClick={() => {
-                          setGeometrySettings({ ...geometrySettings, type: "sphere" })
-                        }}
-                        className={`w-24 h-24 flex items-center justify-center rounded-lg border-2 transition-all overflow-hidden ${
-                          geometrySettings.type === "sphere"
-                            ? "border-white bg-[#1f1f1f]"
-                            : "border-[#2a2a2a] bg-[#1a1a1a] hover:border-[#3a3a3a]"
-                        }`}
-                      >
-                        <img
-                          src="/geometry-modes/primitives.png"
-                          alt="Primitives"
-                          className="w-full h-full object-cover"
-                        />
-                      </button>
-                      <span className="text-xs font-normal text-zinc-500">Primitives</span>
-                    </div>
-
-                    <div className="flex flex-col items-center gap-3">
-                      <button
-                        onClick={() => {
-                          setGeometrySettings({ ...geometrySettings, type: "extruded" })
-                          setMaterialSettings((prev) => ({
-                            ...prev,
-                            useDisplacementMap: false,
-                            displacementScale: 0,
-                          }))
-                        }}
-                        className={`w-24 h-24 flex items-center justify-center rounded-lg border-2 transition-all overflow-hidden ${
-                          geometrySettings.type === "extruded"
-                            ? "border-white bg-[#1f1f1f]"
-                            : "border-[#2a2a2a] bg-[#1a1a1a] hover:border-[#3a3a3a]"
-                        }`}
-                      >
-                        <img
-                          src="/geometry-modes/vector.png"
-                          alt="Vector"
-                          className="w-full h-full object-cover"
-                        />
-                      </button>
-                      <span className="text-xs font-normal text-zinc-500">Vector</span>
-                    </div>
-
-                    <div className="flex flex-col items-center gap-3">
-                      <button
-                        onClick={() => {
-                          setGeometrySettings({ ...geometrySettings, type: "model" })
-                        }}
-                        className={`w-24 h-24 flex items-center justify-center rounded-lg border-2 transition-all overflow-hidden ${
-                          geometrySettings.type === "model"
-                            ? "border-white bg-[#1f1f1f]"
-                            : "border-[#2a2a2a] bg-[#1a1a1a] hover:border-[#3a3a3a]"
-                        }`}
-                      >
-                        <img
-                          src="/geometry-modes/3d.png"
-                          alt="3D"
-                          className="w-full h-full object-cover"
-                        />
-                      </button>
-                      <span className="text-xs font-normal text-zinc-500">3D</span>
-                    </div>
-
-                    <div className="flex flex-col items-center gap-3">
-                      <button
-                        onClick={() => {
-                          setGeometrySettings({ ...geometrySettings, type: "inflate" })
-                        }}
-                        className={`w-24 h-24 flex items-center justify-center rounded-lg border-2 transition-all overflow-hidden ${
-                          geometrySettings.type === "inflate"
-                            ? "border-white bg-[#1f1f1f]"
-                            : "border-[#2a2a2a] bg-[#1a1a1a] hover:border-[#3a3a3a]"
-                        }`}
-                      >
-                        <img
-                          src="/geometry-modes/inflate.jpg"
-                          alt="Inflate"
-                          className="w-full h-full object-cover"
-                        />
-                      </button>
-                      <span className="text-xs font-normal text-zinc-500">Inflate</span>
-                    </div>
-                  </div>
-
-                  {geometrySettings.type === "sphere" && (
-                    <div className="space-y-3">
-                      <Label className="text-xs text-zinc-500">Primitive Shapes</Label>
-                      <div className="grid grid-cols-5 gap-3">
-                        {[
-                          { type: "sphere", label: "Sphere" },
-                          { type: "cone", label: "Cone" },
-                          { type: "torus", label: "Torus" },
-                          { type: "torusKnot", label: "Knot" },
-                          { type: "capsule", label: "Capsule" },
-                        ].map((primitive) => (
-                          <button
-                            key={primitive.type}
-                            onClick={() => {
-                              setGeometrySettings({ ...geometrySettings, primitiveType: primitive.type as any })
-                            }}
-                            className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-                              geometrySettings.primitiveType === primitive.type
-                                ? "bg-blue-600 text-white"
-                                : "bg-[#2a2a2a] text-zinc-400 hover:bg-[#333333] hover:text-white"
-                            }`}
-                          >
-                            {primitive.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {geometrySettings.type === "extruded" && (
-                    <>
-                      <div className="pt-4 space-y-3">
-                        <Label className="text-xs text-zinc-500">Search Icons (Iconify)</Label>
-                        <div className="relative">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                          <Input
-                            type="text"
-                            placeholder="search icons..."
-                            value={iconSearchInput}
-                            onChange={(e) => handleIconSearch(e.target.value)}
-                            className="pl-10 bg-[#2a2a2a] border-[#3a3a3a] text-white placeholder:text-zinc-600 rounded-lg w-full"
-                          />
-                          {iconSearchInput && (
-                            <button
-                              onClick={() => {
-                                setIconSearchInput("")
-                                setIconSearchQuery("")
-                              }}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Search Results */}
-                        {isSearchingIcons && (
-                          <div className="flex items-center justify-center py-8">
-                            <Loader2 className="w-6 h-6 text-white animate-spin" />
-                          </div>
-                        )}
-
-                        {iconSearchResults?.icons && iconSearchResults.icons.length > 0 && (
-                          <div className="space-y-2">
-                            <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto p-1">
-                              {iconSearchResults.icons.map((icon) => (
-                                <button
-                                  key={icon.id}
-                                  onClick={() => handleSelectIcon(icon)}
-                                  className={`aspect-square rounded-lg p-2 flex items-center justify-center transition-all hover:scale-105 relative group ${
-                                    selectedIcon?.id === icon.id
-                                      ? "bg-[#00b8c4] ring-2 ring-[#00d4e0]"
-                                      : "bg-[#2a2a2a] hover:bg-[#353535]"
-                                  }`}
-                                  title={`${icon.name} (${icon.source})`}
-                                >
-                                  <img
-                                    src={icon.preview_url || "/placeholder.svg"}
-                                    alt={icon.name}
-                                    className="w-10 h-10 invert"
-                                    loading="lazy"
-                                  />
-                                </button>
-                              ))}
-                            </div>
-                            <p className="text-xs text-zinc-500 text-center">
-                              Icons from Iconify ({iconSearchResults.total} found)
-                            </p>
-                          </div>
-                        )}
-
-                        {iconSearchQuery && !isSearchingIcons && iconSearchResults?.icons?.length === 0 && (
-                          <p className="text-xs text-zinc-500 text-center py-4">
-                            No icons found for "{iconSearchQuery}"
-                          </p>
-                        )}
-
-                        {loadingIcons && (
-                          <div className="flex items-center justify-center py-2">
-                            <Loader2 className="w-4 h-4 text-white animate-spin mr-2" />
-                            <span className="text-xs text-zinc-500">Loading SVG...</span>
-                          </div>
-                        )}
-
-                        {error && <p className="text-xs text-red-400 text-center py-2">{error}</p>}
-
-                        {/* SVG Upload */}
-                        <div className="pt-4">
-                          <div className="border-2 border-dashed border-[#3a3a3a] rounded-lg p-3 text-center hover:border-zinc-500 transition-colors bg-[#252525]">
-                            <input
-                              type="file"
-                              accept=".svg"
-                              onChange={handleSVGUpload}
-                              className="hidden"
-                              id="svg-upload-inline"
-                            />
-                            <label htmlFor="svg-upload-inline" className="cursor-pointer flex items-center justify-center gap-3">
-                              <Upload className="w-5 h-5 text-zinc-500" />
-                              <div className="text-left">
-                                <p className="text-sm text-white">Drag & drop SVG files</p>
-                                <p className="text-xs text-zinc-500">or click to browse</p>
-                              </div>
-                            </label>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="border-t border-[#2a2a2a]/50 my-3 hidden" />
-
-                      <div className="pt-4 space-y-3 hidden">
-                        <Label className="text-xs text-zinc-500">Basic Shapes</Label>
-                        {Object.entries(SHAPE_CATEGORIES).map(([categoryKey, category]) => (
-                          <div key={categoryKey} className="space-y-2">
-                            <span className="text-xs text-zinc-500">{category.name}</span>
-                            <div className="grid grid-cols-8 gap-1">
-                              {category.shapes.map((shapeKey) => (
-                                <button
-                                  key={shapeKey}
-                                  onClick={() =>
-                                    setGeometrySettings({
-                                      ...geometrySettings,
-                                      selectedShape: shapeKey,
-                                      svgPath: SHAPE_CATEGORIES[categoryKey as keyof typeof SHAPE_CATEGORIES].paths[shapeKey],
-                                    })
-                                  }
-                                  className={`aspect-square rounded-lg p-2 flex items-center justify-center text-xs transition-all font-semibold ${
-                                    geometrySettings.selectedShape === shapeKey
-                                      ? "bg-blue-600 text-white"
-                                      : "bg-[#2a2a2a] text-zinc-500 hover:bg-[#333333] hover:text-white"
-                                  }`}
-                                >
-                                  {shapeKey.charAt(0).toUpperCase()}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-
-                  {geometrySettings.type === "model" && (
-                    <div className="space-y-3">
-                      <button
-                        onClick={() => setShowModelSearch(true)}
-                        className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
-                      >
-                        <Search className="w-4 h-4" />
-                        Search 3D Models
-                      </button>
-                      
-                      {geometrySettings.modelName && (
-                        <div className="p-3 bg-[#2a2a2a] rounded-lg">
-                          <p className="text-sm text-white font-medium">{geometrySettings.modelName}</p>
-                          <p className="text-xs text-zinc-500 mt-1">Currently loaded model</p>
-                        </div>
-                      )}
-                      
-                      {modelLoadError && (
-                        <div className="p-3 bg-red-900/20 border border-red-900/50 rounded-lg">
-                          <p className="text-xs text-red-400">{modelLoadError}</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Inflate Mode - Draw or Load SVG to create balloon shapes */}
-                  {geometrySettings.type === "inflate" && (
-                    <div className="space-y-4">
-                      <InflateCanvas
-                        onContourChange={(contour) => {
-                          setGeometrySettings({ 
-                            ...geometrySettings, 
-                            inflateContour: contour 
-                          })
-                        }}
-                        width={400}
-                        height={400}
-                      />
-
-                      {/* Inflate Settings */}
-                      <div className="pt-4 space-y-4 border-t border-neutral-700">
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-xs text-zinc-500">Volume</Label>
-                            <span className="text-xs text-white font-mono">{geometrySettings.inflateVolume ?? 100}</span>
-                          </div>
-                          <Slider
-                            value={[geometrySettings.inflateVolume ?? 100]}
-                            onValueChange={([value]) => setGeometrySettings({ ...geometrySettings, inflateVolume: value })}
-                            min={10}
-                            max={200}
-                            step={5}
-                            className="w-full"
-                          />
-                          <p className="text-xs text-zinc-500">Controls how much the shape inflates</p>
-                        </div>
-
-                        {!geometrySettings.inflateSharpRidge && (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-xs text-zinc-500">Smoothing</Label>
-                            <span className="text-xs text-white font-mono">{geometrySettings.inflateSmoothing ?? 3}</span>
-                          </div>
-                          <Slider
-                            value={[geometrySettings.inflateSmoothing ?? 3]}
-                            onValueChange={([value]) => setGeometrySettings({ ...geometrySettings, inflateSmoothing: value })}
-                            min={0}
-                            max={10}
-                            step={1}
-                            className="w-full"
-                          />
-                          <p className="text-xs text-zinc-500">Laplacian smoothing iterations</p>
-                        </div>
-                        )}
-
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-xs text-zinc-500">Grid Resolution</Label>
-                            <span className="text-xs text-white font-mono">{geometrySettings.inflateGridResolution ?? 150}</span>
-                          </div>
-                          <Slider
-                            value={[geometrySettings.inflateGridResolution ?? 150]}
-                            onValueChange={([value]) => setGeometrySettings({ ...geometrySettings, inflateGridResolution: value })}
-                            min={40}
-                            max={240}
-                            step={5}
-                            className="w-full"
-                          />
-                          <p className="text-xs text-zinc-500">Internal mesh density</p>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-neutral-800 border border-neutral-700">
-                          <div className="flex-1">
-                            <Label className="text-sm font-semibold text-neutral-100 block mb-1">
-                              Double Sided
-                            </Label>
-                            <p className="text-xs text-neutral-400">
-                              Inflate both front and back
-                            </p>
-                          </div>
-                          <Switch
-                            checked={geometrySettings.inflateBothSides ?? true}
-                            onCheckedChange={(checked) =>
-                              setGeometrySettings({ ...geometrySettings, inflateBothSides: checked })
-                            }
-                            className="data-[state=checked]:bg-cyan-600"
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-neutral-800 border border-neutral-700">
-                          <div className="flex-1">
-                            <Label className="text-sm font-semibold text-neutral-100 block mb-1">
-                              Sharp Ridge
-                            </Label>
-                            <p className="text-xs text-neutral-400">
-                              Voronoi-style ridges toward center
-                            </p>
-                          </div>
-                          <Switch
-                            checked={geometrySettings.inflateSharpRidge ?? false}
-                            onCheckedChange={(checked) =>
-                              setGeometrySettings({ ...geometrySettings, inflateSharpRidge: checked })
-                            }
-                            className="data-[state=checked]:bg-cyan-600"
-                          />
-                        </div>
-
-                        {geometrySettings.inflateSharpRidge && (
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <Label className="text-xs text-zinc-500">Ridge Sharpness</Label>
-                              <span className="text-xs text-white font-mono">{geometrySettings.inflateRidgeSharpness ?? 5}</span>
-                            </div>
-                            <Slider
-                              value={[geometrySettings.inflateRidgeSharpness ?? 5]}
-                              onValueChange={([value]) => setGeometrySettings({ ...geometrySettings, inflateRidgeSharpness: value })}
-                              min={1}
-                              max={10}
-                              step={1}
-                              className="w-full"
-                            />
-                            <p className="text-xs text-zinc-500">Controls edge sharpness of voronoi ridges</p>
-                          </div>
-                        )}
-
-                        <div className="flex flex-col gap-2 mt-4">
-                          <button
-                            onClick={() => viewerRef.current?.exportSTL()}
-                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white text-sm font-semibold transition-colors"
-                          >
-                            <Download className="w-4 h-4" />
-                            Export STL
-                          </button>
-                          <button
-                            onClick={() => viewerRef.current?.exportOBJ()}
-                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white text-sm font-semibold transition-colors"
-                          >
-                            <Download className="w-4 h-4" />
-                            Export OBJ
-                          </button>
-                          <button
-                            onClick={() => viewerRef.current?.exportGLB()}
-                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 text-white text-sm font-semibold transition-colors"
-                          >
-                            <Download className="w-4 h-4" />
-                            Export GLB
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Extruded SVG Specific Settings */}
-                  {geometrySettings.type === "extruded" && (
-                      <div className="pt-4 space-y-4">
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-xs text-zinc-500">Thickness</Label>
-                            <span className="text-xs text-white font-mono">{geometrySettings.thickness}</span>
-                          </div>
-                          <Slider
-                            value={[geometrySettings.thickness]}
-                            onValueChange={([value]) => setGeometrySettings({ ...geometrySettings, thickness: value })}
-                            min={1}
-                            max={100}
-                            step={1}
-                            className="w-full"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-xs text-zinc-500">Bevel Size</Label>
-                            <span className="text-xs text-white font-mono">
-                              {geometrySettings.bevelSize.toFixed(1)}
-                            </span>
-                          </div>
-                          <Slider
-                            value={[geometrySettings.bevelSize]}
-                            onValueChange={([value]) => setGeometrySettings({ ...geometrySettings, bevelSize: value })}
-                            min={0}
-                            max={10}
-                            step={0.1}
-                            className="w-full"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-xs text-zinc-500">Bevel Segments</Label>
-                            <span className="text-xs text-white font-mono">{geometrySettings.bevelSegments}</span>
-                          </div>
-                          <Slider
-                            value={[geometrySettings.bevelSegments]}
-                            onValueChange={([value]) =>
-                              setGeometrySettings({ ...geometrySettings, bevelSegments: value })
-                            }
-                            min={1}
-                            max={20}
-                            step={1}
-                            className="w-full"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <Label className="text-xs text-zinc-500">Bevel Quality</Label>
-                            <span className="text-xs text-white font-mono">{geometrySettings.bevelQuality}</span>
-                          </div>
-                          <Slider
-                            value={[geometrySettings.bevelQuality]}
-                            onValueChange={([value]) =>
-                              setGeometrySettings({ ...geometrySettings, bevelQuality: value })
-                            }
-                            min={1}
-                            max={100}
-                            step={1}
-                            className="w-full"
-                          />
-                          <p className="text-xs text-zinc-500">Controls curve smoothness (polygon count)</p>
-                        </div>
-
-                        <div className="space-y-2 pt-2 border-t border-[#2a2a2a]/50">
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs text-zinc-500">Texture Scale</span>
-                            <span className="text-sm text-white font-mono tabular-nums">
-                              {geometrySettings.textureScale.toFixed(2)}
-                            </span>
-                          </div>
-                          <Slider
-                            value={[geometrySettings.textureScale]}
-                            onValueChange={([value]) =>
-                              setGeometrySettings({ ...geometrySettings, textureScale: value })
-                            }
-                            min={0.1}
-                            max={5}
-                            step={0.05}
-                            className=""
-                          />
-                          <p className="text-xs text-zinc-500">Adjusts texture tiling to fix stretching on bevels</p>
-                        </div>
-
-                        <div className="pt-4 space-y-4 border-t border-[#2a2a2a]/50">
-                          <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-neutral-800 border border-neutral-700">
-                            <div className="flex-1">
-                              <Label className="text-sm font-semibold text-neutral-100 block mb-1">
-                                Pottery Wheel Mode
-                              </Label>
-                              <p className="text-xs text-neutral-400">
-                                {geometrySettings.usePotteryMode
-                                  ? "Rotate profile around central axis"
-                                  : "Standard extrusion mode"}
-                              </p>
-                            </div>
-                            <Switch
-                              checked={geometrySettings.usePotteryMode}
-                              onCheckedChange={(checked) =>
-                                setGeometrySettings({ 
-                                  ...geometrySettings, 
-                                  usePotteryMode: checked,
-                                  // Disable inflate mode when enabling pottery (mutually exclusive)
-                                  useInflateMode: checked ? false : geometrySettings.useInflateMode
-                                })
-                              }
-                              className="data-[state=checked]:bg-amber-600"
-                            />
-                          </div>
-
-                          {geometrySettings.usePotteryMode && (
-                            <div className="space-y-3">
-                              <div className="space-y-2">
-                                <Label className="text-xs text-zinc-500">Axis</Label>
-                                <div className="grid grid-cols-3 gap-2">
-                                  {(['center', 'right', 'bottom'] as const).map((axis) => {
-                                    const axisLabels: Record<string, string> = {
-                                      center: 'Center',
-                                      right: 'Position 1',
-                                      bottom: 'Position 2',
-                                    }
-                                    return (
-                                      <button
-                                        key={axis}
-                                        onClick={() =>
-                                          setGeometrySettings({ ...geometrySettings, latheAxis: axis })
-                                        }
-                                        className={`py-2 px-2 rounded text-xs font-medium transition-colors ${
-                                          geometrySettings.latheAxis === axis
-                                            ? 'bg-amber-600 text-white'
-                                            : 'bg-neutral-700 text-zinc-400 hover:bg-neutral-600'
-                                        }`}
-                                      >
-                                        {axisLabels[axis]}
-                                      </button>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                              <div className="flex items-center justify-between">
-                                <Label className="text-xs text-zinc-500">Bevel Segments</Label>
-                                <span className="text-xs text-white font-mono">{geometrySettings.latheSegments}</span>
-                              </div>
-                              <Slider
-                                value={[geometrySettings.latheSegments]}
-                                onValueChange={([value]) =>
-                                  setGeometrySettings({ ...geometrySettings, latheSegments: value })
-                                }
-                                min={16}
-                                max={64}
-                                step={4}
-                                className="w-full"
-                              />
-                              <p className="text-xs text-zinc-500">Controls smoothness around the rotation axis (16-64 recommended)</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="material">
-                <div className="space-y-4 px-4">
-                  {/* Material Type Tabs */}
-                  <Tabs value={materialTypeTab} onValueChange={setMaterialTypeTab} className="w-full">
-                  <TabsList className="flex w-full bg-transparent p-0 gap-1 mb-4 border-b border-[#2a2a2a]">
-                    <TabsTrigger
-                      value="pbr"
-                      className="text-zinc-500 text-xs py-2 px-3 rounded-t-lg data-[state=active]:bg-[#2d2d2d] data-[state=active]:text-white hover:text-zinc-300 transition-colors"
-                    >
-                      PBR
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="custom"
-                      className="text-zinc-500 text-xs py-2 px-3 rounded-t-lg data-[state=active]:bg-[#2d2d2d] data-[state=active]:text-white hover:text-zinc-300 transition-colors"
-                    >
-                      Custom (PBR)
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="gradient"
-                      className="text-zinc-500 text-xs py-2 px-3 rounded-t-lg data-[state=active]:bg-[#2d2d2d] data-[state=active]:text-white hover:text-zinc-300 transition-colors"
-                    >
-                      Gradient
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="matcap"
-                      className="text-zinc-500 text-xs py-2 px-3 rounded-t-lg data-[state=active]:bg-[#2d2d2d] data-[state=active]:text-white hover:text-zinc-300 transition-colors"
-                    >
-                      Matcap
-                    </TabsTrigger>
-                  </TabsList>
-
-                  {/* PBR Tab */}
-                  <TabsContent value="pbr">
-                    {/* MaterialPreset Selector */}
-                    <div className="rounded-lg overflow-hidden">
-                      <div className="pb-4 space-y-3">
-                        <Label className="text-xs text-zinc-500 pt-3 block">Material Presets</Label>
-                        <div className="grid grid-cols-4 gap-2">
-                          {Object.entries(MATERIAL_PRESETS).map(([key, preset]) => (
-                            <MaterialPreview
-                              key={key}
-                              baseColorUrl={preset.baseColor || "/placeholder.svg"}
-                              isSelected={selectedPreset === key}
-                              onClick={() => handlePresetChange(key)}
-                              name={preset.name}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </TabsContent>
-
-                  {/* Custom PBR Tab */}
-                  <TabsContent value="custom">
-                    <div className="space-y-4 pt-2">
-                      {/* Base Color - Simple Colors */}
-                      <div className="space-y-2">
-                        <Label className="text-xs text-zinc-500">Base Color</Label>
-                        <div className="grid grid-cols-4 gap-2">
-                          {CUSTOM_COLORS.map((c) => (
-                            <button
-                              key={c.id}
-                              onClick={() => setCustomMaterial(prev => ({ ...prev, baseColor: c.color }))}
-                              className={`aspect-square rounded-lg transition-all hover:scale-105 ${
-                                customMaterial.baseColor === c.color
-                                  ? "ring-2 ring-[#00b8c4]"
-                                  : "ring-1 ring-[#3a3a3a]"
-                              }`}
-                              style={{ backgroundColor: c.color }}
-                              title={c.name}
-                            />
-                          ))}
-                        </div>
-                        {/* Custom color picker */}
-                        <div className="flex items-center gap-2 pt-1">
-                          <input
-                            type="color"
-                            value={customMaterial.baseColor}
-                            onChange={(e) => setCustomMaterial(prev => ({ ...prev, baseColor: e.target.value }))}
-                            className="w-8 h-8 rounded cursor-pointer bg-transparent border border-[#3a3a3a]"
-                          />
-                          <span className="text-xs text-zinc-500">Custom color</span>
-                          <span className="text-xs text-zinc-400 font-mono ml-auto">{customMaterial.baseColor}</span>
-                        </div>
-                      </div>
-
-                      {/* Normal Map Texture */}
-                      <div className="space-y-2">
-                        <Label className="text-xs text-zinc-500">Normal Map</Label>
-                        <div className="grid grid-cols-4 gap-2">
-                          {CUSTOM_TEXTURES.normal.map((tex) => (
-                            <button
-                              key={tex.id}
-                              onClick={() => setCustomMaterial(prev => ({ ...prev, normal: tex.url }))}
-                              className={`aspect-square rounded-lg overflow-hidden transition-all hover:scale-105 ${
-                                customMaterial.normal === tex.url
-                                  ? "ring-2 ring-[#00b8c4]"
-                                  : "ring-1 ring-[#3a3a3a]"
-                              }`}
-                              title={tex.name}
-                            >
-                              <img src={tex.url || "/placeholder.svg"} alt={tex.name} className="w-full h-full object-cover" />
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Roughness Texture */}
-                      <div className="space-y-2">
-                        <Label className="text-xs text-zinc-500">Roughness</Label>
-                        <div className="grid grid-cols-4 gap-2">
-                          {CUSTOM_TEXTURES.roughness.map((tex) => (
-                            <button
-                              key={tex.id}
-                              onClick={() => setCustomMaterial(prev => ({ ...prev, roughness: tex.url }))}
-                              className={`aspect-square rounded-lg overflow-hidden transition-all hover:scale-105 ${
-                                customMaterial.roughness === tex.url
-                                  ? "ring-2 ring-[#00b8c4]"
-                                  : "ring-1 ring-[#3a3a3a]"
-                              }`}
-                              title={tex.name}
-                            >
-                              <img src={tex.url || "/placeholder.svg"} alt={tex.name} className="w-full h-full object-cover" />
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Metalness Texture */}
-                      <div className="space-y-2">
-                        <Label className="text-xs text-zinc-500">Metalness</Label>
-                        <div className="grid grid-cols-4 gap-2">
-                          {CUSTOM_TEXTURES.metalness.map((tex) => (
-                            <button
-                              key={tex.id}
-                              onClick={() => setCustomMaterial(prev => ({ ...prev, metalness: tex.url }))}
-                              className={`aspect-square rounded-lg overflow-hidden transition-all hover:scale-105 ${
-                                customMaterial.metalness === tex.url
-                                  ? "ring-2 ring-[#00b8c4]"
-                                  : "ring-1 ring-[#3a3a3a]"
-                              }`}
-                              title={tex.name}
-                            >
-                              <img src={tex.url || "/placeholder.svg"} alt={tex.name} className="w-full h-full object-cover" />
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </TabsContent>
-
-                  {/* Gradient Tab */}
-                  <TabsContent value="gradient">
-                    <div className="space-y-4 pt-2">
-                    <div className="space-y-2">
-                      <Label className="text-xs text-zinc-500">Gradient Type</Label>
-                      <Select value={gradientSettings.type} onValueChange={(value) => setGradientSettings(prev => ({ ...prev, type: value as "radial" | "linear" }))}>
-                        <SelectTrigger className="bg-[#2a2a2a] border-[#3a3a3a]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="bg-[#2a2a2a] border-[#3a3a3a]">
-                          <SelectItem value="radial">Radial</SelectItem>
-                          <SelectItem value="linear">Linear</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-xs text-zinc-500">Primary Color</Label>
-                      <div className="flex gap-2">
-                        <input
-                          type="color"
-                          value={gradientSettings.color1}
-                          onChange={(e) => setGradientSettings(prev => ({ ...prev, color1: e.target.value }))}
-                          className="w-10 h-10 rounded cursor-pointer bg-transparent border border-[#3a3a3a]"
-                        />
-                        <span className="text-xs text-zinc-400 flex items-center">{gradientSettings.color1}</span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-xs text-zinc-500">Secondary Color</Label>
-                      <div className="flex gap-2">
-                        <input
-                          type="color"
-                          value={gradientSettings.color2}
-                          onChange={(e) => setGradientSettings(prev => ({ ...prev, color2: e.target.value }))}
-                          className="w-10 h-10 rounded cursor-pointer bg-transparent border border-[#3a3a3a]"
-                        />
-                        <span className="text-xs text-zinc-400 flex items-center">{gradientSettings.color2}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        checked={gradientSettings.useThreeColors}
-                        onCheckedChange={(checked) => setGradientSettings(prev => ({ ...prev, useThreeColors: checked }))}
-                      />
-                      <Label className="text-xs text-zinc-500">Use 3 Colors</Label>
-                    </div>
-
-                    {gradientSettings.useThreeColors && (
-                      <div className="space-y-2">
-                        <Label className="text-xs text-zinc-500">Tertiary Color</Label>
-                        <div className="flex gap-2">
-                          <input
-                            type="color"
-                            value={gradientSettings.color3}
-                            onChange={(e) => setGradientSettings(prev => ({ ...prev, color3: e.target.value }))}
-                            className="w-10 h-10 rounded cursor-pointer bg-transparent border border-[#3a3a3a]"
-                          />
-                          <span className="text-xs text-zinc-400 flex items-center">{gradientSettings.color3}</span>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="space-y-2">
-                      <Label className="text-xs text-zinc-500">Intensity: {gradientSettings.intensity.toFixed(2)}</Label>
-                      <Slider
-                        value={[gradientSettings.intensity]}
-                        onValueChange={(value) => setGradientSettings(prev => ({ ...prev, intensity: value[0] }))}
-                        min={0}
-                        max={2}
-                        step={0.1}
-                        className="w-full"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-xs text-zinc-500">Distortion: {gradientSettings.distortion.toFixed(2)}</Label>
-                      <Slider
-                        value={[gradientSettings.distortion]}
-                        onValueChange={(value) => setGradientSettings(prev => ({ ...prev, distortion: value[0] }))}
-                        min={0}
-                        max={1}
-                        step={0.1}
-                        className="w-full"
-                      />
-                    </div>
-
-                    {gradientSettings.type === "linear" && (
-                      <div className="space-y-2">
-                        <Label className="text-xs text-zinc-500">Angle: {(gradientSettings.angle ? gradientSettings.angle * 180 / Math.PI : 0).toFixed(0)}°</Label>
-                        <Slider
-                          value={[gradientSettings.angle || 0]}
-                          onValueChange={(value) => setGradientSettings(prev => ({ ...prev, angle: value[0] }))}
-                          min={0}
-                          max={Math.PI * 2}
-                          step={0.1}
-                          className="w-full"
-                        />
-                      </div>
-                    )}
-
-                    <div className="space-y-2">
-                      <Label className="text-xs text-zinc-500">Noise: {(gradientSettings.noise || 0).toFixed(2)}</Label>
-                      <Slider
-                        value={[gradientSettings.noise || 0]}
-                        onValueChange={(value) => setGradientSettings(prev => ({ ...prev, noise: value[0] }))}
-                        min={0}
-                        max={2}
-                        step={0.1}
-                        className="w-full"
-                      />
-                    </div>
-                    </div>
-                </TabsContent>
-
-                {/* Matcap Tab */}
-                <TabsContent value="matcap">
-                    <div className="space-y-4 pt-2">
-                      <div className="rounded-lg overflow-hidden">
-                        <div className="p-4">
-                          <h3 className="text-sm font-medium text-white mb-3">Matcap Materials</h3>
-                          <div className="grid grid-cols-4 gap-2">
-                            {Object.entries(MATCAP_PRESETS).map(([key, preset]) => (
-                              <MatcapPreview
-                                key={key}
-                                matcapUrl={preset.matcap}
-                                isSelected={selectedMatcap === key}
-                                onClick={() => {
-                                  setSelectedMatcap(key)
-                                  setMatcapTexture(preset.matcap)
-                                  setRenderMode("matcap")
-                                }}
-                                name={preset.name}
-                              />
-                            ))}
-                          </div>
-                          {selectedMatcap && (
-                            <div className="mt-3 pt-3 border-t border-[#2a2a2a]">
-                              <p className="text-xs text-zinc-500">{MATCAP_PRESETS[selectedMatcap]?.name || "Unknown"}</p>
-                              <p className="text-xs text-zinc-600 mt-0.5">Selected material</p>
-
-                              <div className="mt-4 space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <Label className="text-xs text-zinc-500 uppercase tracking-wider">Hue Shift</Label>
-                                  <span className="text-xs text-zinc-500 font-mono">{matcapHueShift}°</span>
-                                </div>
-                                <Slider
-                                  value={[matcapHueShift]}
-                                  onValueChange={(value) => setMatcapHueShift(value[0])}
-                                  min={0}
-                                  max={360}
-                                  step={1}
-                                  className="w-full"
-                                />
-                                <p className="text-[10px] text-zinc-600 mt-1">Shift the color hue of the matcap material</p>
-                              </div>
-
-                              <div className="mt-4 pt-4 border-t border-[#2a2a2a]">
-                                <Label className="text-xs text-zinc-500 uppercase tracking-wider">Normal Map</Label>
-                                <div className="grid grid-cols-4 gap-2 mt-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => setMatcapSettings({ ...matcapSettings, normalMap: "" })}
-                                    className={`aspect-square rounded-lg border-2 transition-all flex items-center justify-center text-[10px] text-zinc-500 ${
-                                      matcapSettings.normalMap === ""
-                                        ? "border-cyan-500 bg-cyan-500/10"
-                                        : "border-[#3a3a3a] hover:border-zinc-600"
-                                    }`}
-                                  >
-                                    None
-                                  </button>
-                                  {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-                                    <button
-                                      key={i}
-                                      type="button"
-                                      onClick={() =>
-                                        setMatcapSettings({
-                                          ...matcapSettings,
-                                          normalMap: `/images/custom/normal-${i}.jpg`,
-                                        })
-                                      }
-                                      className={`aspect-square rounded-lg border-2 transition-all overflow-hidden ${
-                                        matcapSettings.normalMap === `/images/custom/normal-${i}.jpg`
-                                          ? "border-cyan-500"
-                                          : "border-[#3a3a3a] hover:border-zinc-600"
-                                      }`}
-                                    >
-                                      <img
-                                        src={`/images/custom/normal-${i}.jpg`}
-                                        alt={`Normal ${i}`}
-                                        className="w-full h-full object-cover"
-                                      />
-                                    </button>
-                                  ))}
-                                </div>
-
-                                {matcapSettings.normalMap && (
-                                  <div className="mt-3 space-y-3">
-                                    <div>
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-[10px] text-zinc-600">Intensity</span>
-                                        <span className="text-xs text-zinc-500 font-mono">
-                                          {matcapSettings.normalIntensity.toFixed(2)}
-                                        </span>
-                                      </div>
-                                      <Slider
-                                        value={[matcapSettings.normalIntensity]}
-                                        onValueChange={([value]) =>
-                                          setMatcapSettings({ ...matcapSettings, normalIntensity: value })
-                                        }
-                                        min={0}
-                                        max={3}
-                                        step={0.05}
-                                        className="w-full"
-                                      />
-                                    </div>
-
-                                    <div>
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-[10px] text-zinc-600">Repeat</span>
-                                        <span className="text-xs text-zinc-500 font-mono">
-                                          {matcapSettings.normalRepeat.toFixed(1)}
-                                        </span>
-                                      </div>
-                                      <Slider
-                                        value={[matcapSettings.normalRepeat]}
-                                        onValueChange={([value]) =>
-                                          setMatcapSettings({ ...matcapSettings, normalRepeat: value })
-                                        }
-                                        min={0.5}
-                                        max={10}
-                                        step={0.5}
-                                        className="w-full"
-                                      />
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="mt-4 pt-4 border-t border-[#2a2a2a]">
-                                <Label className="text-xs text-zinc-500 uppercase tracking-wider">Rim Lighting</Label>
-
-                                <div className="mt-2 space-y-3">
-                                  <div>
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-[10px] text-zinc-600">Color</span>
-                                      <input
-                                        type="color"
-                                        value={matcapSettings.rimColor}
-                                        onChange={(e) =>
-                                          setMatcapSettings({ ...matcapSettings, rimColor: e.target.value })
-                                        }
-                                        className="w-12 h-6 rounded border border-[#3a3a3a] cursor-pointer bg-transparent"
-                                      />
-                                    </div>
-                                  </div>
-
-                                  <div>
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-[10px] text-zinc-600">Intensity</span>
-                                      <span className="text-xs text-zinc-500 font-mono">
-                                        {matcapSettings.rimIntensity.toFixed(2)}
-                                      </span>
-                                    </div>
-                                    <Slider
-                                      value={[matcapSettings.rimIntensity]}
-                                      onValueChange={([value]) =>
-                                        setMatcapSettings({ ...matcapSettings, rimIntensity: value })
-                                      }
-                                      min={0}
-                                      max={2}
-                                      step={0.05}
-                                      className="w-full"
-                                    />
-                                  </div>
-
-                                  <div>
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-[10px] text-zinc-600">Power</span>
-                                      <span className="text-xs text-zinc-500 font-mono">
-                                        {matcapSettings.rimPower.toFixed(1)}
-                                      </span>
-                                    </div>
-                                    <Slider
-                                      value={[matcapSettings.rimPower]}
-                                      onValueChange={([value]) =>
-                                        setMatcapSettings({ ...matcapSettings, rimPower: value })
-                                      }
-                                      min={1}
-                                      max={10}
-                                      step={0.5}
-                                      className="w-full"
-                                    />
-                                  </div>
-                                </div>
-                                <p className="text-[10px] text-zinc-600 mt-2">
-                                  Edge glow effect for enhanced depth
-                                </p>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                </TabsContent>
-              </Tabs>
-
-                {/* PBR-specific settings - only show in PBR and Custom tabs */}
-                {(materialTypeTab === "pbr" || materialTypeTab === "custom") && (
-                  <>
-                    {/* Base Color Section - Only show for non-glass materials */}
-                    {materialSettings.transmission === 0 && (
-                  <Collapsible key="base-color-collapsible" defaultOpen className="rounded-lg">
-                    <div className="flex items-center justify-between p-3 hover:bg-[#252525] transition-colors rounded-lg bg-[#222222]">
-                      <CollapsibleTrigger asChild>
-                        <button type="button" className="flex-1 flex items-center justify-between text-left">
-                          <Label className="text-sm font-medium text-white cursor-pointer">Base Color</Label>
-                          <ChevronDown className="w-4 h-4 text-zinc-500 transition-transform duration-200 [[data-state=open]_&]:rotate-180" />
-                        </button>
-                      </CollapsibleTrigger>
-                      <Switch
-                        checked={materialSettings.useHueShift}
-                        onCheckedChange={(checked) =>
-                          setMaterialSettings({ ...materialSettings, useHueShift: checked })
-                        }
-                        className="ml-3"
-                      />
-                    </div>
-                    <CollapsibleContent className="px-4 pb-4 space-y-3">
-                      {materialSettings.useHueShift ? (
-                        <>
-                          {/* Hue Shift Mode */}
-                          <div className="flex justify-between items-center pt-3">
-                            <span className="text-xs text-zinc-500">Hue Shift</span>
-                            <span className="text-sm text-white font-mono tabular-nums">
-                              {materialSettings.hueShift.toFixed(0)}°
-                            </span>
-                          </div>
-                          <Slider
-                            value={[materialSettings.hueShift]}
-                            onValueChange={([value]) => setMaterialSettings({ ...materialSettings, hueShift: value })}
-                            min={0}
-                            max={360}
-                            step={1}
-                            className=""
-                          />
-                          <div className="flex items-center gap-2 pt-2">
-                            <span className="text-xs text-zinc-500">Preview</span>
-                            <div
-                              className="flex-1 h-6 rounded border border-[#3a3a3a]"
-                              style={{
-                                background: `linear-gradient(to right,
-                                  hsl(${materialSettings.hueShift}, 70%, 50%),
-                                  hsl(${(materialSettings.hueShift + 30) % 360}, 70%, 50%))`,
-                              }}
-                            />
-                          </div>
-                          <p className="text-xs text-zinc-500 pt-1">Shifts texture colors by rotating the hue</p>
-                        </>
-                      ) : (
-                        <>
-                          {/* Color Tint Mode */}
-                          <div className="flex justify-between items-center pt-3">
-                            <span className="text-xs text-zinc-500">Color Tint</span>
-                            <div className="flex items-center gap-2">
-                              <div
-                                className="w-6 h-6 rounded border border-[#3a3a3a]"
-                                style={{ backgroundColor: materialSettings.colorTint }}
-                              />
-                              <span className="text-sm text-white font-mono tabular-nums">
-                                {materialSettings.colorTint}
-                              </span>
-                            </div>
-                          </div>
-                          <input
-                            type="color"
-                            value={materialSettings.colorTint}
-                            onChange={(e) => setMaterialSettings({ ...materialSettings, colorTint: e.target.value })}
-                            className="w-full h-10 rounded cursor-pointer bg-transparent"
-                          />
-                          <p className="text-xs text-zinc-500 pt-1">
-                            Enable toggle above for texture-based hue shifting
-                          </p>
-                        </>
-                      )}
-                    </CollapsibleContent>
-                  </Collapsible>
-                )}
-
-                {/* Normal Scale */}
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-zinc-500">Normal Scale</span>
-                    <span className="text-sm text-white font-mono tabular-nums">
-                      {materialSettings.normalScale.toFixed(1)}
-                    </span>
-                  </div>
-                  <Slider
-                    value={[materialSettings.normalScale]}
-                    onValueChange={([value]) => setMaterialSettings({ ...materialSettings, normalScale: value })}
-                    min={0}
-                    max={3}
-                    step={0.1}
-                    className=""
-                  />
-                </div>
-
-                {/* Roughness */}
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-zinc-500">Roughness</span>
-                    <span className="text-sm text-white font-mono tabular-nums">
-                      {materialSettings.roughness.toFixed(2)}
-                    </span>
-                  </div>
-                  <Slider
-                    value={[materialSettings.roughness]}
-                    onValueChange={([value]) => setMaterialSettings({ ...materialSettings, roughness: value })}
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    className=""
-                  />
-                </div>
-
-                {/* Displacement - Only show for sphere mode */}
-                {geometrySettings.type === "sphere" && (
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-zinc-500">Displacement Scale</span>
-                      <span className="text-sm text-white font-mono tabular-nums">
-                        {materialSettings.displacementScale.toFixed(2)}
-                      </span>
-                    </div>
-                    <Slider
-                      value={[materialSettings.displacementScale]}
-                      onValueChange={([value]) =>
-                        setMaterialSettings({ ...materialSettings, displacementScale: value })
-                      }
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      className=""
-                    />
-                  </div>
-                )}
-
-                {/* Metalness */}
-                {selectedPreset !== "dirtyGlass" && selectedPreset !== "scratchedGlass" && (
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-zinc-500">Metalness</span>
-                      <span className="text-sm text-white font-mono tabular-nums">
-                        {materialSettings.metalness.toFixed(2)}
-                      </span>
-                    </div>
-                    <Slider
-                      value={[materialSettings.metalness]}
-                      onValueChange={([value]) => setMaterialSettings({ ...materialSettings, metalness: value })}
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      className=""
-                    />
-                  </div>
-                )}
-
-                {/* Texture Scale */}
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-zinc-500">Texture Scale</span>
-                    <span className="text-sm text-white font-mono tabular-nums">
-                      {materialSettings.textureScale.toFixed(2)}
-                    </span>
-                  </div>
-                  <Slider
-                    value={[materialSettings.textureScale]}
-                    onValueChange={([value]) => setMaterialSettings({ ...materialSettings, textureScale: value })}
-                    min={0.1}
-                    max={10}
-                    step={0.1}
-                    className=""
-                  />
-                  <p className="text-xs text-zinc-500">
-                    Controls the tiling of textures
-                  </p>
-                </div>
-
-                  {(selectedPreset === "dirtyGlass" || selectedPreset === "scratchedGlass" || selectedPreset === "clearGlass") && (
-                    <>
-                      {/* Transmission */}
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs text-zinc-500">Transmission</span>
-                          <span className="text-sm text-white font-mono tabular-nums">
-                            {materialSettings.transmission.toFixed(2)}
-                          </span>
-                        </div>
-                        <Slider
-                          value={[materialSettings.transmission]}
-                          onValueChange={([value]) =>
-                            setMaterialSettings({ ...materialSettings, transmission: value })
-                          }
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          className=""
-                        />
-                      </div>
-
-                      {/* IOR (Index of Refraction) */}
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs text-zinc-500">IOR</span>
-                          <span className="text-sm text-white font-mono tabular-nums">
-                            {materialSettings.ior.toFixed(2)}
-                          </span>
-                        </div>
-                        <Slider
-                          value={[materialSettings.ior]}
-                          onValueChange={([value]) => setMaterialSettings({ ...materialSettings, ior: value })}
-                          min={1}
-                          max={2.5}
-                          step={0.01}
-                          className=""
-                        />
-                      </div>
-
-                      {/* Thickness */}
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs text-zinc-500">Thickness</span>
-                          <span className="text-sm text-white font-mono tabular-nums">
-                            {materialSettings.thickness.toFixed(1)}
-                          </span>
-                        </div>
-                        <Slider
-                          value={[materialSettings.thickness]}
-                          onValueChange={([value]) => setMaterialSettings({ ...materialSettings, thickness: value })}
-                          min={0}
-                          max={10}
-                          step={0.1}
-                          className=""
-                        />
-                      </div>
-
-                      {/* Clearcoat */}
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs text-zinc-500">Clearcoat</span>
-                          <span className="text-sm text-white font-mono tabular-nums">
-                            {materialSettings.clearcoat.toFixed(2)}
-                          </span>
-                        </div>
-                        <Slider
-                          value={[materialSettings.clearcoat]}
-                          onValueChange={([value]) => setMaterialSettings({ ...materialSettings, clearcoat: value })}
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          className=""
-                        />
-                      </div>
-
-                      {/* Clearcoat Roughness */}
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs text-zinc-500">Clearcoat Roughness</span>
-                          <span className="text-sm text-white font-mono tabular-nums">
-                            {materialSettings.clearcoatRoughness.toFixed(2)}
-                          </span>
-                        </div>
-                        <Slider
-                          value={[materialSettings.clearcoatRoughness]}
-                          onValueChange={([value]) => setMaterialSettings({ ...materialSettings, clearcoatRoughness: value })}
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          className=""
-                        />
-                      </div>
-
-                      {/* Attenuation (Light Absorption) */}
-                      <div className="rounded-lg overflow-hidden">
-                        <div className="p-4">
-                          <Label className="text-sm font-medium text-white">Attenuation</Label>
-                          <div className="mt-3 space-y-4">
-                            <div className="space-y-2">
-                              <div className="flex justify-between items-center">
-                                <span className="text-xs text-zinc-500">Distance</span>
-                                <span className="text-sm text-white font-mono tabular-nums">
-                                  {materialSettings.attenuationDistance.toFixed(1)}
-                                </span>
-                              </div>
-                              <Slider
-                                value={[materialSettings.attenuationDistance]}
-                                onValueChange={([value]) =>
-                                  setMaterialSettings({ ...materialSettings, attenuationDistance: value })
-                                }
-                                min={0.1}
-                                max={10}
-                                step={0.1}
-                                className=""
-                              />
-                              <p className="text-xs text-zinc-500">
-                                How far light travels before absorbing (higher = clearer)
-                              </p>
-                            </div>
-
-                            <div className="space-y-2">
-                              <div className="flex justify-between items-center">
-                                <span className="text-xs text-zinc-500">Tint Color</span>
-                                <div className="flex items-center gap-2">
-                                  <div
-                                    className="w-6 h-6 rounded border border-[#3a3a3a]"
-                                    style={{ backgroundColor: materialSettings.attenuationColor }}
-                                  />
-                                  <span className="text-sm text-white font-mono tabular-nums">
-                                    {materialSettings.attenuationColor}
-                                  </span>
-                                </div>
-                              </div>
-                              <input
-                                type="color"
-                                value={materialSettings.attenuationColor}
-                                onChange={(e) =>
-                                  setMaterialSettings({ ...materialSettings, attenuationColor: e.target.value })
-                                }
-                                className="w-full h-10 rounded cursor-pointer bg-transparent"
-                              />
-                              <p className="text-xs text-zinc-500">Color tint as light passes through glass</p>
-                            </div>
-
-                            <div className="space-y-2">
-                              <div className="flex justify-between items-center">
-                                <span className="text-xs text-zinc-500">Thickness</span>
-                                <span className="text-sm text-white font-mono tabular-nums">
-                                  {materialSettings.thickness.toFixed(2)}
-                                </span>
-                              </div>
-                              <Slider
-                                value={[materialSettings.thickness]}
-                                onValueChange={([value]) =>
-                                  setMaterialSettings({ ...materialSettings, thickness: value })
-                                }
-                                min={0}
-                                max={5}
-                                step={0.01}
-                                className=""
-                              />
-                              <p className="text-xs text-zinc-500">Simulated volume depth for light absorption</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="rounded-lg overflow-hidden">
-                        <div className="p-4">
-                          <Label className="text-sm font-medium text-white">Clearcoat</Label>
-                          <p className="text-xs text-zinc-500 mt-1 mb-3">
-                            Outer glossy layer - improves rendering on complex shapes
-                          </p>
-                          <div className="space-y-4">
-                            <div className="space-y-2">
-                              <div className="flex justify-between items-center">
-                                <span className="text-xs text-zinc-500">Intensity</span>
-                                <span className="text-sm text-white font-mono tabular-nums">
-                                  {materialSettings.clearcoat.toFixed(2)}
-                                </span>
-                              </div>
-                              <Slider
-                                value={[materialSettings.clearcoat]}
-                                onValueChange={([value]) =>
-                                  setMaterialSettings({ ...materialSettings, clearcoat: value })
-                                }
-                                min={0}
-                                max={1}
-                                step={0.01}
-                                className=""
-                              />
-                            </div>
-
-                            <div className="space-y-2">
-                              <div className="flex justify-between items-center">
-                                <span className="text-xs text-zinc-500">Roughness</span>
-                                <span className="text-sm text-white font-mono tabular-nums">
-                                  {materialSettings.clearcoatRoughness.toFixed(2)}
-                                </span>
-                              </div>
-                              <Slider
-                                value={[materialSettings.clearcoatRoughness]}
-                                onValueChange={([value]) =>
-                                  setMaterialSettings({ ...materialSettings, clearcoatRoughness: value })
-                                }
-                                min={0}
-                                max={1}
-                                step={0.01}
-                                className=""
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="rounded-lg overflow-hidden">
-                        <div className="p-4">
-                          <Label className="text-sm font-medium text-white">Glass Color</Label>
-                          <p className="text-xs text-zinc-500 mt-1 mb-3">Add color tint to the glass surface</p>
-                          <div className="space-y-4">
-                            <div className="space-y-2">
-                              <div className="flex justify-between items-center">
-                                <span className="text-xs text-zinc-500">Intensity</span>
-                                <span className="text-sm text-white font-mono tabular-nums">
-                                  {materialSettings.glassColorIntensity.toFixed(2)}
-                                </span>
-                              </div>
-                              <Slider
-                                value={[materialSettings.glassColorIntensity]}
-                                onValueChange={([value]) =>
-                                  setMaterialSettings({ ...materialSettings, glassColorIntensity: value })
-                                }
-                                min={0}
-                                max={1}
-                                step={0.01}
-                                className=""
-                              />
-                            </div>
-
-                            {materialSettings.glassColorIntensity > 0 && (
-                              <div className="space-y-2">
-                                <div className="flex justify-between items-center">
-                                  <span className="text-xs text-zinc-500">Color</span>
-                                  <div className="flex items-center gap-2">
-                                    <div
-                                      className="w-6 h-6 rounded border border-[#3a3a3a]"
-                                      style={{ backgroundColor: materialSettings.glassColor }}
-                                    />
-                                    <span className="text-sm text-white font-mono tabular-nums">
-                                      {materialSettings.glassColor}
-                                    </span>
-                                  </div>
-                                </div>
-                                <input
-                                  type="color"
-                                  value={materialSettings.glassColor}
-                                  onChange={(e) =>
-                                    setMaterialSettings({ ...materialSettings, glassColor: e.target.value })
-                                  }
-                                  className="w-full h-10 rounded cursor-pointer bg-transparent"
-                                />
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="rounded-lg overflow-hidden">
-                        <div className="p-4">
-                          <Label className="text-sm font-medium text-white">Iridescence</Label>
-                          <p className="text-xs text-zinc-500 mt-1 mb-3">
-                            Rainbow thin-film effect like soap bubbles or oil on water
-                          </p>
-                          <div className="space-y-4">
-                            <div className="space-y-2">
-                              <div className="flex justify-between items-center">
-                                <span className="text-xs text-zinc-500">Intensity</span>
-                                <span className="text-sm text-white font-mono tabular-nums">
-                                  {materialSettings.iridescence.toFixed(2)}
-                                </span>
-                              </div>
-                              <Slider
-                                value={[materialSettings.iridescence]}
-                                onValueChange={([value]) =>
-                                  setMaterialSettings({ ...materialSettings, iridescence: value })
-                                }
-                                min={0}
-                                max={1}
-                                step={0.01}
-                                className=""
-                              />
-                            </div>
-
-                            {materialSettings.iridescence > 0 && (
-                              <>
-                                <div className="space-y-2">
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-xs text-zinc-500">IOR</span>
-                                    <span className="text-sm text-white font-mono tabular-nums">
-                                      {materialSettings.iridescenceIOR.toFixed(2)}
-                                    </span>
-                                  </div>
-                                  <Slider
-                                    value={[materialSettings.iridescenceIOR]}
-                                    onValueChange={([value]) =>
-                                      setMaterialSettings({ ...materialSettings, iridescenceIOR: value })
-                                    }
-                                    min={1}
-                                    max={2.5}
-                                    step={0.01}
-                                    className=""
-                                  />
-                                  <p className="text-xs text-zinc-500">Refraction index of thin film layer</p>
-                                </div>
-
-                                <div className="space-y-2">
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-xs text-zinc-500">Film Thickness Min</span>
-                                    <span className="text-sm text-white font-mono tabular-nums">
-                                      {materialSettings.iridescenceThicknessMin.toFixed(0)}nm
-                                    </span>
-                                  </div>
-                                  <Slider
-                                    value={[materialSettings.iridescenceThicknessMin]}
-                                    onValueChange={([value]) =>
-                                      setMaterialSettings({ ...materialSettings, iridescenceThicknessMin: value })
-                                    }
-                                    min={0}
-                                    max={800}
-                                    step={10}
-                                    className=""
-                                  />
-                                </div>
-
-                                <div className="space-y-2">
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-xs text-zinc-500">Film Thickness Max</span>
-                                    <span className="text-sm text-white font-mono tabular-nums">
-                                      {materialSettings.iridescenceThicknessMax.toFixed(0)}nm
-                                    </span>
-                                  </div>
-                                  <Slider
-                                    value={[materialSettings.iridescenceThicknessMax]}
-                                    onValueChange={([value]) =>
-                                      setMaterialSettings({ ...materialSettings, iridescenceThicknessMax: value })
-                                    }
-                                    min={0}
-                                    max={1200}
-                                    step={10}
-                                    className=""
-                                  />
-                                  <p className="text-xs text-zinc-500">
-                                    Thickness variation creates different rainbow patterns
-                                  </p>
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                  </>
-                )}
-                </div>
-              </TabsContent>
-
-              <TabsContent value="lighting">
-              {renderMode === "pbr" ? (
-                <div className="space-y-4 px-4">
-                  {/* Warning banner for incompatible materials */}
-                  {(materialTypeTab === "gradient" || materialTypeTab === "matcap") && (
-                    <div className="border rounded-lg p-3 flex gap-3 bg-zinc-800 border-zinc-700">
-                      <Info className="w-5 h-5 flex-shrink-0 mt-0.5 text-white" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-slate-50">
-                          PBR Lighting disabled
-                        </p>
-                        <p className="text-xs mt-1 text-neutral-600">
-                          {materialTypeTab === "gradient" 
-                            ? "Gradient materials use their own shading and don't support PBR lighting."
-                            : "Matcap materials use baked lighting and don't support PBR lighting."}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                  <div className="rounded-lg overflow-hidden">
-                    <div className="p-4">
-                      <div className="flex justify-between items-center mb-3">
-                        <Label className="text-xs text-zinc-500">Light Direction</Label>
-                        <span className="text-sm text-white font-mono tabular-nums">
-                          {Math.round((lightingSettings.envRotation * 180) / Math.PI)}°
-                        </span>
-                      </div>
-                      <LightRotationControl
-                        value={lightingSettings.envRotation}
-                        onChange={(value) => setLightingSettings({ ...lightingSettings, envRotation: value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg overflow-hidden">
-                    <button
-                      onClick={() => toggleSection("lights")}
-                      className="w-full flex items-center justify-between p-4 hover:bg-[#2a2a2a]/50 transition-colors"
-                    >
-                      <Label className="text-sm font-medium text-white cursor-pointer">Primary Light</Label>
-                      <ChevronDown
-                        className={`w-4 h-4 text-zinc-500 transition-transform ${openSections.lights ? "rotate-180" : ""}`}
-                      />
-                    </button>
-                    {openSections.lights && (
-                      <div className="px-4 pb-4 space-y-4 border-t border-[#2a2a2a]/50 pt-3">
-                        {/* Intensity */}
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs text-zinc-500">Intensity</span>
-                            <span className="text-sm text-white font-mono tabular-nums">
-                              {lightingSettings.directionalIntensity.toFixed(2)}
-                            </span>
-                          </div>
-                          <Slider
-                            value={[lightingSettings.directionalIntensity]}
-                            onValueChange={([value]) =>
-                              setLightingSettings({ ...lightingSettings, directionalIntensity: value })
-                            }
-                            min={0}
-                            max={5}
-                            step={0.1}
-                            className=""
-                          />
-                        </div>
-
-                        {/* Ambient Light */}
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs text-zinc-500">Ambient Fill</span>
-                            <span className="text-sm text-white font-mono tabular-nums">
-                              {lightingSettings.ambientIntensity.toFixed(2)}
-                            </span>
-                          </div>
-                          <Slider
-                            value={[lightingSettings.ambientIntensity]}
-                            onValueChange={([value]) =>
-                              setLightingSettings({ ...lightingSettings, ambientIntensity: value })
-                            }
-                            min={0}
-                            max={2}
-                            step={0.05}
-                            className=""
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Environment section */}
-                  <div className="rounded-lg overflow-hidden">
-                    <button
-                      onClick={() => toggleSection("environment")}
-                      className="w-full flex items-center justify-between p-4 hover:bg-[#2a2a2a]/50 transition-colors"
-                    >
-                      <Label className="text-sm font-medium text-white cursor-pointer">Environment</Label>
-                      <ChevronDown
-                        className={`w-4 h-4 text-zinc-500 transition-transform ${openSections.environment ? "rotate-180" : ""}`}
-                      />
-                    </button>
-                    {openSections.environment && (
-                      <div className="px-4 pb-4 space-y-4 border-t border-[#2a2a2a]/50 pt-3">
-                        <div className="space-y-2">
-                          <span className="text-xs text-zinc-500">HDRI Map</span>
-                          <Select
-                            value={lightingSettings.envMap}
-                            onValueChange={(value) => setLightingSettings({ ...lightingSettings, envMap: value })}
-                          >
-                            <SelectTrigger className="bg-[#2a2a2a] border-[#2a2a2a] text-white">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="bg-[#2a2a2a] border-[#2a2a2a]">
-                              <SelectItem value="studio">Studio</SelectItem>
-                              <SelectItem value="sunset">Sunset</SelectItem>
-                              <SelectItem value="dawn">Dawn</SelectItem>
-                              <SelectItem value="warehouse">Warehouse</SelectItem>
-                              <SelectItem value="forest">Forest</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs text-zinc-500">Intensity</span>
-                            <span className="text-sm text-white font-mono tabular-nums">
-                              {lightingSettings.envIntensity.toFixed(2)}
-                            </span>
-                          </div>
-                          <Slider
-                            value={[lightingSettings.envIntensity]}
-                            onValueChange={([value]) =>
-                              setLightingSettings({ ...lightingSettings, envIntensity: value })
-                            }
-                            min={0}
-                            max={5}
-                            step={0.1}
-                            className=""
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs text-zinc-500">Exposure</span>
-                            <span className="text-sm text-white font-mono tabular-nums">
-                              {lightingSettings.exposure.toFixed(2)}
-                            </span>
-                          </div>
-                          <Slider
-                            value={[lightingSettings.exposure]}
-                            onValueChange={([value]) => setLightingSettings({ ...lightingSettings, exposure: value })}
-                            min={0.1}
-                            max={5}
-                            step={0.1}
-                            className=""
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-xl overflow-hidden bg-[#222222] p-4">
-                  <p className="text-sm text-zinc-500">
-                    Lighting controls are only available in PBR render mode. Matcap materials use fixed lighting and cannot be adjusted.
-                  </p>
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
+          {panel === "light" && renderMode === "pbr" && (
+            <LightRig
+              angle={lightingSettings.envRotation}
+              onAngle={(a) => setLightingSettings((l) => ({ ...l, envRotation: a }))}
+              intensity={lightingSettings.directionalIntensity}
+              onIntensity={(v) => setLightingSettings((l) => ({ ...l, directionalIntensity: v }))}
+            />
+          )}
+
+          <div className="brand">
+            <span className="logo" role="img" aria-label="pólya" />
           </div>
-        </div>
 
-      {showModelSearch && (
-        <ModelSearch
-          onSelect={(model) => {
-            const modelUrl = model.glbUrl || model.gltfUrl
-            if (modelUrl) {
-              setGeometrySettings({
-                ...geometrySettings,
-                modelUrl,
-                modelName: model.name,
-              })
-            }
-          }}
-          onClose={() => setShowModelSearch(false)}
-        />
-      )}
-
-      {showIconSearch && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#1a1a1a] border border-[#404040] rounded-lg w-full max-w-md max-h-96 flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b border-[#404040]">
-              <h2 className="text-lg font-semibold text-white">Search Icons</h2>
-              <button
-                onClick={() => setShowIconSearch(false)}
-                className="text-zinc-400 hover:text-white"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={iconSearchInput}
-                  onChange={(e) => setIconSearchInput(e.target.value)}
-                  placeholder="Search icons..."
-                  className="flex-1 px-3 py-2 bg-[#2a2a2a] border border-[#404040] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-blue-600"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      setIconSearchQuery(iconSearchInput)
-                    }
-                  }}
-                />
-                <button
-                  onClick={() => setIconSearchQuery(iconSearchInput)}
-                  disabled={isSearchingIcons}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white rounded-lg font-medium transition-colors"
+          {/* top centre: light, rotate, background, grid */}
+          <div className="topc">
+            <button type="button" className={`kk-spark light-btn ${panel === "light" ? "is-on" : ""}`} aria-label="Lighting" aria-expanded={panel === "light"} data-tip onClick={() => togglePanel("light")}>
+              <Icon name="sun" />
+              <span className="tip">Light</span>
+            </button>
+            <button type="button" className={`kk-spark light-btn ${panel === "rotate" ? "is-on" : ""}`} aria-label="Rotate model" aria-expanded={panel === "rotate"} data-tip onClick={() => togglePanel("rotate")}>
+              <Icon name="orbit" />
+              <span className="tip">Rotate</span>
+            </button>
+            <div className="kk-pillgroup" aria-label="Background">
+              <Icon name="image" />
+              <div className="kk-row" style={{ gap: 7 }}>
+                {GROUNDS.slice(0, 5).map((g) => (
+                  <button
+                    key={g.hex}
+                    type="button"
+                    className={`bgdot ${backgroundColor.toLowerCase() === g.hex ? "is-on" : ""}`}
+                    style={{ ["--c" as string]: g.hex }}
+                    aria-label={`Background: ${g.name}`}
+                    title={g.name}
+                    onClick={() => setBackgroundColor(g.hex)}
+                  />
+                ))}
+                <label
+                  className={`bgdot bgpick ${GROUNDS.slice(0, 5).some((g) => g.hex === backgroundColor.toLowerCase()) ? "" : "is-on"}`}
+                  style={{ ["--c" as string]: "conic-gradient(#f33,#fb3,#3c9,#3bf,#c4e,#f33)" }}
+                  title="Custom colour"
                 >
-                  {isSearchingIcons ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                </button>
+                  <input type="color" value={backgroundColor} aria-label="Custom background colour" onChange={(e) => setBackgroundColor(e.target.value)} />
+                </label>
               </div>
+            </div>
+            <div className="kk-pillgroup" style={{ padding: "0 6px" }}>
+              <IconButton variant="ground" icon="grid" label="Grid" on={showGrid} pressed={showGrid} onClick={() => setShowGrid(!showGrid)} />
+            </div>
+          </div>
 
-              {iconSearchResults?.icons && iconSearchResults.icons.length > 0 ? (
-                <div className="grid grid-cols-4 gap-2">
-                  {iconSearchResults.icons.slice(0, 20).map((icon, idx) => (
+          <div className="topr">
+            <a className="kk-ibtn kk-ibtn--ground" href="https://buildin.ai/sava/share/4745d01a-eba4-43a4-bcbe-bd42cb780ac7?code=11A3SR" target="_blank" rel="noopener noreferrer" title="About pólya" aria-label="About pólya">
+              <Icon name="info" />
+            </a>
+            <IconButton variant="ground" icon="sliders" label="Theme" on={panel === "theme"} onClick={() => togglePanel("theme")} />
+            <button type="button" className="kk-pill kk-pill--ink" id="export" onClick={handleExportPNG} title="Export PNG with transparent background">
+              <Icon name="download" />
+              Export PNG
+            </button>
+          </div>
+
+          {/* left: geometry tray */}
+          <div className="kk-tray kk-tray--dark tray">
+            <div className="kk-btngroup kk-btngroup--v" style={{ display: "grid", gap: 6, justifyItems: "center" }} id="modes">
+              {MODES.map((m) => (
+                <IconButton key={m.t} variant="ground" icon={m.icon} label={m.label} on={geoType === m.t} onClick={() => pickMode(m.t)} />
+              ))}
+            </div>
+            {geoType === "sphere" && (
+              <>
+                <hr />
+                <div className="tray-shapes">
+                  {PRIMS.map((p) => (
                     <button
-                      key={idx}
-                      onClick={() => handleSelectIcon(icon)}
-                      className="p-3 bg-[#2a2a2a] hover:bg-[#333333] rounded-lg flex items-center justify-center group relative transition-colors"
-                      title={icon.name}
+                      key={p.type}
+                      type="button"
+                      className={geometrySettings.primitiveType === p.type ? "is-on" : ""}
+                      aria-label={p.label}
+                      title={p.label}
+                      onClick={() => setGeo({ primitiveType: p.type })}
                     >
-                      <img
-                        src={icon.preview_url || "/placeholder.svg"}
-                        alt={icon.name}
-                        className="w-10 h-10 invert"
-                        loading="lazy"
-                      />
+                      <svg className="kk-shape" viewBox="0 0 24 24">
+                        {p.svg}
+                      </svg>
                     </button>
                   ))}
                 </div>
-              ) : iconSearchResults && iconSearchResults.icons?.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-zinc-500 text-sm">No icons found</p>
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-zinc-500 text-sm">Search for icons to get started</p>
+              </>
+            )}
+          </div>
+
+          {/* left: shape source (icons / SVG, 3D model, inflate drawing) */}
+          {sourceOpen && geoType !== "sphere" && (
+            <div className="kk-panel srcpanel" aria-label="Shape source">
+              <PanelHead eyebrow={`Shape · ${curMode.label}`}>
+                <IconButton size="sm" icon="close" label="Close" onClick={() => setSourceOpen(false)} />
+              </PanelHead>
+
+              {geoType === "extruded" && (
+                <>
+                  <div className="kk-card">
+                    <Caption title="Icons" desc="Search Iconify and extrude any icon." />
+                    <label className="kk-search">
+                      <Icon name="search" />
+                      <input type="text" placeholder="search icons…" value={iconSearchInput} onChange={(e) => handleIconSearch(e.target.value)} aria-label="Search icons" />
+                      {iconSearchInput && (
+                        <button
+                          type="button"
+                          className="kk-ibtn kk-ibtn--sm"
+                          aria-label="Clear"
+                          onClick={() => {
+                            setIconSearchInput("")
+                            setIconSearchQuery("")
+                          }}
+                        >
+                          <Icon name="close" />
+                        </button>
+                      )}
+                    </label>
+                    {isSearchingIcons && (
+                      <p className="hint2 kk-center">
+                        <Loader2 className="kk-spin" /> Searching…
+                      </p>
+                    )}
+                    {iconSearchResults?.icons && iconSearchResults.icons.length > 0 && (
+                      <>
+                        <div className="icon-grid">
+                          {iconSearchResults.icons.map((icon) => (
+                            <button key={icon.id} type="button" className={selectedIcon?.id === icon.id ? "is-on" : ""} onClick={() => handleSelectIcon(icon)} title={`${icon.name} (${icon.prefix})`}>
+                              <img src={icon.preview_url || "/placeholder.svg"} alt={icon.name} loading="lazy" />
+                            </button>
+                          ))}
+                        </div>
+                        <p className="hint2">Icons from Iconify · {iconSearchResults.total} found</p>
+                      </>
+                    )}
+                    {iconSearchQuery && !isSearchingIcons && iconSearchResults?.icons?.length === 0 && <p className="hint2">No icons found for “{iconSearchQuery}”</p>}
+                    {loadingIcons && (
+                      <p className="hint2 kk-center">
+                        <Loader2 className="kk-spin" /> Loading SVG…
+                      </p>
+                    )}
+                    {error && <p className="kk-error">{error}</p>}
+                  </div>
+                  <label className="kk-card kk-drop">
+                    <input type="file" accept=".svg" onChange={handleSVGUpload} hidden />
+                    <span className="kk-ibtn kk-ibtn--sm">
+                      <Icon name="upload" />
+                    </span>
+                    <span className="mcap">
+                      <b>Upload SVG</b>
+                      <span className="kk-desc">Click to browse your files</span>
+                    </span>
+                  </label>
+                </>
+              )}
+
+              {geoType === "model" && (
+                <div className="kk-card">
+                  <Caption title={geometrySettings.modelName || "No model loaded"} desc={geometrySettings.modelName ? "Currently loaded model" : "Pick a GLB / GLTF model from the library."} />
+                  <button type="button" className="kk-pill kk-pill--wide" onClick={() => setShowModelSearch(true)}>
+                    <Icon name="search" />
+                    Search 3D models
+                  </button>
+                  {modelLoadError && <p className="kk-error">{modelLoadError}</p>}
                 </div>
               )}
+
+              {geoType === "inflate" && (
+                <>
+                  <div className="kk-card kk-inflate">
+                    <Caption title="Draw a contour" desc="Draw or load an SVG — it inflates like a balloon." />
+                    <InflateCanvas onContourChange={(contour) => setGeometrySettings((g) => ({ ...g, inflateContour: contour }))} width={400} height={400} />
+                  </div>
+                  <div className="kk-card">
+                    <span className="tlabel">EXPORT MESH</span>
+                    <div className="kk-row" style={{ gap: 6 }}>
+                      <button type="button" className="kk-pill kk-grow" onClick={() => viewerRef.current?.exportSTL()}>
+                        <Icon name="download" />
+                        STL
+                      </button>
+                      <button type="button" className="kk-pill kk-grow" onClick={() => viewerRef.current?.exportOBJ()}>
+                        <Icon name="download" />
+                        OBJ
+                      </button>
+                      <button type="button" className="kk-pill kk-grow" onClick={() => viewerRef.current?.exportGLB()}>
+                        <Icon name="download" />
+                        GLB
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
+          )}
+
+          {/* right: material */}
+          {panel === "material" && (
+            <div className="kk-panel matcard enter" aria-label="Material">
+              <PanelHead eyebrow={`Material · ${MAT_TABS.find((t) => t.v === materialTypeTab)?.label}`}>
+                <IconButton size="sm" icon="close" label="Close" onClick={() => setPanel(null)} />
+              </PanelHead>
+              <div className="kk-row moderow">
+                <div className="kk-row kk-btngroup modes">
+                  {MAT_TABS.map((t) => (
+                    <IconButton key={t.v} size="sm" icon={t.icon} label={t.label} on={materialTypeTab === t.v} onClick={() => setMaterialTypeTab(t.v)} />
+                  ))}
+                </div>
+              </div>
+
+              {materialTypeTab === "pbr" && (
+                <div className="kk-card" id="matSel">
+                  <Caption title={presetName} desc={isGlass ? "Transmissive glass — refraction, attenuation and iridescence." : "PBR texture set with colour, normal and roughness maps."} />
+                  <div className="mat-sw">
+                    {Object.entries(MATERIAL_PRESETS).map(([key, preset]) => (
+                      <Tile key={key} round image={preset.baseColor || undefined} color="radial-gradient(circle at 34% 30%, #ffffff 0 12%, #cfe8ff 26%, #7fa7c9 62%, #3d5a75)" title={preset.name} on={selectedPreset === key} onClick={() => handlePresetChange(key)} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {materialTypeTab === "custom" && (
+                <>
+                  <div className="kk-card">
+                    <Caption title="Base color" desc="Solid colour under the custom maps." />
+                    <div className="mat-sw">
+                      {CUSTOM_COLORS.map((c) => (
+                        <Tile key={c.id} color={c.color} title={c.name} on={customMaterial.baseColor === c.color} onClick={() => setCustomMaterial((prev) => ({ ...prev, baseColor: c.color }))} />
+                      ))}
+                    </div>
+                    <ColorField label="Custom color" value={customMaterial.baseColor} onChange={(v) => setCustomMaterial((prev) => ({ ...prev, baseColor: v }))} />
+                  </div>
+                  <div className="kk-card">
+                    {(["normal", "roughness", "metalness"] as const).map((kind) => (
+                      <div className="maprow" key={kind}>
+                        <span className="tlabel">{kind === "normal" ? "NORMAL MAP" : kind === "roughness" ? "ROUGHNESS" : "METALNESS"}</span>
+                        <div className="mat-sw mat-sw--4">
+                          {CUSTOM_TEXTURES[kind].map((tex) => (
+                            <Tile key={tex.id} image={tex.url} title={tex.name} on={customMaterial[kind] === tex.url} onClick={() => setCustomMaterial((prev) => ({ ...prev, [kind]: tex.url }))} />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {materialTypeTab === "gradient" && (
+                <>
+                  <div className="kk-card">
+                    <Caption title="Gradient" desc="Procedural shading with its own light — PBR lighting is off." />
+                    <Segmented
+                      value={gradientSettings.type}
+                      onChange={(v) => setGradientSettings((prev) => ({ ...prev, type: v }))}
+                      options={[
+                        { v: "radial", label: "Radial" },
+                        { v: "linear", label: "Linear" },
+                      ]}
+                    />
+                    <ColorField label="Primary" value={gradientSettings.color1} onChange={(v) => setGradientSettings((prev) => ({ ...prev, color1: v }))} />
+                    <ColorField label="Secondary" value={gradientSettings.color2} onChange={(v) => setGradientSettings((prev) => ({ ...prev, color2: v }))} />
+                    <div className="kk-switchrow">
+                      <span>Use 3 colors</span>
+                      <Switch label="Use 3 colors" on={gradientSettings.useThreeColors} onChange={(v) => setGradientSettings((prev) => ({ ...prev, useThreeColors: v }))} />
+                    </div>
+                    {gradientSettings.useThreeColors && <ColorField label="Tertiary" value={gradientSettings.color3} onChange={(v) => setGradientSettings((prev) => ({ ...prev, color3: v }))} />}
+                    <div
+                      className="kk-colorbar"
+                      style={{
+                        ["--c" as string]: `linear-gradient(90deg, ${gradientSettings.color1}, ${gradientSettings.color2}${gradientSettings.useThreeColors ? `, ${gradientSettings.color3}` : ""})`,
+                      }}
+                    />
+                  </div>
+                  <div className="kk-card">
+                    <Field icon="sun" label="Intensity" value={gradientSettings.intensity} min={0} max={2} step={0.1} onChange={(v) => setGradientSettings((prev) => ({ ...prev, intensity: v }))} />
+                    <Field icon="wave" label="Distortion" value={gradientSettings.distortion} min={0} max={1} step={0.1} onChange={(v) => setGradientSettings((prev) => ({ ...prev, distortion: v }))} />
+                    {gradientSettings.type === "linear" && (
+                      <Field
+                        icon="angle"
+                        label="Angle"
+                        value={gradientSettings.angle || 0}
+                        min={0}
+                        max={Math.PI * 2}
+                        step={0.1}
+                        format={(v) => `${Math.round((v * 180) / Math.PI)}°`}
+                        onChange={(v) => setGradientSettings((prev) => ({ ...prev, angle: v }))}
+                      />
+                    )}
+                    <Field icon="snow" label="Noise" value={(gradientSettings as any).noise || 0} min={0} max={2} step={0.1} onChange={(v) => setGradientSettings((prev) => ({ ...prev, noise: v }) as any)} />
+                  </div>
+                </>
+              )}
+
+              {materialTypeTab === "matcap" && (
+                <>
+                  <div className="kk-card">
+                    <Caption title={MATCAP_PRESETS[selectedMatcap]?.name || "Matcap"} desc="Baked lighting in a sphere texture — PBR lighting is off." />
+                    <div className="mat-sw">
+                      {Object.entries(MATCAP_PRESETS).map(([key, preset]) => (
+                        <Tile
+                          key={key}
+                          round
+                          image={preset.matcap}
+                          title={preset.name}
+                          on={selectedMatcap === key}
+                          onClick={() => {
+                            setSelectedMatcap(key)
+                            setMatcapTexture(preset.matcap)
+                            setRenderMode("matcap")
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <Field icon="hue" label="Hue shift" value={matcapHueShift} min={0} max={360} step={1} format={(v) => `${Math.round(v)}°`} onChange={setMatcapHueShift} />
+                  </div>
+                  <div className="kk-card">
+                    <span className="tlabel">NORMAL MAP</span>
+                    <div className="mat-sw mat-sw--4">
+                      <Tile title="No normal map" color="var(--panel-line)" on={matcapSettings.normalMap === ""} onClick={() => setMatcapSettings({ ...matcapSettings, normalMap: "" })}>
+                        <Icon name="close" />
+                      </Tile>
+                      {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+                        <Tile
+                          key={i}
+                          image={`/images/custom/normal-${i}.jpg`}
+                          title={`Normal ${i}`}
+                          on={matcapSettings.normalMap === `/images/custom/normal-${i}.jpg`}
+                          onClick={() => setMatcapSettings({ ...matcapSettings, normalMap: `/images/custom/normal-${i}.jpg` })}
+                        />
+                      ))}
+                    </div>
+                    {matcapSettings.normalMap && (
+                      <>
+                        <Field icon="layers" label="Intensity" value={matcapSettings.normalIntensity} min={0} max={3} step={0.05} onChange={(v) => setMatcapSettings({ ...matcapSettings, normalIntensity: v })} />
+                        <Field icon="grid" label="Repeat" value={matcapSettings.normalRepeat} min={0.5} max={10} step={0.5} onChange={(v) => setMatcapSettings({ ...matcapSettings, normalRepeat: v })} />
+                      </>
+                    )}
+                  </div>
+                  <div className="kk-card">
+                    <Caption title="Rim lighting" desc="Edge glow for extra depth." />
+                    <ColorField label="Rim color" value={matcapSettings.rimColor} onChange={(v) => setMatcapSettings({ ...matcapSettings, rimColor: v })} />
+                    <Field icon="sun" label="Intensity" value={matcapSettings.rimIntensity} min={0} max={2} step={0.05} onChange={(v) => setMatcapSettings({ ...matcapSettings, rimIntensity: v })} />
+                    <Field icon="radiate" label="Power" value={matcapSettings.rimPower} min={1} max={10} step={0.5} onChange={(v) => setMatcapSettings({ ...matcapSettings, rimPower: v })} />
+                  </div>
+                </>
+              )}
+
+              {(materialTypeTab === "pbr" || materialTypeTab === "custom") && (
+                <>
+                  <div className="kk-card" id="matSurface">
+                    <Field icon="layers" label="Normal scale" value={materialSettings.normalScale} min={0} max={3} step={0.1} onChange={(v) => setMat({ normalScale: v })} />
+                    <Field icon="snow" label="Roughness" value={materialSettings.roughness} min={0} max={1} step={0.01} onChange={(v) => setMat({ roughness: v })} />
+                    {geoType === "sphere" && (
+                      <Field icon="height" label="Displacement" value={materialSettings.displacementScale} min={0} max={1} step={0.01} onChange={(v) => setMat({ displacementScale: v })} />
+                    )}
+                    {selectedPreset !== "dirtyGlass" && selectedPreset !== "scratchedGlass" && (
+                      <Field icon="dial" label="Metalness" value={materialSettings.metalness} min={0} max={1} step={0.01} onChange={(v) => setMat({ metalness: v })} />
+                    )}
+                    <Field icon="grid" label="Texture scale" hint="Tiling of the textures" value={materialSettings.textureScale} min={0.1} max={10} step={0.1} onChange={(v) => setMat({ textureScale: v })} />
+                  </div>
+
+                  {materialSettings.transmission === 0 && (
+                    <div className="kk-card" id="matBase">
+                      <SwitchRow
+                        title="Base color"
+                        desc={materialSettings.useHueShift ? "Shifts texture colors by rotating the hue." : "Tints the texture with a colour. Switch on for hue shifting."}
+                        on={materialSettings.useHueShift}
+                        onChange={(v) => setMat({ useHueShift: v })}
+                      />
+                      {materialSettings.useHueShift ? (
+                        <div className="hue-field">
+                          <Field icon="hue" label="Hue shift" value={materialSettings.hueShift} min={0} max={360} step={1} format={(v) => `${Math.round(v)}°`} onChange={(v) => setMat({ hueShift: v })} />
+                          <div
+                            className="kk-colorbar"
+                            style={{ ["--c" as string]: `linear-gradient(to right, hsl(${materialSettings.hueShift},70%,50%), hsl(${(materialSettings.hueShift + 30) % 360},70%,50%))` }}
+                          />
+                        </div>
+                      ) : (
+                        <>
+                          <ColorField label="Color tint" value={materialSettings.colorTint} onChange={(v) => setMat({ colorTint: v })} />
+                          <div className="kk-colorbar" style={{ ["--c" as string]: materialSettings.colorTint }} />
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {isGlass && (
+                    <>
+                      <div className="kk-card">
+                        <Caption title="Glass" desc="Transmission and refraction." />
+                        <Field icon="drop" label="Transmission" value={materialSettings.transmission} min={0} max={1} step={0.01} onChange={(v) => setMat({ transmission: v })} />
+                        <Field icon="eye" label="IOR" value={materialSettings.ior} min={1} max={2.5} step={0.01} onChange={(v) => setMat({ ior: v })} />
+                        <Field icon="width" label="Thickness" hint="Simulated volume depth" value={materialSettings.thickness} min={0} max={10} step={0.1} onChange={(v) => setMat({ thickness: v })} />
+                      </div>
+                      <div className="kk-card">
+                        <Caption title="Attenuation" desc="How light is absorbed while passing through." />
+                        <Field icon="radiate" label="Distance" hint="Higher = clearer" value={materialSettings.attenuationDistance} min={0.1} max={10} step={0.1} onChange={(v) => setMat({ attenuationDistance: v })} />
+                        <ColorField label="Tint color" value={materialSettings.attenuationColor} onChange={(v) => setMat({ attenuationColor: v })} />
+                      </div>
+                      <div className="kk-card">
+                        <Caption title="Clearcoat" desc="Outer glossy layer — improves rendering on complex shapes." />
+                        <Field icon="spark" label="Intensity" value={materialSettings.clearcoat} min={0} max={1} step={0.01} onChange={(v) => setMat({ clearcoat: v })} />
+                        <Field icon="snow" label="Roughness" value={materialSettings.clearcoatRoughness} min={0} max={1} step={0.01} onChange={(v) => setMat({ clearcoatRoughness: v })} />
+                      </div>
+                      <div className="kk-card">
+                        <Caption title="Glass color" desc="Colour tint on the glass surface." />
+                        <Field icon="palette" label="Intensity" value={materialSettings.glassColorIntensity} min={0} max={1} step={0.01} onChange={(v) => setMat({ glassColorIntensity: v })} />
+                        {materialSettings.glassColorIntensity > 0 && <ColorField label="Color" value={materialSettings.glassColor} onChange={(v) => setMat({ glassColor: v })} />}
+                      </div>
+                      <div className="kk-card">
+                        <Caption title="Iridescence" desc="Thin-film rainbow, like soap bubbles or oil on water." />
+                        <Field icon="hue" label="Intensity" value={materialSettings.iridescence} min={0} max={1} step={0.01} onChange={(v) => setMat({ iridescence: v })} />
+                        {materialSettings.iridescence > 0 && (
+                          <>
+                            <Field icon="eye" label="Film IOR" value={materialSettings.iridescenceIOR} min={1} max={2.5} step={0.01} onChange={(v) => setMat({ iridescenceIOR: v })} />
+                            <Field icon="minus" label="Thickness min" value={materialSettings.iridescenceThicknessMin} min={0} max={800} step={10} format={(v) => `${Math.round(v)}nm`} onChange={(v) => setMat({ iridescenceThicknessMin: v })} />
+                            <Field icon="plus" label="Thickness max" value={materialSettings.iridescenceThicknessMax} min={0} max={1200} step={10} format={(v) => `${Math.round(v)}nm`} onChange={(v) => setMat({ iridescenceThicknessMax: v })} />
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+          {panel === null && (
+            <button type="button" className="kk-spark matopen" aria-label="Open material" title="Material" onClick={() => setPanel("material")}>
+              <Icon name="palette" />
+            </button>
+          )}
+
+          {/* right: lighting */}
+          {panel === "light" && (
+            <div className="kk-panel sunbar enter" aria-label="Lighting">
+              <PanelHead eyebrow="Light · Environment">
+                <IconButton size="sm" icon="close" label="Close lighting" onClick={() => setPanel("material")} />
+              </PanelHead>
+              {renderMode !== "pbr" || materialTypeTab === "gradient" ? (
+                <div className="kk-card">
+                  <Caption
+                    title="PBR lighting is off"
+                    desc={materialTypeTab === "gradient" ? "Gradient materials use their own shading and don't support PBR lighting." : "Matcap materials use baked lighting and can't be adjusted."}
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="kk-row" style={{ flexWrap: "wrap", gap: 5 }}>
+                    {(["studio", "sunset", "dawn", "warehouse", "forest"] as const).map((env) => (
+                      <button key={env} type="button" className={`kk-pill envpill ${lightingSettings.envMap === env ? "is-on" : ""}`} onClick={() => setLight({ envMap: env })}>
+                        {env[0].toUpperCase() + env.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="kk-card">
+                    <Field
+                      icon="orbit"
+                      label="Direction"
+                      value={lightingSettings.envRotation}
+                      min={0}
+                      max={Math.PI * 2}
+                      step={0.01}
+                      format={(v) => `${Math.round((v * 180) / Math.PI)}°`}
+                      onChange={(v) => setLight({ envRotation: v })}
+                    />
+                    <Field icon="sun" label="Key light" value={lightingSettings.directionalIntensity} min={0} max={5} step={0.1} onChange={(v) => setLight({ directionalIntensity: v })} />
+                    <Field icon="drop" label="Ambient fill" value={lightingSettings.ambientIntensity} min={0} max={2} step={0.05} onChange={(v) => setLight({ ambientIntensity: v })} />
+                  </div>
+                  <div className="kk-card">
+                    <Field icon="image" label="HDRI intensity" value={lightingSettings.envIntensity} min={0} max={5} step={0.1} onChange={(v) => setLight({ envIntensity: v })} />
+                    <Field icon="bulb" label="Exposure" value={lightingSettings.exposure} min={0.1} max={5} step={0.1} onChange={(v) => setLight({ exposure: v })} />
+                  </div>
+                  <p className="hint2">
+                    <b>Drag the sun</b> around the object to turn the light. Scroll over it to change the key light.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* right: rotate */}
+          {panel === "rotate" && (
+            <div className="kk-panel rotbar enter" aria-label="Rotate model">
+              <PanelHead eyebrow="Transform · Rotate">
+                <IconButton size="sm" icon="close" label="Close rotate" onClick={() => setPanel("material")} />
+              </PanelHead>
+              <div className="kk-card">
+                <SwitchRow title="Rotation gizmo" desc="Rings on the object rotate it around each axis. Orbiting the camera is paused meanwhile." on={showRotateControls} onChange={setShowRotateControls} />
+              </div>
+              <p className="hint2">
+                <b>Drag the rings</b> in the view. Close this panel to orbit the camera again.
+              </p>
+            </div>
+          )}
+
+          {/* right: theme tuner */}
+          {panel === "theme" && (
+            <div className="kk-panel tunerbar enter" aria-label="Theme">
+              <PanelHead eyebrow="Theme · Knopika">
+                <IconButton
+                  size="sm"
+                  icon="undo"
+                  label="Reset theme"
+                  onClick={() => {
+                    setTheme(THEME_DEFAULT)
+                    setBackgroundColor(GROUNDS[0].hex)
+                  }}
+                />
+                <IconButton size="sm" icon="close" label="Close theme" onClick={() => setPanel("material")} />
+              </PanelHead>
+              <div className="kk-card">
+                <span className="tlabel">COMPONENT STYLE</span>
+                <Segmented
+                  value={theme.style}
+                  onChange={(v) => setT("style", v)}
+                  options={[
+                    { v: "classic", label: "Classic" },
+                    { v: "expressive", label: "Expressive" },
+                    { v: "block", label: "Block" },
+                  ]}
+                />
+                {theme.style === "expressive" && (
+                  <>
+                    <span className="tlabel">ACCENT SHAPE</span>
+                    <Segmented
+                      value={theme.shape}
+                      onChange={(v) => setT("shape", v)}
+                      options={[
+                        { v: "cookie", label: "Cookie" },
+                        { v: "sunny", label: "Sunny" },
+                        { v: "clover", label: "Clover" },
+                        { v: "squircle", label: "Squircle" },
+                      ]}
+                    />
+                  </>
+                )}
+              </div>
+              <div className="kk-card">
+                <span className="tlabel">GROUND &amp; PANELS</span>
+                <div className="tgrounds">
+                  {GROUNDS.map((g) => (
+                    <button
+                      key={g.hex}
+                      type="button"
+                      className={`bgdot ${backgroundColor.toLowerCase() === g.hex ? "is-on" : ""}`}
+                      style={{ ["--c" as string]: g.hex }}
+                      aria-label={g.name}
+                      title={g.name}
+                      onClick={() => setBackgroundColor(g.hex)}
+                    />
+                  ))}
+                  <label className="bgdot bgpick" style={{ ["--c" as string]: "conic-gradient(#f33,#fb3,#3c9,#3bf,#c4e,#f33)" }} title="Custom colour">
+                    <input type="color" value={backgroundColor} aria-label="Custom ground colour" onChange={(e) => setBackgroundColor(e.target.value)} />
+                  </label>
+                </div>
+                <Segmented
+                  value={theme.tint ? "1" : "0"}
+                  onChange={(v) => setT("tint", v === "1")}
+                  options={[
+                    { v: "1", label: "Ground tint" },
+                    { v: "0", label: "Black" },
+                  ]}
+                />
+                <Field icon="drop" label="Panel depth" value={theme.depth} min={60} max={100} step={1} onChange={(v) => setT("depth", v)} />
+                <Field icon="circle" label="Window outline" value={theme.edge} min={0} max={100} step={5} onChange={(v) => setT("edge", v)} />
+              </div>
+              <div className="kk-card">
+                <span className="tlabel">RADII</span>
+                <Field icon="circle" label="Small" value={theme.radiusSm} min={0} max={16} step={1} format={(v) => `${v}px`} onChange={(v) => setT("radiusSm", v)} />
+                <Field icon="circle" label="Card" value={theme.radiusMd} min={0} max={28} step={1} format={(v) => `${v}px`} onChange={(v) => setT("radiusMd", v)} />
+                <Field icon="circle" label="Panel" value={theme.radiusLg} min={0} max={32} step={1} format={(v) => `${v}px`} onChange={(v) => setT("radiusLg", v)} />
+                <Field icon="circle" label="Controls" value={theme.radiusControl} min={0} max={50} step={1} format={(v) => `${v}%`} onChange={(v) => setT("radiusControl", v)} />
+              </div>
+              <div className="kk-card">
+                <span className="tlabel">ICONS &amp; TYPE</span>
+                <Field icon="pen" label="Icon weight" value={theme.iconWeight} min={0} max={6} step={1} format={(v) => WEIGHTS[v]} onChange={(v) => setT("iconWeight", v)} />
+                <Segmented
+                  value={theme.caps ? "1" : "0"}
+                  onChange={(v) => setT("caps", v === "1")}
+                  options={[
+                    { v: "0", label: "As written" },
+                    { v: "1", label: "CAPS" },
+                  ]}
+                />
+              </div>
+              <p className="tstatus">Saved in this browser.</p>
+            </div>
+          )}
+
+          {/* bottom: geometry parameters */}
+          <div className="geobar">
+            <span className="gname" role="img" aria-label={geoType === "sphere" ? curPrim.label : curMode.label} title={geoType === "sphere" ? curPrim.label : curMode.label}>
+              {geoType === "sphere" ? (
+                <svg className="kk-shape" viewBox="0 0 24 24">
+                  {curPrim.svg}
+                </svg>
+              ) : (
+                <Icon name={curMode.icon} />
+              )}
+            </span>
+
+            {geoType === "sphere" && <span className="kk-pillgroup glabel">{curPrim.label}</span>}
+
+            {geoType === "model" && (
+              <button type="button" className="kk-pillgroup glabel gbtn" onClick={() => setShowModelSearch(true)}>
+                <Icon name="search" />
+                {geometrySettings.modelName || "Choose a model"}
+              </button>
+            )}
+
+            {geoType === "extruded" && (
+              <>
+                {GP({ icon: "width", label: "Thickness", value: geometrySettings.thickness, min: 1, max: 100, step: 1, onChange: (v) => setGeo({ thickness: v }) })}
+                {GP({ icon: "angle", label: "Bevel", value: geometrySettings.bevelSize, min: 0, max: 10, step: 0.1, onChange: (v) => setGeo({ bevelSize: v }) })}
+                {GP({ icon: "meter", label: "Bevel segments", value: geometrySettings.bevelSegments, min: 1, max: 20, step: 1, onChange: (v) => setGeo({ bevelSegments: v }) })}
+                {GP({ icon: "spark", label: "Curve quality", value: geometrySettings.bevelQuality, min: 1, max: 100, step: 1, onChange: (v) => setGeo({ bevelQuality: v }) })}
+                {GP({ icon: "grid", label: "Texture scale", value: geometrySettings.textureScale, min: 0.1, max: 5, step: 0.05, onChange: (v) => setGeo({ textureScale: v }) })}
+                <span className="sep" />
+                {GT({
+                  icon: "refresh",
+                  label: "Pottery",
+                  on: geometrySettings.usePotteryMode,
+                  onChange: (checked) => setGeo({ usePotteryMode: checked, ...(checked ? { useInflateMode: false } : {}) } as any),
+                })}
+                {geometrySettings.usePotteryMode && (
+                  <>
+                    <span className="kk-pillgroup gaxis">
+                      {(["center", "right", "bottom"] as const).map((axis, i) => (
+                        <button key={axis} type="button" className={`kk-pill ${geometrySettings.latheAxis === axis ? "is-on" : ""}`} onClick={() => setGeo({ latheAxis: axis })}>
+                          {["Center", "Pos 1", "Pos 2"][i]}
+                        </button>
+                      ))}
+                    </span>
+                    {GP({ icon: "orbit", label: "Lathe segments", value: geometrySettings.latheSegments, min: 16, max: 64, step: 4, onChange: (v) => setGeo({ latheSegments: v }) })}
+                  </>
+                )}
+              </>
+            )}
+
+            {geoType === "inflate" && (
+              <>
+                {GP({ icon: "inflate", label: "Volume", value: geometrySettings.inflateVolume ?? 100, min: 10, max: 200, step: 5, onChange: (v) => setGeo({ inflateVolume: v }) })}
+                {!geometrySettings.inflateSharpRidge &&
+                  GP({ icon: "wave", label: "Smoothing", value: geometrySettings.inflateSmoothing ?? 3, min: 0, max: 10, step: 1, onChange: (v) => setGeo({ inflateSmoothing: v }) })}
+                {GP({ icon: "grid", label: "Grid resolution", value: geometrySettings.inflateGridResolution ?? 150, min: 40, max: 240, step: 5, onChange: (v) => setGeo({ inflateGridResolution: v }) })}
+                <span className="sep" />
+                {GT({ icon: "mirror", label: "Double sided", on: geometrySettings.inflateBothSides ?? true, onChange: (v) => setGeo({ inflateBothSides: v }) })}
+                {GT({ icon: "star", label: "Sharp ridge", on: geometrySettings.inflateSharpRidge ?? false, onChange: (v) => setGeo({ inflateSharpRidge: v }) })}
+                {geometrySettings.inflateSharpRidge &&
+                  GP({ icon: "angle", label: "Ridge sharpness", value: geometrySettings.inflateRidgeSharpness ?? 5, min: 1, max: 10, step: 1, onChange: (v) => setGeo({ inflateRidgeSharpness: v }) })}
+              </>
+            )}
           </div>
         </div>
-      )}
 
-      {/* Info icon and Background color picker in bottom-left corner */}
-      <div className="fixed bottom-4 left-4 z-40 flex gap-2 items-center">
-        <a
-          href="https://buildin.ai/sava/share/4745d01a-eba4-43a4-bcbe-bd42cb780ac7?code=11A3SR"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="w-9 h-9 rounded-lg border border-[#404040] bg-[#2a2a2a] hover:bg-[#353535] flex items-center justify-center text-zinc-400 hover:text-white transition-all"
-          title="View Buildin.AI project"
-        >
-          <Info className="w-4 h-4" />
-        </a>
-        
-        <label className="flex items-center gap-2 px-3 py-2 bg-[#2a2a2a] hover:bg-[#353535] text-white text-sm rounded-lg border border-[#404040] transition-all cursor-pointer">
-          <div 
-            className="w-4 h-4 rounded-full border border-[#505050] flex-shrink-0"
-            style={{ backgroundColor: backgroundColor }}
+        {showModelSearch && (
+          <ModelSearch
+            onSelect={(model) => {
+              const modelUrl = model.glbUrl || model.gltfUrl
+              if (modelUrl) {
+                setGeometrySettings({
+                  ...geometrySettings,
+                  modelUrl,
+                  modelName: model.name,
+                })
+              }
+            }}
+            onClose={() => setShowModelSearch(false)}
           />
-          <span>Background</span>
-          <input
-            type="color"
-            value={backgroundColor}
-            onChange={(e) => setBackgroundColor(e.target.value)}
-            className="hidden"
-          />
-        </label>
-
-        <label className="flex items-center gap-2 px-3 py-2 bg-[#2a2a2a] hover:bg-[#353535] text-white text-sm rounded-lg border border-[#404040] transition-all cursor-pointer">
-          <div 
-            className={`w-4 h-4 rounded border border-[#505050] flex-shrink-0 transition-all ${showGrid ? 'bg-blue-500' : 'bg-transparent'}`}
-          />
-          <span>Grid</span>
-          <input
-            type="checkbox"
-            checked={showGrid}
-            onChange={(e) => setShowGrid(e.target.checked)}
-            className="hidden"
-          />
-        </label>
-
-        <label className="flex items-center gap-2 px-3 py-2 bg-[#2a2a2a] hover:bg-[#353535] text-white text-sm rounded-lg border border-[#404040] transition-all cursor-pointer">
-          <div 
-            className={`w-4 h-4 rounded border border-[#505050] flex-shrink-0 transition-all ${showRotateControls ? 'bg-orange-500' : 'bg-transparent'}`}
-          />
-          <span>Rotate</span>
-          <input
-            type="checkbox"
-            checked={showRotateControls}
-            onChange={(e) => setShowRotateControls(e.target.checked)}
-            className="hidden"
-          />
-        </label>
+        )}
       </div>
-    </div>
+    </IconWeightContext.Provider>
   )
 }

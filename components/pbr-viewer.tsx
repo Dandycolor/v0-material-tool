@@ -2967,7 +2967,7 @@ export const PBRViewer = forwardRef<
   return (
     <div className="w-full h-full">
       <Canvas
-        camera={{ position: [0, 0, 3], fov: 50 }}
+        camera={{ position: [0, 0, 3.7], fov: 50 }}
         gl={{
           antialias: true,
           toneMapping: THREE.ACESFilmicToneMapping,

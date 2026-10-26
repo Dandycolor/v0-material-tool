@@ -16,7 +16,8 @@ export function createGradientMaterial(gradientSettings: {
     return null
   }
   
-  const useThreeColors = gradientSettings.use3Colors || false
+  // the page stores this flag as `useThreeColors`; older callers used `use3Colors`
+  const useThreeColors = !!(gradientSettings.use3Colors ?? (gradientSettings as any).useThreeColors)
 
   const vertexShader = `
     varying vec3 vNormal;

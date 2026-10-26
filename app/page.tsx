@@ -1398,6 +1398,7 @@ export default function MaterialTool() {
   const tv = themeVars(backgroundColor, theme)
   const togglePanel = (p: "material" | "light" | "rotate" | "theme") => setPanel((cur) => (cur === p ? "material" : p))
 
+  const onGeoChangeFromViewer = useCallback((updates: Partial<typeof geometrySettings>) => setGeometrySettings((g) => ({ ...g, ...updates })), [])
   const setGeo = (u: Partial<typeof geometrySettings>) => setGeometrySettings({ ...geometrySettings, ...u })
   const setMat = (u: Partial<MaterialSettings>) => setMaterialSettings({ ...materialSettings, ...u })
   const setLight = (u: Partial<typeof lightingSettings>) => setLightingSettings({ ...lightingSettings, ...u })
@@ -1497,7 +1498,7 @@ export default function MaterialTool() {
               gradientSettings={gradientSettings}
               customMaterial={customMaterial}
               onModelLoadError={setModelLoadError}
-              onGeometrySettingsChange={(updates) => setGeometrySettings({ ...geometrySettings, ...updates })}
+              onGeometrySettingsChange={onGeoChangeFromViewer}
             />
           </div>
 

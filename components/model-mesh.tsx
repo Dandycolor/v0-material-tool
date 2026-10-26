@@ -9,6 +9,52 @@ import { Mesh } from "three"
 import { useThree } from "@react-three/fiber"
 import { TransformControls } from "@react-three/drei"
 import { createGradientMaterial } from "./gradient-shader"
+import { setMaterialHue, HUE_GLSL } from "@/lib/hue-shift"
+
+/* Parsed models are cached by URL: switching material presets, or coming back to a model,
+   clones the cached scene instead of downloading and parsing the file again. */
+const GLTF_CACHE = new Map<string, Promise<any>>()
+function loadGltfCached(url: string) {
+  let p = GLTF_CACHE.get(url)
+  if (!p) {
+    p = fetchGltf(url).catch((e) => {
+      GLTF_CACHE.delete(url)
+      throw e
+    })
+    GLTF_CACHE.set(url, p)
+  }
+  return p
+}
+
+async function fetchGltf(modelUrl: string): Promise<any> {
+  const loader = new GLTFLoader()
+  if (!modelUrl.startsWith("blob:")) {
+    return new Promise((resolve, reject) =>
+      loader.load(modelUrl, resolve, undefined, (err: any) => reject(new Error("Ошибка загрузки модели: " + (err?.message || "неизвестная ошибка")))),
+    )
+  }
+  // blob URL: read the bytes and parse (GLB, or JSON GLTF with embedded data URIs)
+  const arrayBuffer = await (await fetch(modelUrl)).arrayBuffer()
+  const view = new Uint8Array(arrayBuffer)
+  const isGLB = view[0] === 0x67 && view[1] === 0x6c && view[2] === 0x54 && view[3] === 0x46
+  if (isGLB) {
+    return new Promise((resolve, reject) =>
+      loader.parse(arrayBuffer, "", resolve, (err: any) => reject(new Error("Ошибка парсинга GLB: " + (err?.message || "неизвестная ошибка")))),
+    )
+  }
+  const gltfJson = JSON.parse(new TextDecoder().decode(arrayBuffer))
+  for (const buffer of gltfJson.buffers || []) {
+    if (buffer.uri && buffer.uri.startsWith("data:")) {
+      const bin = atob(buffer.uri.substring(buffer.uri.indexOf(",") + 1))
+      const bytes = new Uint8Array(bin.length)
+      for (let j = 0; j < bin.length; j++) bytes[j] = bin.charCodeAt(j)
+      buffer.uri = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }))
+    }
+  }
+  return new Promise((resolve, reject) =>
+    loader.parse(JSON.stringify(gltfJson), "", resolve, (err: any) => reject(new Error("Ошибка парсинга GLTF: " + (err?.message || "неизвестная ошибка")))),
+  )
+}
 
 interface ModelMeshProps {
   modelUrl: string
@@ -97,121 +143,19 @@ export function ModelMesh({
       setLoading(false)
       return
     }
-
     setLoading(true)
-    const loader = new GLTFLoader()
     let isMounted = true
-    
-    const loadModel = async () => {
-      try {
-        // Для blob URL, нужно загрузить файл как текст/буфер и использовать parse
-        if (modelUrl.startsWith('blob:')) {
-          const response = await fetch(modelUrl)
-          const arrayBuffer = await response.arrayBuffer()
-          
-          // Определяем, GLB это или JSON GLTF
-          const view = new Uint8Array(arrayBuffer)
-          const isGLB = 
-            view[0] === 0x67 && // 'g'
-            view[1] === 0x6c && // 'l'
-            view[2] === 0x54 && // 'T'
-            view[3] === 0x46    // 'F'
-          
-          if (!isGLB) {
-            // Это JSON GLTF - нужно преобразовать встроенные data URIs
-            try {
-              const text = new TextDecoder().decode(arrayBuffer)
-              const gltfJson = JSON.parse(text)
-              
-              // Заменяем встроенные data URIs на proper Blob URLs
-              if (gltfJson.buffers) {
-                for (let i = 0; i < gltfJson.buffers.length; i++) {
-                  const buffer = gltfJson.buffers[i]
-                  if (buffer.uri && buffer.uri.startsWith('data:')) {
-                    // Преобразуем data URI в Blob URL
-                    const dataUri = buffer.uri
-                    const base64Index = dataUri.indexOf(',') + 1
-                    const base64 = dataUri.substring(base64Index)
-                    const byteCharacters = atob(base64)
-                    const byteNumbers = new Array(byteCharacters.length)
-                    for (let j = 0; j < byteCharacters.length; j++) {
-                      byteNumbers[j] = byteCharacters.charCodeAt(j)
-                    }
-                    const byteArray = new Uint8Array(byteNumbers)
-                    const blob = new Blob([byteArray], { type: 'application/octet-stream' })
-                    buffer.uri = URL.createObjectURL(blob)
-                  }
-                }
-              }
-              
-              // Используем parse - base path пустой так как буферы уже преобразованы в Blob URLs
-              loader.parse(
-                JSON.stringify(gltfJson),
-                '',
-                (gltf) => {
-                  if (isMounted) {
-                    processGltf(gltf)
-                  }
-                },
-                (err) => {
-                  if (isMounted) {
-                    console.error("[v0] Parse error:", err)
-                    handleError("Ошибка парсинга GLTF: " + (err.message || "неизвестная ошибка"))
-                  }
-                }
-              )
-            } catch (e) {
-              if (isMounted) {
-                console.error("[v0] JSON error:", e)
-                handleError("Ошибка обработки GLTF файла")
-              }
-            }
-          } else {
-            // GLB файл - используем parse напрямую
-            loader.parse(
-              arrayBuffer,
-              '',
-              (gltf) => {
-                if (isMounted) {
-                  processGltf(gltf)
-                }
-              },
-              (err) => {
-                if (isMounted) {
-                  console.error("[v0] GLB parse error:", err)
-                  handleError("Ошибка парсинга GLB: " + (err.message || "неизвестная ошибка"))
-                }
-              }
-            )
-          }
-        } else {
-          // Обычный URL - используем load
-          loader.load(
-            modelUrl,
-            (gltf) => {
-              if (isMounted) {
-                processGltf(gltf)
-              }
-            },
-            undefined,
-            (err) => {
-              if (isMounted) {
-                console.error("[v0] Load error:", err)
-                handleError("Ошибка загрузки модели: " + (err.message || "неизвестная ошибка"))
-              }
-            }
-          )
-        }
-      } catch (err) {
+    // parsed once per URL; each mount works on its own clone (geometry/material edits stay local)
+    loadGltfCached(modelUrl)
+      .then((gltf) => {
+        if (isMounted) processGltf({ scene: gltf.scene.clone(true) })
+      })
+      .catch((err) => {
         if (isMounted) {
-          console.error("[v0] Unexpected error:", err)
-          handleError("Неожиданная ошибка при загрузке")
+          console.error("[v0] Load error:", err)
+          handleError(String(err?.message || err || "Ошибка загрузки модели"))
         }
-      }
-    }
-    
-    loadModel()
-    
+      })
     return () => {
       isMounted = false
     }
@@ -339,7 +283,6 @@ export function ModelMesh({
     // Проверяем есть ли пользовательские текстуры
     const hasCustomTextures = !!(colorMap || normalMap || roughnessMap || metalnessMap || hueShiftedColorMap)
     
-    console.log("[v0] Applying materials - hasCustomTextures:", hasCustomTextures, "renderMode:", renderMode)
 
     scene.traverse((child) => {
       if (child instanceof Mesh) {
@@ -365,7 +308,6 @@ export function ModelMesh({
             textureScale
           )
         } else if (hasOriginal) {
-          console.log("[v0] Using original GLB material")
           const original = child.userData.originalMaterial || child.userData.originalMaterials
           
           if (Array.isArray(original)) {
@@ -424,7 +366,6 @@ export function ModelMesh({
             newMaterial.envMapIntensity = envIntensity
           }
         } else {
-          console.log("[v0] Creating base PBR material")
           newMaterial = createPBRMaterial(
             materialSettings,
             colorMap,
@@ -458,24 +399,66 @@ export function ModelMesh({
         child.userData.isOriginalMaterial = hasOriginal && !hasCustomTextures && renderMode === "pbr"
       }
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    // structure only: a new material is built when the *kind* of material changes;
+    // slider values are applied in place by the effect below (no new materials per tick)
     scene,
     renderMode,
     matcapTexture,
     matcapNormalMap,
-    matcapSettings,
-    materialSettings,
+    gradientSettings,
     colorMap,
     normalMap,
     roughnessMap,
     metalnessMap,
-    hueShiftedColorMap,
-    normalScaleVector,
-    envIntensity,
-    tintColor,
-    textureScale,
+    materialSettings.transmission > 0,
     usePotteryMode,
   ])
+
+  // live parameters: update existing materials in place
+  useEffect(() => {
+    if (!scene) return
+    const s = materialSettings
+    const isGlass = s.transmission > 0
+    scene.traverse((child) => {
+      if (!(child instanceof Mesh)) return
+      const m = child.material as any
+      if (!m) return
+      if (m.isShaderMaterial && m.uniforms?.matcap) {
+        m.uniforms.normalIntensity.value = matcapSettings?.normalIntensity || 1
+        m.uniforms.rimIntensity.value = matcapSettings?.rimIntensity || 0
+        m.uniforms.rimPower.value = matcapSettings?.rimPower || 3
+        m.uniforms.rimColor.value.set(matcapSettings?.rimColor || "#ffffff")
+        if (m.uniforms.uHueShift) m.uniforms.uHueShift.value = (matcapSettings as any)?.hueShift || 0
+        return
+      }
+      if (!m.isMeshStandardMaterial) return
+      m.roughness = s.roughness ?? 0.5
+      m.metalness = s.metalness ?? 0
+      m.envMapIntensity = envIntensity
+      if (child.userData.isOriginalMaterial) return
+      if (m.map) m.map.repeat.set(textureScale, textureScale)
+      ;[m.normalMap, m.roughnessMap, m.metalnessMap].forEach((t: THREE.Texture | null) => t?.repeat.set(textureScale, textureScale))
+      if (m.normalMap && normalScaleVector) m.normalScale.copy(normalScaleVector)
+      if (isGlass) m.color.set(s.glassColorIntensity > 0 ? s.glassColor : "#ffffff")
+      else m.color.set(s.useHueShift ? "#ffffff" : s.colorTint || "#ffffff")
+      if (m.isMeshPhysicalMaterial) {
+        m.transmission = s.transmission ?? 0
+        m.ior = s.ior ?? 1.5
+        m.thickness = isGlass ? (s.thickness ?? 0.5) * 0.5 : s.thickness ?? 0.5
+        m.attenuationDistance = s.attenuationDistance ?? 2
+        m.attenuationColor.set(s.attenuationColor || "#ffffff")
+        m.clearcoat = s.clearcoat ?? 0
+        m.clearcoatRoughness = s.clearcoatRoughness ?? 0
+        m.reflectivity = s.reflectivity ?? 0.5
+        m.iridescence = s.iridescence ?? 0
+        m.iridescenceIOR = s.iridescenceIOR ?? 1.3
+        m.iridescenceThicknessRange = [s.iridescenceThicknessMin ?? 100, s.iridescenceThicknessMax ?? 400]
+      }
+      setMaterialHue(m, s.useHueShift ? s.hueShift : 0)
+    })
+  }, [scene, materialSettings, envIntensity, textureScale, normalScaleVector, matcapSettings, renderMode, matcapTexture, gradientSettings, colorMap, normalMap, roughnessMap, metalnessMap, usePotteryMode])
 
 
 
@@ -488,6 +471,15 @@ export function ModelMesh({
         return
       }
       
+      // centre each mesh's geometry first, so the fit below measures the final layout
+      // (previously the offset was computed before centring, which shifted models on first load)
+      loadedScene.traverse((child: any) => {
+        if (child instanceof Mesh && child.geometry && !child.geometry.userData.kkCentered) {
+          child.geometry.center()
+          child.geometry.userData.kkCentered = true
+        }
+      })
+
       // Scale model so it's visible
       const box = new THREE.Box3().setFromObject(loadedScene)
       const size = box.getSize(new THREE.Vector3())
@@ -509,10 +501,6 @@ export function ModelMesh({
       // Сохраняем оригинальные материалы и геометрию модели в userData
       loadedScene.traverse((child) => {
         if (child instanceof Mesh) {
-          // Center geometry
-          if (child.geometry) {
-            child.geometry.center()
-          }
           
           // Клонируем оригинальный материал
           if (child.material) {
@@ -621,15 +609,15 @@ function createPBRMaterial(
   const textures = [finalColorMap, normalMap, roughnessMap, metalnessMap]
   textures.forEach((tex, index) => {
     if (tex) {
-      tex.wrapS = THREE.RepeatWrapping
-      tex.wrapT = THREE.RepeatWrapping
-      tex.repeat.set(textureScale, textureScale)
-      // colorMap должен использовать sRGB, остальные - Linear
-      tex.colorSpace = index === 0 ? THREE.SRGBColorSpace : THREE.LinearSRGBColorSpace
-      // Only mark for update if texture has image data
-      if (tex.image) {
-        tex.needsUpdate = true
+      const cs = index === 0 ? THREE.SRGBColorSpace : THREE.LinearSRGBColorSpace
+      if (tex.wrapS !== THREE.RepeatWrapping || tex.wrapT !== THREE.RepeatWrapping || tex.colorSpace !== cs) {
+        tex.wrapS = THREE.RepeatWrapping
+        tex.wrapT = THREE.RepeatWrapping
+        tex.colorSpace = cs
+        if (tex.image) tex.needsUpdate = true
       }
+      tex.repeat.set(textureScale, textureScale)
+      // upload only if wrap / colour space actually changed (handled by three on first use)
     }
   })
 
@@ -710,6 +698,7 @@ function createMatcapMaterial(
     uniform float rimPower;
     uniform vec3 rimColor;
     uniform bool hasNormalMap;
+    ${HUE_GLSL}
 
     varying vec3 vNormal;
     varying vec3 vViewPosition;
@@ -752,6 +741,7 @@ function createMatcapMaterial(
       vec2 matcapUv = vec2(dot(x, normal), dot(y, normal)) * 0.495 + 0.5;
 
       vec4 matcapColor = texture2D(matcap, matcapUv);
+      if (uHueShift != 0.0) matcapColor.rgb = kkHueShift(matcapColor.rgb, uHueShift);
 
       // Apply rim lighting with color
       float rim = 1.0 - max(dot(normalize(vViewPosition), normal), 0.0);
@@ -771,6 +761,7 @@ function createMatcapMaterial(
       rimPower: { value: matcapSettings?.rimPower || 3 },
       rimColor: { value: new THREE.Color(matcapSettings?.rimColor || "#ffffff") },
       hasNormalMap: { value: !!matcapNormalMap },
+      uHueShift: { value: (matcapSettings as any)?.hueShift || 0 },
     },
     vertexShader,
     fragmentShader,

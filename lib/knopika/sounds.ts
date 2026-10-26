@@ -18,6 +18,8 @@ let last = 0
 
 function ac() {
   if (typeof window === "undefined") return null
+  // browsers only allow audio after a user gesture; don't create a context before that
+  if ((navigator as any).userActivation && !(navigator as any).userActivation.hasBeenActive) return null
   if (!ctx) {
     const C = window.AudioContext || (window as any).webkitAudioContext
     if (!C) return null

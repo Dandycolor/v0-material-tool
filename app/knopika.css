@@ -695,3 +695,7 @@
 }
 .polya.kk-expressive .tseg .kk-pill{padding:0 6px;font-size:10.5px}
 .polya.kk-expressive .tseg .kk-pill.is-on::before{width:11px;height:11px}
+.polya .tunerbar{width:288px}
+.polya .tunerbar .kk-select select{background:var(--panel)}
+.polya .tprev .kk-play{width:calc(var(--control-lg) * .8);height:calc(var(--control-lg) * .8)}
+.polya .tprev .kk-spark{width:calc(var(--control-lg) * .72);height:calc(var(--control-lg) * .72)}

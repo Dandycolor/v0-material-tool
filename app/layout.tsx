@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import './knopika.css'
+import { GOOGLE_FONTS_URL } from '@/lib/knopika/theme'
 
 
 export const metadata: Metadata = {
@@ -35,6 +36,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        {/* optional fonts for the Knopika theme tuner; the default UI uses the local Helvetica stack */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link rel="stylesheet" href={GOOGLE_FONTS_URL} />
+      </head>
       <body className={`font-sans antialiased bg-[#121212]`}>
         {children}
         <Analytics />

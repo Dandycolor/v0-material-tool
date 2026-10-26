@@ -12,7 +12,7 @@ import { InflateCanvas } from "@/components/inflate-canvas"
 // Knopika design system
 import { Icon, IconButton, Range, Field, Switch, SwitchRow, ColorField, Segmented, PanelHead, Caption, Tile, IconWeightContext } from "@/components/knopika/kk"
 import { LightRig } from "@/components/knopika/light-rig"
-import { THEME_DEFAULT, GROUNDS, themeVars, type KnopikaTheme } from "@/lib/knopika/theme"
+import { THEME_DEFAULT, GROUNDS, TUNER_ROWS, FONTS_DISPLAY, FONTS_UI, fmtRow, themeVars, exportCss, exportJson, type KnopikaTheme } from "@/lib/knopika/theme"
 import { WEIGHTS } from "@/lib/knopika/icons"
 
 interface IconifyIcon {
@@ -1355,6 +1355,23 @@ export default function MaterialTool() {
     setShowRotateControls(panel === "rotate")
   }, [panel])
 
+  const [tStatus, setTStatus] = useState("Saved in this browser.")
+  const [tOut, setTOut] = useState<string | null>(null)
+  const [tDemo, setTDemo] = useState(62)
+  const tOutRef = useRef<HTMLTextAreaElement>(null)
+  const copyOut = (text: string, msg: string) => {
+    setTOut(text)
+    const fallback = () => {
+      setTStatus("Clipboard unavailable — the text is selected, copy it manually.")
+      setTimeout(() => tOutRef.current?.select(), 0)
+    }
+    try {
+      navigator.clipboard.writeText(text).then(() => setTStatus(msg), fallback)
+    } catch {
+      fallback()
+    }
+  }
+
   const setT = <K extends keyof KnopikaTheme>(k: K, v: KnopikaTheme[K]) => setTheme((t) => ({ ...t, [k]: v }))
   const tv = themeVars(backgroundColor, theme)
   const togglePanel = (p: "material" | "light" | "rotate" | "theme") => setPanel((cur) => (cur === p ? "material" : p))
@@ -1966,10 +1983,34 @@ export default function MaterialTool() {
                   onClick={() => {
                     setTheme(THEME_DEFAULT)
                     setBackgroundColor(GROUNDS[0].hex)
+                    setTStatus("Theme reset to the base style.")
+                    setTOut(null)
                   }}
                 />
                 <IconButton size="sm" icon="close" label="Close theme" onClick={() => setPanel("material")} />
               </PanelHead>
+
+              <div className="tprev" aria-hidden="true">
+                <button type="button" className="kk-play" tabIndex={-1}>
+                  <Icon name="play" />
+                </button>
+                <button type="button" className="kk-spark" tabIndex={-1}>
+                  <Icon name="sun" />
+                </button>
+                <span className="kk-pillgroup">
+                  <Icon name="minus" />
+                  100%
+                  <Icon name="plus" />
+                </span>
+                <span className="kk-ibtn kk-ibtn--ground is-on">
+                  <Icon name="grid" />
+                </span>
+                <label className="kk-pillgroup" style={{ width: 170 }}>
+                  <Icon name="speaker" />
+                  <Range ink label="Example slider" value={tDemo} min={0} max={100} onChange={setTDemo} />
+                </label>
+              </div>
+
               <div className="kk-card">
                 <span className="tlabel">COMPONENT STYLE</span>
                 <Segmented
@@ -1997,6 +2038,7 @@ export default function MaterialTool() {
                   </>
                 )}
               </div>
+
               <div className="kk-card">
                 <span className="tlabel">GROUND &amp; PANELS</span>
                 <div className="tgrounds">
@@ -2011,10 +2053,15 @@ export default function MaterialTool() {
                       onClick={() => setBackgroundColor(g.hex)}
                     />
                   ))}
-                  <label className="bgdot bgpick" style={{ ["--c" as string]: "conic-gradient(#f33,#fb3,#3c9,#3bf,#c4e,#f33)" }} title="Custom colour">
+                  <label
+                    className={`bgdot bgpick ${GROUNDS.some((g) => g.hex === backgroundColor.toLowerCase()) ? "" : "is-on"}`}
+                    style={{ ["--c" as string]: "conic-gradient(#f33,#fb3,#3c9,#3bf,#c4e,#f33)" }}
+                    title="Custom colour"
+                  >
                     <input type="color" value={backgroundColor} aria-label="Custom ground colour" onChange={(e) => setBackgroundColor(e.target.value)} />
                   </label>
                 </div>
+                <ColorField label="Ground" value={backgroundColor} onChange={setBackgroundColor} />
                 <Segmented
                   value={theme.tint ? "1" : "0"}
                   onChange={(v) => setT("tint", v === "1")}
@@ -2023,19 +2070,65 @@ export default function MaterialTool() {
                     { v: "0", label: "Black" },
                   ]}
                 />
-                <Field icon="drop" label="Panel depth" value={theme.depth} min={60} max={100} step={1} onChange={(v) => setT("depth", v)} />
-                <Field icon="circle" label="Window outline" value={theme.edge} min={0} max={100} step={5} onChange={(v) => setT("edge", v)} />
+                <Field icon="drop" label="Panel depth" value={theme.depth} min={60} max={100} step={1} format={(v) => (v / 100).toFixed(2)} onChange={(v) => setT("depth", v)} />
+                <Field icon="circle" label="Window outline" value={theme.edge} min={0} max={100} step={5} format={(v) => (v ? `${v}%` : "none")} onChange={(v) => setT("edge", v)} />
               </div>
+
+              {(
+                [
+                  ["radius", "RADII"],
+                  ["size", "SIZES"],
+                  ["space", "SPACING"],
+                  ["icon", "ICONS"],
+                ] as const
+              ).map(([group, title]) => (
+                <div className="kk-card" key={group}>
+                  <span className="tlabel">{title}</span>
+                  {TUNER_ROWS[group].map((r) => (
+                    <Field
+                      key={r.k}
+                      icon={r.icon}
+                      label={r.label}
+                      value={theme[r.k] as number}
+                      min={r.min}
+                      max={r.max}
+                      step={r.step}
+                      format={(v) => (r.k === "iconWeight" ? WEIGHTS[v] : fmtRow(r, v))}
+                      onChange={(v) => setT(r.k, (r.k === "radiusPill" && v >= 41 ? 999 : v) as never)}
+                    />
+                  ))}
+                </div>
+              ))}
+
               <div className="kk-card">
-                <span className="tlabel">RADII</span>
-                <Field icon="circle" label="Small" value={theme.radiusSm} min={0} max={16} step={1} format={(v) => `${v}px`} onChange={(v) => setT("radiusSm", v)} />
-                <Field icon="circle" label="Card" value={theme.radiusMd} min={0} max={28} step={1} format={(v) => `${v}px`} onChange={(v) => setT("radiusMd", v)} />
-                <Field icon="circle" label="Panel" value={theme.radiusLg} min={0} max={32} step={1} format={(v) => `${v}px`} onChange={(v) => setT("radiusLg", v)} />
-                <Field icon="circle" label="Controls" value={theme.radiusControl} min={0} max={50} step={1} format={(v) => `${v}%`} onChange={(v) => setT("radiusControl", v)} />
-              </div>
-              <div className="kk-card">
-                <span className="tlabel">ICONS &amp; TYPE</span>
-                <Field icon="pen" label="Icon weight" value={theme.iconWeight} min={0} max={6} step={1} format={(v) => WEIGHTS[v]} onChange={(v) => setT("iconWeight", v)} />
+                <span className="tlabel">FONTS</span>
+                <label className="kk-select">
+                  <select value={theme.display} aria-label="Display font" onChange={(e) => setT("display", e.target.value)}>
+                    {Object.keys(FONTS_DISPLAY).map((n) => (
+                      <option key={n} value={n}>
+                        Display · {n}
+                      </option>
+                    ))}
+                  </select>
+                  <Icon name="chevron" />
+                </label>
+                <label className="kk-select">
+                  <select
+                    value={theme.ui}
+                    aria-label="Interface font"
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setTheme((t) => ({ ...t, ui: v, caps: v === "F5.6" ? true : t.caps }))
+                    }}
+                  >
+                    {Object.keys(FONTS_UI).map((n) => (
+                      <option key={n} value={n}>
+                        Interface · {n}
+                      </option>
+                    ))}
+                  </select>
+                  <Icon name="chevron" />
+                </label>
                 <Segmented
                   value={theme.caps ? "1" : "0"}
                   onChange={(v) => setT("caps", v === "1")}
@@ -2044,8 +2137,24 @@ export default function MaterialTool() {
                     { v: "1", label: "CAPS" },
                   ]}
                 />
+                <Field icon="width" label="Caps tracking" value={theme.track} min={0} max={16} step={1} format={(v) => `${(v / 100).toFixed(2)}em`} onChange={(v) => setT("track", v)} />
               </div>
-              <p className="tstatus">Saved in this browser.</p>
+
+              <div className="kk-card">
+                <span className="tlabel">EXPORT</span>
+                <div className="kk-row" style={{ gap: 6, flexWrap: "wrap" }}>
+                  <button type="button" className="kk-pill" onClick={() => copyOut(exportCss(backgroundColor, theme), "CSS variables copied.")}>
+                    <Icon name="copy" />
+                    CSS
+                  </button>
+                  <button type="button" className="kk-pill" onClick={() => copyOut(exportJson(backgroundColor, theme, WEIGHTS), "tokens.json copied.")}>
+                    <Icon name="copy" />
+                    tokens.json
+                  </button>
+                </div>
+                {tOut !== null && <textarea className="tout" readOnly value={tOut} aria-label="Export" ref={tOutRef} />}
+                <p className="tstatus">{tStatus}</p>
+              </div>
             </div>
           )}
 

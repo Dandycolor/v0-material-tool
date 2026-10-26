@@ -2233,7 +2233,7 @@ function Material({
         transparent
         opacity={1}
         alphaMap={opacityMap}
-        side={THREE.FrontSide}
+        side={THREE.DoubleSide} // back faces go into the transmission pass: thickness and inner layers show through
         envMapIntensity={materialSettings.envMapIntensity || 1.5}
         clearcoat={materialSettings.clearcoat}
         clearcoatRoughness={materialSettings.clearcoatRoughness}

@@ -337,7 +337,7 @@ export function ModelMesh({
               attenuationDistance: materialSettings.attenuationDistance ?? 100,
               attenuationColor: materialSettings.attenuationColor ? new THREE.Color(materialSettings.attenuationColor) : new THREE.Color("#ffffff"),
               transparent: true,
-              side: THREE.FrontSide,
+              side: THREE.DoubleSide, // glass: back faces feed the transmission pass, so inner layers show through
               clearcoat: materialSettings.clearcoat ?? 0,
               clearcoatRoughness: materialSettings.clearcoatRoughness ?? 0,
               clearcoatNormalScale: new THREE.Vector2(materialSettings.clearcoatNormalScale ?? 1, materialSettings.clearcoatNormalScale ?? 1),
@@ -649,7 +649,7 @@ function createPBRMaterial(
       ? new THREE.Color(settings.attenuationColor || "#ffffff")
       : (settings.attenuationColor ? new THREE.Color(settings.attenuationColor) : new THREE.Color("#ffffff")),
     transparent: isGlass || false,
-    side: THREE.FrontSide,
+    side: isGlass ? THREE.DoubleSide : THREE.FrontSide, // glass: see the far side / inner layers
     clearcoat: settings.clearcoat ?? 0,
     clearcoatRoughness: settings.clearcoatRoughness ?? 0,
     clearcoatNormalScale: new THREE.Vector2(settings.clearcoatNormalScale ?? 1, settings.clearcoatNormalScale ?? 1),

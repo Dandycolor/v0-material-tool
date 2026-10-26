@@ -12,6 +12,7 @@ import { InflateCanvas } from "@/components/inflate-canvas"
 // Knopika design system
 import { Icon, IconButton, Range, Field, Switch, SwitchRow, ColorField, Segmented, PanelHead, Caption, Tile, IconWeightContext } from "@/components/knopika/kk"
 import { LightRig } from "@/components/knopika/light-rig"
+import { OrbitRig, RotatePanel } from "@/components/knopika/orbit-rig"
 import { THEME_DEFAULT, GROUNDS, TUNER_ROWS, FONTS_DISPLAY, FONTS_UI, fmtRow, themeVars, exportCss, exportJson, type KnopikaTheme } from "@/lib/knopika/theme"
 import { WEIGHTS } from "@/lib/knopika/icons"
 import { installUISounds, setSoundEnabled, UISound } from "@/lib/knopika/sounds"
@@ -1509,6 +1510,8 @@ export default function MaterialTool() {
             />
           )}
 
+          {panel === "rotate" && <OrbitRig />}
+
           <div className="brand">
             <span className="logo" role="img" aria-label="pólya" />
           </div>
@@ -1999,19 +2002,7 @@ export default function MaterialTool() {
           )}
 
           {/* right: rotate */}
-          {panel === "rotate" && (
-            <div className="kk-panel rotbar enter" aria-label="Rotate model">
-              <PanelHead eyebrow="Transform · Rotate">
-                <IconButton size="sm" icon="close" label="Close rotate" onClick={() => setPanel("material")} />
-              </PanelHead>
-              <div className="kk-card">
-                <SwitchRow title="Rotation gizmo" desc="Rings on the object rotate it around each axis. Orbiting the camera is paused meanwhile." on={showRotateControls} onChange={setShowRotateControls} />
-              </div>
-              <p className="hint2">
-                <b>Drag the rings</b> in the view. Close this panel to orbit the camera again.
-              </p>
-            </div>
-          )}
+          {panel === "rotate" && <RotatePanel onClose={() => setPanel("material")} />}
 
           {/* right: theme tuner */}
           {panel === "theme" && (

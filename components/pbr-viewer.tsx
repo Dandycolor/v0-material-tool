@@ -1,7 +1,8 @@
 "use client"
 
 import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber"
-import { OrbitControls, Environment, TransformControls } from "@react-three/drei"
+import { OrbitControls, Environment } from "@react-three/drei"
+import { rot } from "@/lib/knopika/rotation"
 import * as THREE from "three"
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js"
@@ -12,6 +13,18 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils"
 import { ModelMesh } from "./model-mesh"
 import { createGradientMaterial } from "./gradient-shader"
 import { inflatePolygon as createInflatedGeometryFromContour } from "@/lib/inflate-geometry"
+
+// Object rotation driven by the Knopika orbit rig (turn around Y, then tilt around the screen X axis)
+function KnopikaRotGroup({ children }: { children?: any }) {
+  const ref = useRef<THREE.Group>(null)
+  useFrame(() => {
+    const g = ref.current
+    if (!g) return
+    const { turn, tilt } = rot.get()
+    g.rotation.set((tilt * Math.PI) / 180, (turn * Math.PI) / 180, 0, "XYZ")
+  })
+  return <group ref={ref}>{children}</group>
+}
 
 // Grid component with fade effect at edges
 function GridHelper({ visible = true }: { visible?: boolean }) {
@@ -2834,13 +2847,7 @@ function SceneContent({
   return (
     <>
       <group>
-        <TransformControls 
-          mode="rotate" 
-          enabled={showRotateControls}
-          showX={showRotateControls}
-          showY={showRotateControls}
-          showZ={showRotateControls}
-        >
+        <KnopikaRotGroup>
       {showMatcap ? (
         <>
       {geometrySettings.type === "sphere" ? (
@@ -2910,10 +2917,9 @@ function SceneContent({
           />
         </>
       )}
-      </TransformControls>
+      </KnopikaRotGroup>
       </group>
       <GridHelper visible={showGrid} />
-      <axesHelper args={[0.5]} position={[0, -1.2, 0]} visible={showRotateControls} />
     </>
   )
 }

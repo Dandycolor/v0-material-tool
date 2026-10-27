@@ -732,3 +732,6 @@
   .polya .matset{left:calc(8px + env(safe-area-inset-left,0px));right:calc(8px + env(safe-area-inset-right,0px));top:auto;bottom:calc(8px + env(safe-area-inset-bottom,0px));width:auto;margin-block:0;max-height:66%;z-index:9}
   .polya .stage:has(.matset) .matcard{display:none}
 }
+
+/* scale of the dark windows (theme tuner → Sizes → Window scale) */
+.polya :is(.kk-panel,.kk-tray--dark){zoom:var(--panel-zoom,1)}

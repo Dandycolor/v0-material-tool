@@ -84,6 +84,7 @@ export interface KnopikaTheme {
   gapRow: number
   iconSize: number
   iconWeight: number // 0…6
+  panelScale: number // % — scale of the dark windows (panels, tray)
   display: string
   ui: string
   caps: boolean
@@ -115,6 +116,7 @@ export const THEME_DEFAULT: KnopikaTheme = {
   gapRow: 14,
   iconSize: 18,
   iconWeight: 3,
+  panelScale: 85,
   display: "Helvetica",
   ui: "Helvetica",
   caps: false,
@@ -144,6 +146,7 @@ export const TUNER_ROWS: Record<"radius" | "size" | "space" | "icon", TunerRow[]
     { k: "radiusKnob", css: "--radius-knob", label: "Knobs", min: 0, max: 50, step: 1, unit: "%", icon: "circle" },
   ],
   size: [
+    { k: "panelScale", label: "Window scale", min: 60, max: 120, step: 1, unit: "%", icon: "width" },
     { k: "controlMd", css: "--control-md", label: "Button", min: 22, max: 48, step: 1, unit: "px", icon: "plus" },
     { k: "controlSm", css: "--control-sm", label: "Small button", min: 18, max: 36, step: 1, unit: "px", icon: "plus" },
     { k: "controlLg", css: "--control-lg", label: "Round main button", min: 34, max: 64, step: 1, unit: "px", icon: "plus" },
@@ -209,6 +212,7 @@ export function sizeVars(t: KnopikaTheme) {
   })
   ;[1, 2, 3, 4, 6].forEach((n) => (o[`--space-${n}`] = `${t.unit * n}px`))
   o["--caps-track"] = `${t.track / 100}em`
+  o["--panel-zoom"] = String((t.panelScale ?? 100) / 100)
   o["--edge"] = String(t.edge / 100)
   o["--font-display"] = `${FONTS_DISPLAY[t.display] || HSTACK}, system-ui, sans-serif`
   o["--font-ui"] = `${FONTS_UI[t.ui] || HSTACK}, system-ui, sans-serif`

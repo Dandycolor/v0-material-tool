@@ -735,3 +735,11 @@
 
 /* scale of the dark windows (theme tuner → Sizes → Window scale) */
 .polya :is(.kk-panel,.kk-tray--dark){zoom:var(--panel-zoom,1)}
+
+/* Block style: material previews sit inside a soft rounded cell with even padding (concentric corners) */
+.polya.kk-block :is(.mat-lib,.mat-sw) .kk-tile{border-radius:24%;background:var(--blk-sink);box-shadow:inset 0 0 0 1px rgba(255,255,255,.04)}
+.polya.kk-block :is(.mat-lib,.mat-sw) .kk-tile:has(.is-on){background:var(--blk-on);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.22)}
+.polya.kk-block :is(.mat-lib,.mat-sw) .kk-tile .kk-swatch{width:80%;max-width:none;box-shadow:0 2px 6px rgba(0,0,0,.25)!important}
+.polya.kk-block :is(.mat-lib,.mat-sw) .kk-tile .kk-swatch:not(.is-round){border-radius:16%}
+.polya.kk-block .mat-sw--4 .kk-tile .kk-swatch{border-radius:16%}
+.polya.kk-block .mat-lib{gap:8px}

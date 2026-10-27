@@ -743,3 +743,13 @@
 .polya.kk-block :is(.mat-lib,.mat-sw) .kk-tile .kk-swatch:not(.is-round){border-radius:16%}
 .polya.kk-block .mat-sw--4 .kk-tile .kk-swatch{border-radius:16%}
 .polya.kk-block .mat-lib{gap:8px}
+
+/* material library: fixed header + mode tabs, only the tile grid scrolls */
+.polya .matcard{max-height:min(560px,calc(100% - 144px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px)));overflow:hidden}
+.polya .matcard > *{flex:none}
+.polya .matcard > .mat-lib{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--panel-line) transparent;
+  margin:0 -6px -6px;padding:5px 6px 14px;
+  -webkit-mask:linear-gradient(to bottom,transparent 0,#000 8px,#000 calc(100% - 22px),transparent);mask:linear-gradient(to bottom,transparent 0,#000 8px,#000 calc(100% - 22px),transparent)}
+.polya .matcard > .mat-lib::-webkit-scrollbar{width:6px}
+.polya .matcard > .mat-lib::-webkit-scrollbar-thumb{background:var(--panel-line);border-radius:3px}
+@media (max-width:720px){.polya .matcard{max-height:60%}}

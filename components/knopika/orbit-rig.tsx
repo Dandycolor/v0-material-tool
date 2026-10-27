@@ -179,11 +179,11 @@ const VIEWS: { label: string; turn: number; tilt: number }[] = [
 ]
 
 /** Right-hand Rotate panel: views, turn / tilt, auto-rotate, snap, speed. */
-export function RotatePanel({ onClose }: { onClose: () => void }) {
+export function RotatePanel({ onClose, win }: { onClose: () => void; win?: any }) {
   const s = useRot()
   const cur = VIEWS.find((v) => Math.round(s.turn) === v.turn && Math.round(s.tilt) === v.tilt)?.label
   return (
-    <div className="kk-panel rotbar enter" aria-label="Rotate model">
+    <div className="kk-panel rotbar enter" {...(win || {})} aria-label="Rotate model">
       <PanelHead eyebrow="Transform · Orbit">
         <IconButton size="sm" icon="undo" label="Reset rotation" onClick={() => rot.view(0, 0)} />
         <IconButton size="sm" icon="close" label="Close rotate" onClick={onClose} />

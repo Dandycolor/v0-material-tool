@@ -753,3 +753,14 @@
 .polya .matcard > .mat-lib::-webkit-scrollbar{width:6px}
 .polya .matcard > .mat-lib::-webkit-scrollbar-thumb{background:var(--panel-line);border-radius:3px}
 @media (max-width:720px){.polya .matcard{max-height:60%}}
+
+/* draggable windows */
+.polya .kk-win{transition:translate .45s var(--spring),box-shadow .2s}
+.polya .kk-win.is-dragging{transition:box-shadow .2s;z-index:12!important;box-shadow:0 18px 50px rgba(0,0,0,.35),0 0 0 1.5px var(--panel-line)}
+.polya .kk-win.is-draggable .phead{cursor:grab;user-select:none;touch-action:none}
+.polya .kk-win.is-dragging .phead{cursor:grabbing}
+.polya .kk-win.is-floating{z-index:6}
+/* close to home: show where it will snap */
+.polya .kk-win.is-near-home{box-shadow:0 0 0 2px var(--paper),0 18px 50px rgba(0,0,0,.35)!important}
+.polya .kk-win.is-draggable .phead .kk-eyebrow::before{content:"";display:inline-block;width:8px;height:12px;margin-right:7px;vertical-align:-1px;opacity:.55;
+  background:radial-gradient(circle,currentColor 1.1px,transparent 1.4px) 0 0/4px 4px}

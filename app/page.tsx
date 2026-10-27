@@ -12,6 +12,7 @@ import { InflateCanvas } from "@/components/inflate-canvas"
 // Knopika design system
 import { Icon, IconButton, Range, Field, Switch, SwitchRow, ColorField, Segmented, PanelHead, Caption, Tile, IconWeightContext } from "@/components/knopika/kk"
 import { LightRig } from "@/components/knopika/light-rig"
+import { usePanelDrag } from "@/components/knopika/drag"
 import { OrbitRig, RotatePanel } from "@/components/knopika/orbit-rig"
 import { THEME_DEFAULT, GROUNDS, TUNER_ROWS, FONTS_DISPLAY, FONTS_UI, fmtRow, themeVars, exportCss, exportJson, type KnopikaTheme } from "@/lib/knopika/theme"
 import { WEIGHTS } from "@/lib/knopika/icons"
@@ -1395,6 +1396,13 @@ export default function MaterialTool() {
     }
   }
 
+  // draggable windows (desktop only); docked ones snap back next to their parent
+  const drag = usePanelDrag(!isPhone)
+  const win = (id: string, cls: string, dock = false) => {
+    const b = drag.bind(id, { dock })
+    return { ...b, className: `${cls} ${b.className}` }
+  }
+
   const setT = <K extends keyof KnopikaTheme>(k: K, v: KnopikaTheme[K]) => setTheme((t) => ({ ...t, [k]: v }))
   const tv = themeVars(backgroundColor, theme)
   const togglePanel = (p: "material" | "light" | "rotate" | "theme") => setPanel((cur) => (cur === p ? "material" : p))
@@ -1641,7 +1649,7 @@ export default function MaterialTool() {
 
           {/* left: shape source (icons / SVG, 3D model, inflate drawing) */}
           {sourceOpen && geoType !== "sphere" && (
-            <div className="kk-panel srcpanel" aria-label="Shape source">
+            <div {...win("src", "kk-panel srcpanel", true)} aria-label="Shape source">
               <PanelHead eyebrow={`Shape · ${curMode.label}`}>
                 <IconButton size="sm" icon="close" label="Close" onClick={() => setSourceOpen(false)} />
               </PanelHead>
@@ -1818,7 +1826,7 @@ export default function MaterialTool() {
 
           {/* settings of the selected material, opens next to the library */}
           {panel === "material" && matSetOpen && (
-            <div className="kk-panel matset enter" aria-label="Material settings">
+            <div {...win("matset", "kk-panel matset enter", true)} aria-label="Material settings">
               <PanelHead eyebrow="Material settings">
                 <IconButton size="sm" icon="close" label="Close settings" onClick={() => setMatSetOpen(false)} />
               </PanelHead>
@@ -2010,7 +2018,7 @@ export default function MaterialTool() {
 
           {/* right: lighting */}
           {panel === "light" && (
-            <div className="kk-panel sunbar enter" aria-label="Lighting">
+            <div {...win("light", "kk-panel sunbar enter")} aria-label="Lighting">
               <PanelHead eyebrow="Light · Environment">
                 <IconButton size="sm" icon="close" label="Close lighting" onClick={() => setPanel("material")} />
               </PanelHead>
@@ -2057,11 +2065,11 @@ export default function MaterialTool() {
           )}
 
           {/* right: rotate */}
-          {panel === "rotate" && <RotatePanel onClose={() => setPanel("material")} />}
+          {panel === "rotate" && <RotatePanel onClose={() => setPanel("material")} win={win("rotate", "kk-panel rotbar enter")} />}
 
           {/* right: theme tuner */}
           {panel === "theme" && (
-            <div className="kk-panel tunerbar enter" aria-label="Theme">
+            <div {...win("theme", "kk-panel tunerbar enter")} aria-label="Theme">
               <PanelHead eyebrow="Theme · Knopika">
                 <IconButton
                   size="sm"
@@ -2241,6 +2249,14 @@ export default function MaterialTool() {
                 </div>
                 {tOut !== null && <textarea className="tout" readOnly value={tOut} aria-label="Export" ref={tOutRef} />}
                 <p className="tstatus">{tStatus}</p>
+              </div>
+              <div className="kk-card">
+                <span className="tlabel">WINDOWS</span>
+                <p className="hint2">Drag windows by their header. Material settings and the Shape panel snap back to their place when dropped near it.</p>
+                <button type="button" className="kk-pill" disabled={!drag.anyMoved} onClick={() => drag.reset()}>
+                  <Icon name="undo" />
+                  Reset window positions
+                </button>
               </div>
             </div>
           )}

@@ -711,3 +711,24 @@
 .polya .rotbar .views .kk-pill{height:30px}
 .polya .autorow .kk-pill{white-space:nowrap;gap:6px}
 .polya .rotmode .srcpanel{opacity:.22;filter:saturate(.4);pointer-events:none}
+
+/* material: library (types) + settings panel next to it */
+.polya .mat-lib{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.polya .mat-lib .kk-swatch{width:100%;height:auto;aspect-ratio:1;max-width:none;display:grid;place-items:center;color:var(--paper);transition:transform .25s var(--spring),box-shadow .2s}
+.polya .mat-lib .kk-swatch.is-round{border-radius:50%}
+.polya .mat-lib .kk-swatch:hover{transform:scale(1.05)}
+.polya .mat-lib .kk-swatch.is-on{box-shadow:0 0 0 2.5px var(--panel),0 0 0 5px var(--paper);transform:none}
+.polya .mat-lib .kk-swatch .kk-icon{width:22px;height:22px}
+.polya .matset{position:absolute;right:calc(16px + 272px + 12px + env(safe-area-inset-right,0px));top:calc(72px + env(safe-area-inset-top,0px));bottom:calc(72px + env(safe-area-inset-bottom,0px));margin-block:auto;height:max-content;max-height:calc(100% - 144px);overflow-y:auto;scrollbar-width:none;width:268px;z-index:4}
+.polya .matset::-webkit-scrollbar{display:none}
+.polya .matsel{display:flex;align-items:center;gap:12px}
+.polya .matsel-thumb{flex:none;width:52px;height:52px;border-radius:50%;background:var(--c);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+.polya .matsel .mcap{min-width:0}
+.polya .lightmode .matset,.polya .rotmode .matset{display:none}
+@media (max-width:1100px){
+  .polya .matset{right:calc(16px + 252px + 10px + env(safe-area-inset-right,0px));width:248px}
+}
+@media (max-width:720px){
+  .polya .matset{left:calc(8px + env(safe-area-inset-left,0px));right:calc(8px + env(safe-area-inset-right,0px));top:auto;bottom:calc(8px + env(safe-area-inset-bottom,0px));width:auto;margin-block:0;max-height:66%;z-index:9}
+  .polya .stage:has(.matset) .matcard{display:none}
+}

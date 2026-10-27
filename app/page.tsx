@@ -1331,6 +1331,7 @@ export default function MaterialTool() {
   const [sourceOpen, setSourceOpen] = useState(false)
   const [theme, setTheme] = useState<KnopikaTheme>(THEME_DEFAULT)
   const [isPhone, setIsPhone] = useState(false)
+  const [matSetOpen, setMatSetOpen] = useState(true)
   const [showDots, setShowDots] = useState(true)
   const [soundOn, setSoundOn] = useState(true)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -1437,6 +1438,31 @@ export default function MaterialTool() {
   const isGlass = selectedPreset === "dirtyGlass" || selectedPreset === "scratchedGlass" || selectedPreset === "clearGlass"
   const presetName =
     selectedPreset === "custom" ? "Custom material" : MATERIAL_PRESETS[selectedPreset as keyof typeof MATERIAL_PRESETS]?.name || "Material"
+  const GLASS_THUMB = "radial-gradient(circle at 34% 30%, #ffffff 0 12%, #cfe8ff 26%, #7fa7c9 62%, #3d5a75)"
+  const pickMaterial = (fn: () => void) => {
+    fn()
+    setMatSetOpen(true)
+  }
+  const matInfo = (() => {
+    if (materialTypeTab === "matcap") {
+      const m = MATCAP_PRESETS[selectedMatcap as keyof typeof MATCAP_PRESETS]
+      return { title: m?.name || "Matcap", desc: "Baked lighting in a sphere texture — PBR lighting is off.", thumb: `center / cover url("${m?.matcap}")` }
+    }
+    if (materialTypeTab === "gradient")
+      return {
+        title: gradientSettings.type === "radial" ? "Radial gradient" : "Linear gradient",
+        desc: "Procedural shading with its own light — PBR lighting is off.",
+        thumb: `radial-gradient(circle at 40% 35%, ${gradientSettings.color1}, ${gradientSettings.color2})`,
+      }
+    if (materialTypeTab === "custom")
+      return { title: "Custom material", desc: "Solid colour with your own normal, roughness and metalness maps.", thumb: customMaterial.baseColor }
+    const p = MATERIAL_PRESETS[selectedPreset as keyof typeof MATERIAL_PRESETS]
+    return {
+      title: presetName,
+      desc: isGlass ? "Transmissive glass — refraction, attenuation and iridescence." : "PBR texture set with colour, normal and roughness maps.",
+      thumb: p?.baseColor ? `center / cover url("${p.baseColor}")` : GLASS_THUMB,
+    }
+  })()
   const MAT_TABS = [
     { v: "pbr", icon: "drop", label: "PBR presets" },
     { v: "custom", icon: "palette", label: "Custom PBR" },
@@ -1720,8 +1746,9 @@ export default function MaterialTool() {
 
           {/* right: material */}
           {panel === "material" && (
-            <div className="kk-panel matcard enter" aria-label="Material">
+            <div className={`kk-panel matcard enter ${matSetOpen ? "has-settings" : ""}`} aria-label="Material">
               <PanelHead eyebrow={`Material · ${MAT_TABS.find((t) => t.v === materialTypeTab)?.label}`}>
+                <IconButton size="sm" icon="sliders" label="Material settings" on={matSetOpen} pressed={matSetOpen} onClick={() => setMatSetOpen(!matSetOpen)} />
                 <IconButton size="sm" icon="close" label="Close" onClick={() => setPanel(null)} />
               </PanelHead>
               <div className="kk-row moderow">
@@ -1732,27 +1759,78 @@ export default function MaterialTool() {
                 </div>
               </div>
 
+              {/* library: the main types of the current mode */}
+              <Caption title={matInfo.title} desc={matInfo.desc} />
               {materialTypeTab === "pbr" && (
-                <div className="kk-card" id="matSel">
-                  <Caption title={presetName} desc={isGlass ? "Transmissive glass — refraction, attenuation and iridescence." : "PBR texture set with colour, normal and roughness maps."} />
-                  <div className="mat-sw">
-                    {Object.entries(MATERIAL_PRESETS).map(([key, preset]) => (
-                      <Tile key={key} round image={preset.baseColor || undefined} color="radial-gradient(circle at 34% 30%, #ffffff 0 12%, #cfe8ff 26%, #7fa7c9 62%, #3d5a75)" title={preset.name} on={selectedPreset === key} onClick={() => handlePresetChange(key)} />
-                    ))}
-                  </div>
+                <div className="mat-lib">
+                  {Object.entries(MATERIAL_PRESETS).map(([key, preset]) => (
+                    <Tile key={key} round image={preset.baseColor || undefined} color={GLASS_THUMB} title={preset.name} on={selectedPreset === key} onClick={() => pickMaterial(() => handlePresetChange(key))} />
+                  ))}
                 </div>
               )}
+              {materialTypeTab === "custom" && (
+                <div className="mat-lib">
+                  {CUSTOM_COLORS.map((c) => (
+                    <Tile key={c.id} round color={`radial-gradient(circle at 34% 30%, #ffffff66 0 10%, transparent 42%), ${c.color}`} title={c.name} on={customMaterial.baseColor === c.color} onClick={() => pickMaterial(() => setCustomMaterial((prev) => ({ ...prev, baseColor: c.color })))} />
+                  ))}
+                </div>
+              )}
+              {materialTypeTab === "gradient" && (
+                <div className="mat-lib">
+                  {(["radial", "linear"] as const).map((t) => (
+                    <Tile
+                      key={t}
+                      round
+                      color={
+                        t === "radial"
+                          ? `radial-gradient(circle at 40% 35%, ${gradientSettings.color1}, ${gradientSettings.color2})`
+                          : `linear-gradient(135deg, ${gradientSettings.color1}, ${gradientSettings.color2})`
+                      }
+                      title={t === "radial" ? "Radial" : "Linear"}
+                      on={gradientSettings.type === t}
+                      onClick={() => pickMaterial(() => setGradientSettings((prev) => ({ ...prev, type: t })))}
+                    />
+                  ))}
+                </div>
+              )}
+              {materialTypeTab === "matcap" && (
+                <div className="mat-lib">
+                  {Object.entries(MATCAP_PRESETS).map(([key, preset]) => (
+                    <Tile
+                      key={key}
+                      round
+                      image={preset.matcap}
+                      title={preset.name}
+                      on={selectedMatcap === key}
+                      onClick={() =>
+                        pickMaterial(() => {
+                          setSelectedMatcap(key)
+                          setMatcapTexture(preset.matcap)
+                          setRenderMode("matcap")
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* settings of the selected material, opens next to the library */}
+          {panel === "material" && matSetOpen && (
+            <div className="kk-panel matset enter" aria-label="Material settings">
+              <PanelHead eyebrow="Material settings">
+                <IconButton size="sm" icon="close" label="Close settings" onClick={() => setMatSetOpen(false)} />
+              </PanelHead>
+              <div className="matsel">
+                <span className="matsel-thumb" style={{ ["--c" as string]: matInfo.thumb }} aria-hidden="true" />
+                <Caption title={matInfo.title} desc={matInfo.desc} />
+              </div>
 
               {materialTypeTab === "custom" && (
                 <>
                   <div className="kk-card">
-                    <Caption title="Base color" desc="Solid colour under the custom maps." />
-                    <div className="mat-sw">
-                      {CUSTOM_COLORS.map((c) => (
-                        <Tile key={c.id} color={c.color} title={c.name} on={customMaterial.baseColor === c.color} onClick={() => setCustomMaterial((prev) => ({ ...prev, baseColor: c.color }))} />
-                      ))}
-                    </div>
-                    <ColorField label="Custom color" value={customMaterial.baseColor} onChange={(v) => setCustomMaterial((prev) => ({ ...prev, baseColor: v }))} />
+                    <ColorField label="Base color" value={customMaterial.baseColor} onChange={(v) => setCustomMaterial((prev) => ({ ...prev, baseColor: v }))} />
                   </div>
                   <div className="kk-card">
                     {(["normal", "roughness", "metalness"] as const).map((kind) => (
@@ -1772,15 +1850,7 @@ export default function MaterialTool() {
               {materialTypeTab === "gradient" && (
                 <>
                   <div className="kk-card">
-                    <Caption title="Gradient" desc="Procedural shading with its own light — PBR lighting is off." />
-                    <Segmented
-                      value={gradientSettings.type}
-                      onChange={(v) => setGradientSettings((prev) => ({ ...prev, type: v }))}
-                      options={[
-                        { v: "radial", label: "Radial" },
-                        { v: "linear", label: "Linear" },
-                      ]}
-                    />
+                    <span className="tlabel">COLORS</span>
                     <ColorField label="Primary" value={gradientSettings.color1} onChange={(v) => setGradientSettings((prev) => ({ ...prev, color1: v }))} />
                     <ColorField label="Secondary" value={gradientSettings.color2} onChange={(v) => setGradientSettings((prev) => ({ ...prev, color2: v }))} />
                     <div className="kk-switchrow">
@@ -1818,34 +1888,18 @@ export default function MaterialTool() {
               {materialTypeTab === "matcap" && (
                 <>
                   <div className="kk-card">
-                    <Caption title={MATCAP_PRESETS[selectedMatcap]?.name || "Matcap"} desc="Baked lighting in a sphere texture — PBR lighting is off." />
-                    <div className="mat-sw">
-                      {Object.entries(MATCAP_PRESETS).map(([key, preset]) => (
-                        <Tile
-                          key={key}
-                          round
-                          image={preset.matcap}
-                          title={preset.name}
-                          on={selectedMatcap === key}
-                          onClick={() => {
-                            setSelectedMatcap(key)
-                            setMatcapTexture(preset.matcap)
-                            setRenderMode("matcap")
-                          }}
-                        />
-                      ))}
-                    </div>
                     <Field icon="hue" label="Hue shift" value={matcapHueShift} min={0} max={360} step={1} format={(v) => `${Math.round(v)}°`} onChange={setMatcapHueShift} />
                   </div>
                   <div className="kk-card">
                     <span className="tlabel">NORMAL MAP</span>
-                    <div className="mat-sw mat-sw--4">
-                      <Tile title="No normal map" color="var(--panel-line)" on={matcapSettings.normalMap === ""} onClick={() => setMatcapSettings({ ...matcapSettings, normalMap: "" })}>
+                    <div className="mat-lib">
+                      <Tile round title="No normal map" color="var(--panel-line)" on={matcapSettings.normalMap === ""} onClick={() => setMatcapSettings({ ...matcapSettings, normalMap: "" })}>
                         <Icon name="close" />
                       </Tile>
                       {[1, 2, 3, 4, 5, 6, 7].map((i) => (
                         <Tile
                           key={i}
+                          round
                           image={`/images/custom/normal-${i}.jpg`}
                           title={`Normal ${i}`}
                           on={matcapSettings.normalMap === `/images/custom/normal-${i}.jpg`}

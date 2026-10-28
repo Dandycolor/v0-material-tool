@@ -16,6 +16,7 @@ import { usePanelDrag } from "@/components/knopika/drag"
 import { OrbitRig, RotatePanel } from "@/components/knopika/orbit-rig"
 import { THEME_DEFAULT, GROUNDS, TUNER_ROWS, FONTS_DISPLAY, FONTS_UI, fmtRow, themeVars, exportCss, exportJson, type KnopikaTheme } from "@/lib/knopika/theme"
 import { WEIGHTS } from "@/lib/knopika/icons"
+import { BLOB_DEFAULT, type BlobSettings, type BlobBase } from "@/lib/blob"
 import { installUISounds, setSoundEnabled, UISound } from "@/lib/knopika/sounds"
 
 interface IconifyIcon {
@@ -831,7 +832,8 @@ interface MaterialSettings {
 export default function MaterialTool() {
   const [geometrySettings, setGeometrySettings] = useState({
     type: "sphere" as "sphere" | "extruded" | "model",
-    primitiveType: "sphere" as "sphere" | "cone" | "torus" | "torusKnot" | "capsule",
+    primitiveType: "sphere" as "sphere" | "cone" | "torus" | "torusKnot" | "capsule" | "blob",
+    blob: { ...BLOB_DEFAULT } as BlobSettings, // Blob Forge primitive
     svgPath: SVG_PATHS.star,
     // Remove selectedShape tracking for NounProject
     // selectedShape: "star" as keyof typeof SVG_PATHS,
@@ -1439,6 +1441,16 @@ export default function MaterialTool() {
     { type: "torus", label: "Torus", svg: <path fillRule="evenodd" stroke="none" d="M2.5 12a9.5 6.5 0 1 0 19 0 9.5 6.5 0 1 0-19 0zm5.5 0a4 2.2 0 1 0 8 0 4 2.2 0 1 0-8 0z" /> },
     { type: "torusKnot", label: "Knot", svg: <path fill="none" strokeWidth="3" strokeLinecap="round" d="M7 9c2.5-5 10-3 8.5 2.5S8 19 6.5 15s4-9 8-6 2.5 9-2 9.5" /> },
     { type: "capsule", label: "Capsule", svg: <rect x="7" y="2.8" width="10" height="18.4" rx="5" /> },
+    { type: "blob", label: "Blob", svg: <path d="M12.6 3.2c3.9-.4 7.6 2.4 8 6.3.5 4.3-2.1 6.9-4.5 9.2-2.2 2.1-5.6 2.6-8.3 1.2-3.1-1.6-4.9-4.6-4.6-8.1.3-4.3 5.2-8.2 9.4-8.6z" /> },
+  ]
+  const blob = { ...BLOB_DEFAULT, ...(geometrySettings.blob || {}) }
+  const setBlob = (u: Partial<BlobSettings>) => setGeometrySettings((g) => ({ ...g, blob: { ...BLOB_DEFAULT, ...(g.blob || {}), ...u } }))
+  const BLOB_BASES: { v: BlobBase; label: string }[] = [
+    { v: "ico", label: "Ico" },
+    { v: "sphere", label: "Sphere" },
+    { v: "torus", label: "Torus" },
+    { v: "knot", label: "Knot" },
+    { v: "box", label: "Box" },
   ]
   const curPrim = PRIMS.find((p) => p.type === geometrySettings.primitiveType) || PRIMS[0]
   const curMode = MODES.find((m) => m.t === geoType) || MODES[0]
@@ -2273,7 +2285,41 @@ export default function MaterialTool() {
               )}
             </span>
 
-            {geoType === "sphere" && <span className="kk-pillgroup glabel">{curPrim.label}</span>}
+            {geoType === "sphere" && geometrySettings.primitiveType !== "blob" && <span className="kk-pillgroup glabel">{curPrim.label}</span>}
+
+            {geoType === "sphere" && geometrySettings.primitiveType === "blob" && (
+              <>
+                <span className="kk-pillgroup gseed" title="Seed">
+                  <span className="gseed-l">seed</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={blob.seed}
+                    aria-label="Seed"
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value.replace(/\D/g, "") || "0", 10)
+                      setBlob({ seed: Math.min(99999, v) })
+                    }}
+                  />
+                  <button type="button" className="kk-ibtn kk-ibtn--ground" aria-label="Random seed" title="Random seed" onClick={() => setBlob({ seed: Math.floor(Math.random() * 99999) })}>
+                    <Icon name="shuffle" />
+                  </button>
+                </span>
+                <span className="kk-pillgroup gaxis">
+                  {BLOB_BASES.map((b) => (
+                    <button key={b.v} type="button" className={`kk-pill ${blob.base === b.v ? "is-on" : ""}`} onClick={() => setBlob({ base: b.v })}>
+                      {b.label}
+                    </button>
+                  ))}
+                </span>
+                {GP({ icon: "height", label: "Amplitude", value: blob.amplitude, min: 0, max: 1, step: 0.01, onChange: (v) => setBlob({ amplitude: v }) })}
+                {GP({ icon: "wave", label: "Frequency", value: blob.frequency, min: 0.1, max: 3, step: 0.05, onChange: (v) => setBlob({ frequency: v }) })}
+                {GP({ icon: "layers", label: "Detail", value: blob.octaves, min: 1, max: 6, step: 1, onChange: (v) => setBlob({ octaves: v }) })}
+                <span className="sep" />
+                {GT({ icon: "play", label: "Morph", on: blob.animate, onChange: (v) => setBlob({ animate: v }) })}
+                {blob.animate && GP({ icon: "refresh", label: "Morph speed", value: blob.speed, min: 0.05, max: 2, step: 0.05, onChange: (v) => setBlob({ speed: v }) })}
+              </>
+            )}
 
             {geoType === "model" && (
               <button type="button" className="kk-pillgroup glabel gbtn" onClick={() => setShowModelSearch(true)}>

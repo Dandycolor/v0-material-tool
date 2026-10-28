@@ -764,3 +764,9 @@
 .polya .kk-win.is-near-home{box-shadow:0 0 0 2px var(--paper),0 18px 50px rgba(0,0,0,.35)!important}
 .polya .kk-win.is-draggable .phead .kk-eyebrow::before{content:"";display:inline-block;width:8px;height:12px;margin-right:7px;vertical-align:-1px;opacity:.55;
   background:radial-gradient(circle,currentColor 1.1px,transparent 1.4px) 0 0/4px 4px}
+
+/* blob seed pill */
+.polya .geobar .gseed{gap:6px;padding:0 4px 0 14px}
+.polya .geobar .gseed-l{font:600 10px/1 var(--font-ui);opacity:.7;letter-spacing:.04em}
+.polya .geobar .gseed input{width:6ch;border:0;outline:0;background:transparent;color:inherit;font:700 12px/1 var(--font-ui);font-variant-numeric:tabular-nums}
+.polya .geobar .gseed .kk-ibtn{width:var(--control-sm);height:var(--control-sm)}

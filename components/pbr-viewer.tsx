@@ -5,6 +5,7 @@ import { OrbitControls, Environment } from "@react-three/drei"
 import { rot } from "@/lib/knopika/rotation"
 import { setMaterialHue, HUE_GLSL } from "@/lib/hue-shift"
 import { extrudeAsync, flattenShape } from "@/lib/extrude/client"
+import { createBlob, BLOB_DEFAULT, type BlobSettings } from "@/lib/blob"
 import * as THREE from "three"
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js"
@@ -111,10 +112,29 @@ function GridHelper({ visible = true }: { visible?: boolean }) {
 }
 
 // Helper component to render different primitive geometries
-function PrimitiveGeometry({ primitiveType }: { primitiveType: string }) {
+// Blob primitive: seeded noise displacement (lib/blob.ts); morphs over time when animate is on
+function BlobGeometry({ settings }: { settings: BlobSettings }) {
+  const { seed, base, amplitude, frequency, octaves, speed } = settings
+  const blob = useMemo(() => createBlob({ ...settings }), [seed, base, amplitude, frequency, octaves, speed])
+  useEffect(() => () => blob.geometry.dispose(), [blob])
+  const t = useRef(0)
+  useFrame((_, dt) => {
+    if (!settings.animate) return
+    t.current += dt
+    blob.update(t.current)
+  })
+  useEffect(() => {
+    if (!settings.animate) blob.update(t.current)
+  }, [settings.animate, blob])
+  return <primitive object={blob.geometry} attach="geometry" />
+}
+
+function PrimitiveGeometry({ primitiveType, blob }: { primitiveType: string; blob?: BlobSettings }) {
   const segments = 256
   
   switch (primitiveType) {
+    case "blob":
+      return <BlobGeometry settings={{ ...BLOB_DEFAULT, ...(blob || {}) }} />
     case "cone":
       return <coneGeometry args={[1, 2, segments]} />
     case "torus":
@@ -2097,8 +2117,8 @@ function PBRMesh({
       <directionalLight position={[5, 5, 5]} intensity={lightingSettings.directionalIntensity} />
 
       {geometrySettings.type === "sphere" ? (
-        <mesh key={fullTextureKey} ref={sphereMeshRef}>
-          <PrimitiveGeometry primitiveType={geometrySettings.primitiveType || "sphere"} />
+        <mesh key={fullTextureKey} ref={sphereMeshRef} name="inflated-geometry">
+          <PrimitiveGeometry primitiveType={geometrySettings.primitiveType || "sphere"} blob={(geometrySettings as any).blob} />
           <Material materialSettings={materialSettings} />
         </mesh>
       ) : geometrySettings.type === "model" ? (
@@ -2706,8 +2726,8 @@ function SceneContent({
       {showMatcap ? (
         <>
       {geometrySettings.type === "sphere" ? (
-        <mesh>
-          <PrimitiveGeometry primitiveType={geometrySettings.primitiveType || "sphere"} />
+        <mesh name="inflated-geometry">
+          <PrimitiveGeometry primitiveType={geometrySettings.primitiveType || "sphere"} blob={(geometrySettings as any).blob} />
           <MatcapMaterialWithEffects 
             matcap={matcapTextureLoaded}
             normalMap={matcapNormalMap}

@@ -11,6 +11,23 @@ import { TransformControls } from "@react-three/drei"
 import { createGradientMaterial } from "./gradient-shader"
 import { setMaterialHue, HUE_GLSL } from "@/lib/hue-shift"
 
+/** Spherical UVs around the geometry's centre; u is doubled so texels stay roughly square. */
+function ensureUVs(g: THREE.BufferGeometry) {
+  const p = g.attributes.position
+  if (!p) return
+  g.computeBoundingBox()
+  const c = new THREE.Vector3()
+  g.boundingBox!.getCenter(c)
+  const uv = new Float32Array(p.count * 2)
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i) - c.x, y = p.getY(i) - c.y, z = p.getZ(i) - c.z
+    const r = Math.hypot(x, y, z) || 1
+    uv[i * 2] = (0.5 + Math.atan2(z, x) / (2 * Math.PI)) * 2
+    uv[i * 2 + 1] = 0.5 + Math.asin(Math.max(-1, Math.min(1, y / r))) / Math.PI
+  }
+  g.setAttribute("uv", new THREE.BufferAttribute(uv, 2))
+}
+
 /* Parsed models are cached by URL: switching material presets, or coming back to a model,
    clones the cached scene instead of downloading and parsing the file again. */
 const GLTF_CACHE = new Map<string, Promise<any>>()
@@ -477,6 +494,11 @@ export function ModelMesh({
         if (child instanceof Mesh && child.geometry && !child.geometry.userData.kkCentered) {
           child.geometry.center()
           child.geometry.userData.kkCentered = true
+        }
+        // models without texture coordinates (scans like the Stanford Bunny) get spherical UVs,
+        // otherwise colour / normal / roughness maps have nothing to map onto
+        if (child instanceof Mesh && child.geometry && !child.geometry.attributes.uv) {
+          ensureUVs(child.geometry)
         }
       })
 

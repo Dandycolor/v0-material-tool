@@ -6,6 +6,34 @@ import { rot } from "@/lib/knopika/rotation"
 import { setMaterialHue, HUE_GLSL } from "@/lib/hue-shift"
 import { extrudeAsync, flattenShape } from "@/lib/extrude/client"
 import { createBlob, BLOB_DEFAULT, type BlobSettings } from "@/lib/blob"
+import { createLayeredMaterial, updateLayeredMaterial, type LayeredSettings } from "@/lib/layered-material"
+
+/* Applies the shared "Layered" material (gradient over matcap holes) to every mesh of the shape while
+   enabled, and puts the meshes' own materials back when it is switched off. Checked every frame so
+   meshes that remount (new texture set, model load, geometry rebuild) pick it up too. */
+function LayeredApplier({ settings, seed }: { settings?: LayeredSettings; seed: number }) {
+  const { scene } = useThree()
+  const mat = useMemo(() => createLayeredMaterial(), [])
+  useEffect(() => {
+    if (settings) updateLayeredMaterial(mat, settings, seed)
+  }, [mat, settings, seed])
+  const on = !!settings?.enabled
+  useFrame(() => {
+    scene.traverse((o: any) => {
+      if (!o.isMesh || !o.geometry) return
+      if (on) {
+        if (o.material !== mat) {
+          o.userData.kkOrigMat = o.material
+          o.material = mat
+        }
+      } else if (o.material === mat && o.userData.kkOrigMat) {
+        o.material = o.userData.kkOrigMat
+        delete o.userData.kkOrigMat
+      }
+    })
+  })
+  return null
+}
 import * as THREE from "three"
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js"
@@ -2333,7 +2361,8 @@ function SceneContent({
   backgroundColor,
   dotGrid = false,
   dotColor = "rgba(0,0,0,0.18)",
-}: SceneContentProps & { onExportReady: (fn: () => void) => void, onExportGeometryReady: (fn: () => void) => void, onExportSTLReady: (fn: () => void) => void, onExportOBJReady: (fn: () => void) => void, backgroundColor?: string, dotGrid?: boolean, dotColor?: string }) {
+  layeredSettings,
+}: SceneContentProps & { layeredSettings?: LayeredSettings } & { onExportReady: (fn: () => void) => void, onExportGeometryReady: (fn: () => void) => void, onExportSTLReady: (fn: () => void) => void, onExportOBJReady: (fn: () => void) => void, backgroundColor?: string, dotGrid?: boolean, dotColor?: string }) {
   const { gl, scene, camera } = useThree()
   const size = useThree((s) => s.size)
   const dpr = useThree((s) => s.viewport.dpr)
@@ -2796,6 +2825,7 @@ function SceneContent({
       </KnopikaRotGroup>
       </group>
       <GridHelper visible={showGrid} />
+      <LayeredApplier settings={layeredSettings} seed={(geometrySettings as any).blob?.seed ?? 0} />
     </>
   )
 }
@@ -2826,6 +2856,7 @@ const PBRViewerInner = forwardRef<
   }
   backgroundColor?: string
   dotGrid?: boolean
+  layeredSettings?: LayeredSettings
   dotColor?: string
   showGrid?: boolean
   showRotateControls?: boolean
@@ -2849,7 +2880,7 @@ const PBRViewerInner = forwardRef<
   onGeometrySettingsChange?: (settings: Partial<GeometrySettings>) => void
   }
 >(function PBRViewer(
-  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, dotGrid, dotColor, showGrid, showRotateControls, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
+  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, dotGrid, dotColor, layeredSettings, showGrid, showRotateControls, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
   ref,
   ) {
   const exportFnRef = useRef<(() => void) | null>(null)
@@ -2927,6 +2958,7 @@ const PBRViewerInner = forwardRef<
             backgroundColor={backgroundColor}
             dotGrid={dotGrid}
             dotColor={dotColor}
+            layeredSettings={layeredSettings}
             gradientSettings={gradientSettings}
             customMaterial={customMaterial}
             onModelLoadError={onModelLoadError}

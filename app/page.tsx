@@ -17,6 +17,7 @@ import { OrbitRig, RotatePanel } from "@/components/knopika/orbit-rig"
 import { THEME_DEFAULT, GROUNDS, TUNER_ROWS, FONTS_DISPLAY, FONTS_UI, fmtRow, themeVars, exportCss, exportJson, type KnopikaTheme } from "@/lib/knopika/theme"
 import { WEIGHTS } from "@/lib/knopika/icons"
 import { BLOB_DEFAULT, type BlobSettings, type BlobBase } from "@/lib/blob"
+import { LAYERED_DEFAULT, LAYERED_PALETTES, type LayeredSettings } from "@/lib/layered-material"
 import { installUISounds, setSoundEnabled, UISound } from "@/lib/knopika/sounds"
 
 interface IconifyIcon {
@@ -942,7 +943,7 @@ export default function MaterialTool() {
 
   const [selectedPreset, setSelectedPreset] = useState<keyof typeof MATERIAL_PRESETS | "custom">("plastic")
   const [activeTab, setActiveTab] = useState("material") // tabs are gone: the material panel is always the context
-  const [materialTypeTab, setMaterialTypeTab] = useState<"pbr" | "custom" | "gradient" | "matcap">(
+  const [materialTypeTab, setMaterialTypeTab] = useState<"pbr" | "custom" | "gradient" | "matcap" | "layered">(
     selectedPreset === "custom" ? "custom" : "pbr"
   )
   const [backgroundColor, setBackgroundColor] = useState("#9724f5") // Knopika "Violet" ground
@@ -957,6 +958,10 @@ export default function MaterialTool() {
     metalness: CUSTOM_TEXTURES.metalness[0].url,
   })
   
+  // Layered material (Blob Forge): gradient layer over matcap "holes"
+  const [layered, setLayered] = useState<LayeredSettings>({ ...LAYERED_DEFAULT })
+  const setLay = (u: Partial<LayeredSettings>) => setLayered((p) => ({ ...p, ...u }))
+
   // Gradient settings
   const [showGradient, setShowGradient] = useState(false)
   const [gradientSettings, setGradientSettings] = useState({
@@ -996,6 +1001,8 @@ export default function MaterialTool() {
         }
       }
       
+      // Layered (gradient + matcap holes) is its own material mode
+      setLayered((prev) => ({ ...prev, enabled: materialTypeTab === "layered" }))
       // Auto-enable/disable gradient based on tab selection
       if (materialTypeTab === "gradient") {
         setGradientSettings(prev => ({ ...prev, enabled: true }))
@@ -1474,6 +1481,12 @@ export default function MaterialTool() {
         desc: "Procedural shading with its own light — PBR lighting is off.",
         thumb: `radial-gradient(circle at 40% 35%, ${gradientSettings.color1}, ${gradientSettings.color2})`,
       }
+    if (materialTypeTab === "layered")
+      return {
+        title: LAYERED_PALETTES.find((p) => p.colors[0] === layered.colorA && p.colors[1] === layered.colorB && p.colors[2] === layered.colorC)?.name || "Layered",
+        desc: "Gradient layer with matcap showing through noise holes.",
+        thumb: `radial-gradient(circle at 35% 30%, ${layered.colorA}, ${layered.colorB} 55%, ${layered.colorC})`,
+      }
     if (materialTypeTab === "custom")
       return { title: "Custom material", desc: "Solid colour with your own normal, roughness and metalness maps.", thumb: customMaterial.baseColor }
     const p = MATERIAL_PRESETS[selectedPreset as keyof typeof MATERIAL_PRESETS]
@@ -1488,6 +1501,7 @@ export default function MaterialTool() {
     { v: "custom", icon: "palette", label: "Custom PBR" },
     { v: "gradient", icon: "layers", label: "Gradient" },
     { v: "matcap", icon: "eye", label: "Matcap" },
+    { v: "layered", icon: "spark", label: "Layered" },
   ] as const
 
   // bottom bar pill with an ink slider
@@ -1538,6 +1552,7 @@ export default function MaterialTool() {
               matcapSettings={matcapSettings}
               backgroundColor={backgroundColor}
               dotGrid={showDots}
+              layeredSettings={layered}
               dotColor={tv.vars["--on-ground-faint"]}
               showGrid={showGrid}
               showRotateControls={showRotateControls}
@@ -1813,6 +1828,20 @@ export default function MaterialTool() {
                   ))}
                 </div>
               )}
+              {materialTypeTab === "layered" && (
+                <div className="mat-lib">
+                  {LAYERED_PALETTES.map((p) => (
+                    <Tile
+                      key={p.name}
+                      round
+                      color={`radial-gradient(ellipse 34% 26% at 66% 72%, #101014 0 45%, #b9b9c0 70%, transparent 100%), radial-gradient(circle at 30% 28%, #ffffff66 0 7%, transparent 26%), linear-gradient(135deg, ${p.colors[0]}, ${p.colors[1]} 55%, ${p.colors[2]})`}
+                      title={p.name}
+                      on={layered.colorA === p.colors[0] && layered.colorB === p.colors[1] && layered.colorC === p.colors[2]}
+                      onClick={() => pickMaterial(() => setLay({ colorA: p.colors[0], colorB: p.colors[1], colorC: p.colors[2] }))}
+                    />
+                  ))}
+                </div>
+              )}
               {materialTypeTab === "matcap" && (
                 <div className="mat-lib">
                   {Object.entries(MATCAP_PRESETS).map(([key, preset]) => (
@@ -1901,6 +1930,61 @@ export default function MaterialTool() {
                       />
                     )}
                     <Field icon="snow" label="Noise" value={(gradientSettings as any).noise || 0} min={0} max={2} step={0.1} onChange={(v) => setGradientSettings((prev) => ({ ...prev, noise: v }) as any)} />
+                  </div>
+                </>
+              )}
+
+              {materialTypeTab === "layered" && (
+                <>
+                  <div className="kk-card">
+                    <span className="tlabel">GRADIENT LAYER</span>
+                    <ColorField label="Color A" value={layered.colorA} onChange={(v) => setLay({ colorA: v })} />
+                    <ColorField label="Color B" value={layered.colorB} onChange={(v) => setLay({ colorB: v })} />
+                    <ColorField label="Color C" value={layered.colorC} onChange={(v) => setLay({ colorC: v })} />
+                    <div className="kk-colorbar" style={{ ["--c" as string]: `linear-gradient(90deg, ${layered.colorA}, ${layered.colorB}, ${layered.colorC})` }} />
+                    <Segmented
+                      value={layered.axis}
+                      onChange={(v) => setLay({ axis: v })}
+                      options={[
+                        { v: "x", label: "X axis" },
+                        { v: "y", label: "Y axis" },
+                        { v: "z", label: "Z axis" },
+                      ]}
+                    />
+                    <Field icon="wave" label="Gradient softness" value={layered.softness} min={0} max={1} step={0.01} onChange={(v) => setLay({ softness: v })} />
+                    <Field icon="sun" label="Ambient light" value={layered.ambient} min={0} max={1} step={0.01} onChange={(v) => setLay({ ambient: v })} />
+                  </div>
+                  <div className="kk-card">
+                    <span className="tlabel">MATCAP LAYER</span>
+                    <div className="mat-lib mat-lib--sm">
+                      {Object.entries(MATCAP_PRESETS).map(([key, preset]) => (
+                        <Tile key={key} round image={preset.matcap} title={preset.name} on={layered.matcap === preset.matcap} onClick={() => setLay({ matcap: preset.matcap })} />
+                      ))}
+                    </div>
+                    <Segmented
+                      value={layered.blend}
+                      onChange={(v) => setLay({ blend: v })}
+                      options={[
+                        { v: "replace", label: "Replace" },
+                        { v: "modulate", label: "Modulate" },
+                      ]}
+                    />
+                    <Field icon="bulb" label="Matcap intensity" value={layered.intensity} min={0} max={2} step={0.01} onChange={(v) => setLay({ intensity: v })} />
+                  </div>
+                  <div className="kk-card">
+                    <Caption title="Hole mask" desc="Patches of matcap inside the gradient." />
+                    <Field icon="circle" label="Coverage" value={layered.coverage} min={0} max={1} step={0.01} onChange={(v) => setLay({ coverage: v })} />
+                    <Field icon="width" label="Hole scale" value={layered.holeScale} min={0} max={2} step={0.01} onChange={(v) => setLay({ holeScale: v })} />
+                    <Field icon="drop" label="Hole softness" value={layered.holeSoftness} min={0} max={0.5} step={0.01} onChange={(v) => setLay({ holeSoftness: v })} />
+                    <Field icon="layers" label="Mask detail" value={layered.maskDetail} min={1} max={5} step={1} onChange={(v) => setLay({ maskDetail: v })} />
+                    <Field icon="snow" label="Mask blur" value={layered.maskBlur} min={0} max={1} step={0.01} onChange={(v) => setLay({ maskBlur: v })} />
+                    <div className="kk-switchrow">
+                      <span>Invert mask</span>
+                      <Switch label="Invert mask" on={layered.invert} onChange={(v) => setLay({ invert: v })} />
+                    </div>
+                  </div>
+                  <div className="kk-card">
+                    <Field icon="spark" label="Grain" value={layered.grain} min={0} max={1} step={0.01} onChange={(v) => setLay({ grain: v })} />
                   </div>
                 </>
               )}
@@ -2034,7 +2118,7 @@ export default function MaterialTool() {
               <PanelHead eyebrow="Light · Environment">
                 <IconButton size="sm" icon="close" label="Close lighting" onClick={() => setPanel("material")} />
               </PanelHead>
-              {renderMode !== "pbr" || materialTypeTab === "gradient" ? (
+              {renderMode !== "pbr" || materialTypeTab === "gradient" || materialTypeTab === "layered" ? (
                 <div className="kk-card">
                   <Caption
                     title="PBR lighting is off"

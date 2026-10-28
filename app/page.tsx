@@ -844,8 +844,9 @@ export default function MaterialTool() {
     bevelSegments: 18,
     bevelQuality: 78,
     textureScale: 1.0, // Added textureScale for sphere
-    modelUrl: null as string | null,
-    modelName: null as string | null,
+    // 3D mode opens with the Stanford Bunny (Stanford 3D Scanning Repository), as a tribute
+    modelUrl: "/models/stanford-bunny.glb" as string | null,
+    modelName: "Stanford Bunny" as string | null,
     inflationAmount: 0, // 0 = no inflation, 1 = max inflation
     inflateSphereEnabled: true, // Inflate Sphere Position ON/OFF
     inflateSpherePosition: [0, 0, 0] as [number, number, number], // X, Y, Z центра сферы
@@ -1742,7 +1743,7 @@ export default function MaterialTool() {
 
               {geoType === "model" && (
                 <div className="kk-card">
-                  <Caption title={geometrySettings.modelName || "No model loaded"} desc={geometrySettings.modelName ? "Currently loaded model" : "Pick a GLB / GLTF model from the library."} />
+                  <Caption title={geometrySettings.modelName || "No model loaded"} desc={geometrySettings.modelUrl === "/models/stanford-bunny.glb" ? "Stanford 3D Scanning Repository, 1994 — the classic test model of computer graphics." : geometrySettings.modelName ? "Currently loaded model" : "Pick a GLB / GLTF model from the library."} />
                   <button type="button" className="kk-pill kk-pill--wide" onClick={() => setShowModelSearch(true)}>
                     <Icon name="search" />
                     Search 3D models

@@ -1,19 +1,65 @@
 "use client"
 
-import { Canvas, useLoader, useThree } from "@react-three/fiber"
-import { OrbitControls, Environment, TransformControls } from "@react-three/drei"
+import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber"
+import { OrbitControls, Environment } from "@react-three/drei"
+import { rot } from "@/lib/knopika/rotation"
+import { setMaterialHue, HUE_GLSL } from "@/lib/hue-shift"
+import { extrudeAsync, flattenShape } from "@/lib/extrude/client"
+import { createBlob, BLOB_DEFAULT, type BlobSettings } from "@/lib/blob"
+import { createLayeredMaterial, updateLayeredMaterial, type LayeredSettings } from "@/lib/layered-material"
+
+/* Applies the shared "Layered" material (gradient over matcap holes) to every mesh of the shape while
+   enabled, and puts the meshes' own materials back when it is switched off. Checked every frame so
+   meshes that remount (new texture set, model load, geometry rebuild) pick it up too. */
+function LayeredApplier({ settings, seed }: { settings?: LayeredSettings; seed: number }) {
+  const { scene } = useThree()
+  const mat = useMemo(() => createLayeredMaterial(), [])
+  useEffect(() => {
+    if (settings) updateLayeredMaterial(mat, settings, seed)
+  }, [mat, settings, seed])
+  const on = !!settings?.enabled
+  useFrame(() => {
+    scene.traverse((o: any) => {
+      if (!o.isMesh || !o.geometry) return
+      if (on) {
+        if (o.material !== mat) {
+          o.userData.kkOrigMat = o.material
+          o.material = mat
+        }
+      } else if (o.material === mat && o.userData.kkOrigMat) {
+        o.material = o.userData.kkOrigMat
+        delete o.userData.kkOrigMat
+      }
+    })
+  })
+  return null
+}
 import * as THREE from "three"
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js"
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js"
 import { STLExporter } from "three/addons/exporters/STLExporter.js"
 import { OBJExporter } from "three/addons/exporters/OBJExporter.js"
-import { Suspense, useMemo, useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react"
+import { Suspense, useMemo, useState, useEffect, useRef, useImperativeHandle, forwardRef, useDeferredValue, memo } from "react"
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils"
 import { ModelMesh } from "./model-mesh"
 import { createGradientMaterial } from "./gradient-shader"
 import { inflatePolygon as createInflatedGeometryFromContour } from "@/lib/inflate-geometry"
 
+// Object rotation driven by the Knopika orbit rig (turn around Y, then tilt around the screen X axis)
+function KnopikaRotGroup({ children }: { children?: any }) {
+  const ref = useRef<THREE.Group>(null)
+  useFrame(() => {
+    const g = ref.current
+    if (!g) return
+    const { turn, tilt } = rot.get()
+    g.rotation.set((tilt * Math.PI) / 180, (turn * Math.PI) / 180, 0, "XYZ")
+  })
+  return <group ref={ref}>{children}</group>
+}
+
 // Grid component with fade effect at edges
+const MATCAP_CACHE = new Map<string, THREE.Texture>()
+
 function GridHelper({ visible = true }: { visible?: boolean }) {
   const { scene } = useThree()
   const gridRef = useRef<THREE.Group | null>(null)
@@ -94,10 +140,29 @@ function GridHelper({ visible = true }: { visible?: boolean }) {
 }
 
 // Helper component to render different primitive geometries
-function PrimitiveGeometry({ primitiveType }: { primitiveType: string }) {
+// Blob primitive: seeded noise displacement (lib/blob.ts); morphs over time when animate is on
+function BlobGeometry({ settings }: { settings: BlobSettings }) {
+  const { seed, base, amplitude, frequency, octaves, speed } = settings
+  const blob = useMemo(() => createBlob({ ...settings }), [seed, base, amplitude, frequency, octaves, speed])
+  useEffect(() => () => blob.geometry.dispose(), [blob])
+  const t = useRef(0)
+  useFrame((_, dt) => {
+    if (!settings.animate) return
+    t.current += dt
+    blob.update(t.current)
+  })
+  useEffect(() => {
+    if (!settings.animate) blob.update(t.current)
+  }, [settings.animate, blob])
+  return <primitive object={blob.geometry} attach="geometry" />
+}
+
+function PrimitiveGeometry({ primitiveType, blob }: { primitiveType: string; blob?: BlobSettings }) {
   const segments = 256
   
   switch (primitiveType) {
+    case "blob":
+      return <BlobGeometry settings={{ ...BLOB_DEFAULT, ...(blob || {}) }} />
     case "cone":
       return <coneGeometry args={[1, 2, segments]} />
     case "torus":
@@ -120,6 +185,7 @@ function MatcapMaterialWithEffects({
   rimIntensity = 0,
   rimPower = 3,
   rimColor = "#ffffff",
+  hueShift = 0,
 }: {
   matcap: THREE.Texture | null
   normalMap: THREE.Texture | null
@@ -127,6 +193,7 @@ function MatcapMaterialWithEffects({
   rimIntensity?: number
   rimPower?: number
   rimColor?: string
+  hueShift?: number
 }) {
   const materialRef = useRef<THREE.ShaderMaterial>(null)
 
@@ -139,6 +206,7 @@ function MatcapMaterialWithEffects({
       rimPower: { value: rimPower },
       rimColor: { value: new THREE.Color(rimColor) },
       hasNormalMap: { value: !!normalMap },
+      uHueShift: { value: hueShift },
     }),
     []
   )
@@ -151,11 +219,12 @@ function MatcapMaterialWithEffects({
       materialRef.current.uniforms.normalIntensity.value = normalIntensity
       materialRef.current.uniforms.rimIntensity.value = rimIntensity
       materialRef.current.uniforms.rimPower.value = rimPower
-      materialRef.current.uniforms.rimColor.value = new THREE.Color(rimColor)
+      materialRef.current.uniforms.rimColor.value.set(rimColor)
       materialRef.current.uniforms.hasNormalMap.value = !!normalMap
-      materialRef.current.needsUpdate = true
+      materialRef.current.uniforms.uHueShift.value = hueShift
+      // uniforms only — no needsUpdate, so no shader rebuild on every slider tick
     }
-  }, [matcap, normalMap, normalIntensity, rimIntensity, rimPower, rimColor])
+  }, [matcap, normalMap, normalIntensity, rimIntensity, rimPower, rimColor, hueShift])
 
   const vertexShader = `
     varying vec3 vNormal;
@@ -179,6 +248,7 @@ function MatcapMaterialWithEffects({
     uniform float rimPower;
     uniform vec3 rimColor;
     uniform bool hasNormalMap;
+    ${HUE_GLSL}
 
     varying vec3 vNormal;
     varying vec3 vViewPosition;
@@ -221,6 +291,7 @@ function MatcapMaterialWithEffects({
       vec2 matcapUv = vec2(dot(x, normal), dot(y, normal)) * 0.495 + 0.5;
 
       vec4 matcapColor = texture2D(matcap, matcapUv);
+      if (uHueShift != 0.0) matcapColor.rgb = kkHueShift(matcapColor.rgb, uHueShift);
 
       // Apply rim lighting with color
       float rim = 1.0 - max(dot(normalize(vViewPosition), normal), 0.0);
@@ -396,7 +467,55 @@ function splitCompoundPaths(svgString: string): string {
   }
 }
 
+/* Parsed SVG shapes are cached per (svg, source): geometry sliders re-extrude the cached shapes
+   instead of re-parsing the SVG through the DOM on every tick. */
+const SHAPES_CACHE = new Map<string, THREE.Shape[]>()
 function parseSVGContent(svgContent: string, source: "iconify" | "upload" = "iconify"): THREE.Shape[] {
+  const key = source + "|" + svgContent
+  const hit = SHAPES_CACHE.get(key)
+  if (hit) {
+    SHAPES_CACHE.delete(key)
+    SHAPES_CACHE.set(key, hit)
+    return hit
+  }
+  const shapes = parseSVGContentRaw(svgContent, source)
+  SHAPES_CACHE.set(key, shapes)
+  if (SHAPES_CACHE.size > 12) SHAPES_CACHE.delete(SHAPES_CACHE.keys().next().value!)
+  return shapes
+}
+
+/* Built geometries are cached by their parameters (LRU), so dragging a slider back and forth,
+   or toggling pottery mode, reuses meshes instead of rebuilding them. */
+const GEO_CACHE = new Map<string, THREE.BufferGeometry | null>()
+const CONTOUR_IDS = new WeakMap<object, number>()
+let contourSeq = 0
+function contourId(c: object | undefined) {
+  if (!c) return 0
+  let id = CONTOUR_IDS.get(c)
+  if (!id) {
+    id = ++contourSeq
+    CONTOUR_IDS.set(c, id)
+  }
+  return id
+}
+function cachedGeometry(key: string, build: () => THREE.BufferGeometry | null) {
+  if (GEO_CACHE.has(key)) {
+    const g = GEO_CACHE.get(key)!
+    GEO_CACHE.delete(key)
+    GEO_CACHE.set(key, g)
+    return g
+  }
+  const g = build()
+  GEO_CACHE.set(key, g)
+  while (GEO_CACHE.size > 10) {
+    const k = GEO_CACHE.keys().next().value!
+    GEO_CACHE.get(k)?.dispose()
+    GEO_CACHE.delete(k)
+  }
+  return g
+}
+
+function parseSVGContentRaw(svgContent: string, source: "iconify" | "upload" = "iconify"): THREE.Shape[] {
   console.log("[v0] parseSVGContent called with source:", source)
   try {
     // Preprocess SVG for better compatibility
@@ -1286,6 +1405,32 @@ function isPointInShape(x: number, y: number, points: THREE.Vector2[]): boolean 
   return inside
 }
 
+/* Adaptive curve sampling. ExtrudeGeometry's curveSegments applies to *every* curve, so an icon made of
+   160 small Béziers at quality 78 became ~12 000 outline points (× bevel rings ≈ 1M triangles).
+   Here each curve gets divisions proportional to its length, so the whole outline has a steady
+   point density set by the quality slider — simple shapes look the same, complex ones get ~10× lighter. */
+function sampleCurvePath(path: THREE.Path | THREE.Shape, spacing: number, maxDiv: number): THREE.Vector2[] {
+  const out: THREE.Vector2[] = []
+  for (const c of path.curves) {
+    const isLine = (c as any).isLineCurve
+    const n = isLine ? 1 : Math.max(2, Math.min(maxDiv, Math.ceil(c.getLength() / spacing)))
+    const pts = c.getPoints(n) as THREE.Vector2[]
+    for (let i = out.length ? 1 : 0; i < pts.length; i++) out.push(pts[i])
+  }
+  if (out.length > 2 && out[0].distanceToSquared(out[out.length - 1]) < 1e-12) out.pop()
+  return out
+}
+function resampleShape(shape: THREE.Shape, quality: number): THREE.Shape {
+  const box = new THREE.Box2().setFromPoints(shape.getPoints(4))
+  const diag = Math.max(1e-6, box.min.distanceTo(box.max))
+  const q = Math.max(1, quality)
+  const spacing = diag / (q * 2.2)
+  const maxDiv = Math.max(24, q)
+  const ns = new THREE.Shape(sampleCurvePath(shape, spacing, maxDiv))
+  ns.holes = shape.holes.map((h) => new THREE.Path(sampleCurvePath(h, spacing, maxDiv)))
+  return ns
+}
+
 function createLatheGeometry(
   svgString: string,
   segments: number,
@@ -1301,7 +1446,7 @@ function createLatheGeometry(
     }
 
     const shape = shapes[0]
-    const allPoints = shape.getPoints(40)
+    const allPoints = resampleShape(shape, 40).getPoints(1)
 
     if (allPoints.length < 2) {
       console.warn("[v0] Not enough points for lathe geometry")
@@ -1492,7 +1637,7 @@ function createExtrudedGeometry(
           steps: 1,
         }
 
-        const geo = new THREE.ExtrudeGeometry([shape], extrudeSettings)
+        const geo = new THREE.ExtrudeGeometry([resampleShape(shape, Math.max(24, curveSegments))], { ...extrudeSettings, curveSegments: 1 })
         if (geo.attributes.position && geo.attributes.position.count > 0) {
           geometries.push(geo)
         }
@@ -1513,9 +1658,6 @@ function createExtrudedGeometry(
     } else {
       geometry = mergeGeometries(geometries)
     }
-
-    // Recompute normals for smooth shading
-    geometry.computeVertexNormals()
 
     // Center the geometry
     geometry.center()
@@ -1598,7 +1740,6 @@ function createExtrudedGeometry(
 
     geometry.setAttribute("uv", new THREE.BufferAttribute(uvArray, 2))
 
-    console.log("[v0] Created extruded geometry with triplanar UV mapping")
 
     return geometry
   } catch (error) {
@@ -1674,7 +1815,70 @@ function ExtrudedSVGMesh({
     materialProps.normalScale = normalScaleVector
   }
 
-  const geometry = useMemo(() => {
+  // Geometry follows a deferred copy of the settings: the slider stays responsive and React
+  // skips intermediate values when a rebuild is still running.
+  geometrySettings = useDeferredValue(geometrySettings)
+  const built = useMemo(() => {
+    const g = geometrySettings
+    const key =
+      g.type === "inflate"
+        ? ["inf", contourId(g.inflateContour), g.inflateVolume, g.inflateBothSides, g.inflateSmoothing, g.inflateGridResolution, g.inflateSharpRidge, g.inflateRidgeSharpness].join("|")
+        : g.usePotteryMode
+          ? ["lathe", g.svgPath, g.latheSegments, g.latheAxis].join("|")
+          : ["ext", g.svgSource, g.svgPath, g.thickness, g.bevelSize, g.bevelSegments, g.bevelQuality].join("|")
+    return { key, isExt: g.type !== "inflate" && !g.usePotteryMode, sync: g.type === "inflate" || g.usePotteryMode ? cachedGeometry(key, () => buildGeometry(g)) : null }
+  }, [
+    geometrySettings.type,
+    geometrySettings.svgPath,
+    geometrySettings.thickness,
+    geometrySettings.bevelSize,
+    geometrySettings.bevelSegments,
+    geometrySettings.bevelQuality,
+    geometrySettings.svgSource,
+    geometrySettings.usePotteryMode,
+    geometrySettings.latheSegments,
+    geometrySettings.latheAxis,
+    geometrySettings.inflateContour,
+    geometrySettings.inflateVolume,
+    geometrySettings.inflateBothSides,
+    geometrySettings.inflateSmoothing,
+    geometrySettings.inflateGridResolution,
+    geometrySettings.inflateSharpRidge,
+    geometrySettings.inflateRidgeSharpness,
+  ])
+
+  // Extrusion runs in a Web Worker (lib/extrude); the last finished mesh stays on screen meanwhile.
+  const [extGeo, setExtGeo] = useState<THREE.BufferGeometry | null>(null)
+  useEffect(() => {
+    if (!built.isExt) return
+    const g = geometrySettings
+    if (GEO_CACHE.has(built.key)) {
+      setExtGeo(cachedGeometry(built.key, () => null))
+      return
+    }
+    if (!g.svgPath) {
+      setExtGeo(null)
+      return
+    }
+    let cancelled = false
+    const shapes = parseSVGContent(g.svgPath, g.svgSource ?? "iconify")
+    const quality = Math.max(24, g.bevelQuality)
+    const flat = shapes.map((sh) => flattenShape(resampleShape(sh, quality)))
+    extrudeAsync(flat, { thickness: g.thickness, bevelSize: g.bevelSize, bevelSegments: g.bevelSegments })
+      .then((geo) => {
+        if (geo === undefined) return // superseded by a newer value
+        const kept = cachedGeometry(built.key, () => geo)
+        if (!cancelled) setExtGeo(kept)
+      })
+      .catch((e) => console.warn("[v0] extrude failed", e))
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [built.key, built.isExt])
+  const geometry = built.isExt ? extGeo : built.sync
+
+  function buildGeometry(geometrySettings: GeometrySettings) {
     // Handle "inflate" type - uses contour points directly
     if (geometrySettings.type === "inflate") {
       const contour = geometrySettings.inflateContour
@@ -1712,25 +1916,7 @@ function ExtrudedSVGMesh({
     )
     
     return baseGeometry
-  }, [
-    geometrySettings.type,
-    geometrySettings.svgPath,
-    geometrySettings.thickness,
-    geometrySettings.bevelSize,
-    geometrySettings.bevelSegments,
-    geometrySettings.bevelQuality,
-    geometrySettings.svgSource,
-    geometrySettings.usePotteryMode,
-    geometrySettings.latheSegments,
-    geometrySettings.latheAxis,
-    geometrySettings.inflateContour,
-    geometrySettings.inflateVolume,
-    geometrySettings.inflateBothSides,
-    geometrySettings.inflateSmoothing,
-    geometrySettings.inflateGridResolution,
-    geometrySettings.inflateSharpRidge,
-    geometrySettings.inflateRidgeSharpness,
-  ])
+  }
 
   const meshRef = useRef<THREE.Mesh>(null)
 
@@ -1746,14 +1932,7 @@ function ExtrudedSVGMesh({
     }
   }, [gradientSettings])
 
-  // Cleanup geometry on unmount or when dependencies change
-  useEffect(() => {
-    return () => {
-      if (geometry) {
-        geometry.dispose()
-      }
-    }
-  }, [geometry])
+  // geometries are owned (and disposed) by GEO_CACHE
 
   if (geometry) {
     return (
@@ -1767,6 +1946,7 @@ function ExtrudedSVGMesh({
               rimIntensity={matcapSettings?.rimIntensity || 0}
               rimPower={matcapSettings?.rimPower || 3}
               rimColor={matcapSettings?.rimColor || "#ffffff"}
+              hueShift={(matcapSettings as any)?.hueShift || 0}
             />
           ) : (
             <Material materialSettings={materialSettings} shapeType="extruded" />
@@ -1895,12 +2075,12 @@ function PBRMesh({
     return result
   }, [loadedTextures, materialSettings])
 
-  const hueShiftedColorMap = useHueShiftedTexture(colorMap, materialSettings.hueShift, materialSettings.useHueShift)
+  // Hue shift happens on the GPU inside each material (lib/hue-shift.ts); the map itself is never re-baked.
+  const hueShiftedColorMap = colorMap
+  const finalColorMap = colorMap
 
-  const finalColorMap = materialSettings.useHueShift ? hueShiftedColorMap : colorMap
-
-  const tintColor = new THREE.Color(materialSettings.colorTint)
-  const normalScaleVector = new THREE.Vector2(materialSettings.normalScale, materialSettings.normalScale)
+  const tintColor = useMemo(() => new THREE.Color(materialSettings.colorTint), [materialSettings.colorTint])
+  const normalScaleVector = useMemo(() => new THREE.Vector2(materialSettings.normalScale, materialSettings.normalScale), [materialSettings.normalScale])
 
   const sphereMeshRef = useRef<THREE.Mesh>(null)
   
@@ -1948,8 +2128,9 @@ function PBRMesh({
     normalScaleVector,
   ])
 
+  // Remount only when the texture set changes — not on every hue / slider change
   const textureKey = texturesToLoad.join("-")
-  const fullTextureKey = `${textureKey}-hue${materialSettings.hueShift}-${materialSettings.useHueShift}`
+  const fullTextureKey = textureKey
   
   // Center geometry when it updates
   useEffect(() => {
@@ -1964,8 +2145,8 @@ function PBRMesh({
       <directionalLight position={[5, 5, 5]} intensity={lightingSettings.directionalIntensity} />
 
       {geometrySettings.type === "sphere" ? (
-        <mesh key={fullTextureKey} ref={sphereMeshRef}>
-          <PrimitiveGeometry primitiveType={geometrySettings.primitiveType || "sphere"} />
+        <mesh key={fullTextureKey} ref={sphereMeshRef} name="inflated-geometry">
+          <PrimitiveGeometry primitiveType={geometrySettings.primitiveType || "sphere"} blob={(geometrySettings as any).blob} />
           <Material materialSettings={materialSettings} />
         </mesh>
       ) : geometrySettings.type === "model" ? (
@@ -2018,146 +2199,16 @@ function PBRMesh({
   )
 }
 
-function useHueShiftedTexture(
-  originalTexture: THREE.Texture | null,
-  hueShift: number,
-  enabled: boolean,
-): THREE.Texture | null {
-  const [shiftedTexture, setShiftedTexture] = useState<THREE.Texture | null>(null)
-  const [isProcessing, setIsProcessing] = useState(false)
-
-  useEffect(() => {
-    if (!originalTexture || !enabled || hueShift === 0) {
-      setShiftedTexture(null)
-      setIsProcessing(false)
-      return
-    }
-
-    const image = originalTexture.image
-    const isImageReady = image && (image instanceof ImageBitmap || image.complete !== false)
-
-    if (!isImageReady) {
-      setShiftedTexture(null)
-      setIsProcessing(false)
-      return
-    }
-
-    setIsProcessing(true)
-
-    // Create canvas to manipulate pixels
-    const canvas = document.createElement("canvas")
-    canvas.width = image.width || 512
-    canvas.height = image.height || 512
-    const ctx = canvas.getContext("2d")
-    if (!ctx) {
-      setShiftedTexture(null)
-      setIsProcessing(false)
-      return
-    }
-
-    // Draw original image
-    try {
-      ctx.drawImage(image, 0, 0, canvas.width, canvas.height)
-    } catch (e) {
-      console.error("[v0] Failed to draw image for hue shift:", e)
-      setShiftedTexture(null)
-      setIsProcessing(false)
-      return
-    }
-    // Get pixel data
-    let imageData: ImageData
-    try {
-      imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-    } catch (e) {
-      console.error("[v0] Failed to get image data for hue shift:", e)
-      setShiftedTexture(null)
-      setIsProcessing(false)
-      return
-    }
-    const data = imageData.data
-
-    // Apply hue shift to each pixel
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i] / 255
-      const g = data[i + 1] / 255
-      const b = data[i + 2] / 255
-
-      // RGB to HSL
-      const max = Math.max(r, g, b)
-      const min = Math.min(r, g, b)
-      let h = 0
-      let s = 0
-      const l = (max + min) / 2
-
-      if (max !== min) {
-        const d = max - min
-        s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
-        switch (max) {
-          case r:
-            h = ((g - b) / d + (g < b ? 6 : 0)) / 6
-            break
-          case g:
-            h = ((b - r) / d + 2) / 6
-            break
-          case b:
-            h = ((r - g) / d + 4) / 6
-            break
-        }
-      }
-
-      // Apply hue shift (hueShift is 0-360 degrees)
-      h = (h + hueShift / 360) % 1
-      if (h < 0) h += 1
-
-      // HSL to RGB
-      let newR, newG, newB
-      if (s === 0) {
-        newR = newG = newB = l
-      } else {
-        const hue2rgb = (p: number, q: number, t: number) => {
-          if (t < 0) t += 1
-          if (t > 1) t -= 1
-          if (t < 1 / 6) return p + (q - p) * 6 * t
-          if (t < 1 / 2) return q
-          if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6
-          return p
-        }
-        const q = l < 0.5 ? l * (1 + s) : l + s - l * s
-        const p = 2 * l - q
-        newR = hue2rgb(p, q, h + 1 / 3)
-        newG = hue2rgb(p, q, h)
-        newB = hue2rgb(p, q, h - 1 / 3)
-      }
-
-      data[i] = Math.round(newR * 255)
-      data[i + 1] = Math.round(newG * 255)
-      data[i + 2] = Math.round(newB * 255)
-    }
-
-    ctx.putImageData(imageData, 0, 0)
-
-    // Create new texture from canvas
-    const newTexture = new THREE.CanvasTexture(canvas)
-    newTexture.colorSpace = THREE.SRGBColorSpace
-    newTexture.wrapS = originalTexture.wrapS
-    newTexture.wrapT = originalTexture.wrapT
-    newTexture.needsUpdate = true
-
-    setShiftedTexture(newTexture)
-    setIsProcessing(false)
-
-    return () => {
-      newTexture.dispose()
-    }
-  }, [originalTexture, hueShift, enabled])
-
-  // This prevents the white flash while hue shift is being computed
-  if (!enabled || hueShift === 0) {
-    return originalTexture
+/** One-time texture setup. Wrap mode / colour space only trigger a GPU re-upload when they actually change;
+    the repeat (texture scale) is a uniform and never needs an upload. */
+function prepTexture(tex: THREE.Texture | null, srgb: boolean) {
+  if (!tex) return
+  const cs = srgb ? THREE.SRGBColorSpace : THREE.LinearSRGBColorSpace
+  if (tex.wrapS !== THREE.RepeatWrapping || tex.wrapT !== THREE.RepeatWrapping || tex.colorSpace !== cs) {
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+    tex.colorSpace = cs
+    if (tex.image) tex.needsUpdate = true
   }
-
-  // Return shifted if ready, otherwise return original as fallback
-  return shiftedTexture || originalTexture
 }
 
 function Material({
@@ -2166,149 +2217,86 @@ function Material({
 }: { materialSettings: MaterialSettings; shapeType?: "sphere" | "extruded" }) {
   const isExtruded = shapeType === "extruded"
 
-  const textures = useLoader(
-    THREE.TextureLoader,
-    [
-      materialSettings.colorMap ? materialSettings.colorMap : null,
-      materialSettings.normalMap ? materialSettings.normalMap : null,
-      materialSettings.roughnessMap ? materialSettings.roughnessMap : null,
-      !isExtruded && materialSettings.displacementMap ? materialSettings.displacementMap : null,
-      materialSettings.metalnessMap ? materialSettings.metalnessMap : null,
-      materialSettings.opacityMap ? materialSettings.opacityMap : null,
-    ].filter(Boolean) as string[],
-  )
+  const urls = [
+    materialSettings.colorMap || null,
+    materialSettings.normalMap || null,
+    materialSettings.roughnessMap || null,
+    !isExtruded ? materialSettings.displacementMap || null : null,
+    materialSettings.metalnessMap || null,
+    materialSettings.opacityMap || null,
+  ]
+  const textures = useLoader(THREE.TextureLoader, urls.filter(Boolean) as string[])
 
   const [colorMap, normalMap, roughnessMap, displacementMap, metalnessMap, opacityMap] = useMemo(() => {
-    const maps: (THREE.Texture | null)[] = []
     let index = 0
-
-    if (materialSettings.colorMap) {
-      maps.push(textures[index++])
-    } else {
-      maps.push(null)
-    }
-
-    if (materialSettings.normalMap) {
-      maps.push(textures[index++])
-    } else {
-      maps.push(null)
-    }
-
-    if (materialSettings.roughnessMap) {
-      maps.push(textures[index++])
-    } else {
-      maps.push(null)
-    }
-
-    if (!isExtruded && materialSettings.displacementMap) {
-      maps.push(textures[index++])
-    } else {
-      maps.push(null)
-    }
-
-    if (materialSettings.metalnessMap) {
-      maps.push(textures[index++])
-    } else {
-      maps.push(null)
-    }
-
-    if (materialSettings.opacityMap) {
-      maps.push(textures[index++])
-    } else {
-      maps.push(null)
-    }
-
+    const maps = urls.map((u) => (u ? (textures[index++] as THREE.Texture) : null))
+    maps.forEach((t, i) => prepTexture(t, i === 0))
     return maps
-  }, [textures, materialSettings, isExtruded])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [textures, ...urls])
 
   const textureScale = materialSettings.textureScale || 1
-
-  useMemo(() => {
-    ;[colorMap, normalMap, roughnessMap, displacementMap, metalnessMap, opacityMap].forEach((tex) => {
-      if (tex) {
-        tex.wrapS = THREE.RepeatWrapping
-        tex.wrapT = THREE.RepeatWrapping
-        tex.repeat.set(textureScale, textureScale)
-        tex.colorSpace = tex === colorMap ? THREE.SRGBColorSpace : THREE.LinearSRGBColorSpace
-        if (tex.image) {
-          tex.needsUpdate = true
-        }
-      }
-    })
+  useEffect(() => {
+    ;[colorMap, normalMap, roughnessMap, displacementMap, metalnessMap, opacityMap].forEach((tex) => tex?.repeat.set(textureScale, textureScale))
   }, [colorMap, normalMap, roughnessMap, displacementMap, metalnessMap, opacityMap, textureScale])
 
-  const hueShiftedColorMap = useHueShiftedTexture(colorMap, materialSettings.hueShift, materialSettings.useHueShift)
-
-  const finalColorMap = materialSettings.useHueShift ? hueShiftedColorMap : colorMap
-
-  const tintColor = materialSettings.useHueShift
-    ? new THREE.Color("#ffffff")
-    : new THREE.Color(materialSettings.colorTint)
-
   const isGlass = materialSettings.transmission > 0
+  const matRef = useRef<THREE.MeshStandardMaterial>(null)
 
-  const materialProps = useMemo(() => {
-    const effectiveDisplacementScale = isExtruded ? 0 : materialSettings.displacementScale
-    const effectiveDisplacementMap = isExtruded ? null : displacementMap
+  // hue shift runs on the GPU (one uniform), see lib/hue-shift.ts
+  const hue = materialSettings.useHueShift ? materialSettings.hueShift : 0
+  useEffect(() => {
+    if (matRef.current) setMaterialHue(matRef.current, hue)
+  }, [hue, isGlass])
 
-    const baseProps = {
-      color: tintColor,
-      map: finalColorMap,
-      normalMap: normalMap,
-      normalScale: new THREE.Vector2(materialSettings.normalScale, materialSettings.normalScale),
-      roughnessMap: roughnessMap,
-      roughness: materialSettings.roughness,
-      metalnessMap: metalnessMap,
-      metalness: materialSettings.metalness,
-      displacementMap: effectiveDisplacementMap,
-      displacementScale: effectiveDisplacementScale,
-    }
+  const tint = materialSettings.useHueShift ? "#ffffff" : materialSettings.colorTint
+  const color = useMemo(() => new THREE.Color(tint), [tint])
+  const normalScale = useMemo(() => new THREE.Vector2(materialSettings.normalScale, materialSettings.normalScale), [materialSettings.normalScale])
 
-    if (isGlass) {
-      return {
-        ...baseProps,
-        map: null,
-        color:
-          materialSettings.glassColorIntensity > 0
-            ? new THREE.Color(materialSettings.glassColor)
-            : new THREE.Color(0xffffff),
-        transmission: materialSettings.transmission,
-        ior: materialSettings.ior,
-        thickness: materialSettings.thickness,
-        attenuationDistance: materialSettings.attenuationDistance,
-        attenuationColor: new THREE.Color(materialSettings.attenuationColor),
-        transparent: true,
-        opacity: 1,
-        alphaMap: opacityMap,
-        side: THREE.FrontSide,
-        envMapIntensity: materialSettings.envMapIntensity || 1.5,
-        clearcoat: materialSettings.clearcoat,
-        clearcoatRoughness: materialSettings.clearcoatRoughness,
-        clearcoatNormalScale: new THREE.Vector2(materialSettings.clearcoatNormalScale ?? 1, materialSettings.clearcoatNormalScale ?? 1),
-        reflectivity: materialSettings.reflectivity,
-        specularIntensity: 1,
-        specularColor: new THREE.Color(0xffffff),
-        iridescence: materialSettings.iridescence,
-        iridescenceIOR: materialSettings.iridescenceIOR,
-        iridescenceThicknessRange: [materialSettings.iridescenceThicknessMin, materialSettings.iridescenceThicknessMax],
-      }
-    }
-
-    return baseProps
-  }, [
-    finalColorMap,
+  const baseProps = {
+    color,
+    map: colorMap,
     normalMap,
+    normalScale,
     roughnessMap,
+    roughness: materialSettings.roughness,
     metalnessMap,
-    displacementMap,
-    opacityMap,
-    materialSettings,
-    isGlass,
-    tintColor,
-    isExtruded,
-  ])
+    metalness: materialSettings.metalness,
+    displacementMap: isExtruded ? null : displacementMap,
+    displacementScale: isExtruded ? 0 : materialSettings.displacementScale,
+  }
 
-  return isGlass ? <meshPhysicalMaterial {...materialProps} /> : <meshStandardMaterial {...materialProps} />
+  if (isGlass) {
+    return (
+      <meshPhysicalMaterial
+        ref={matRef as any}
+        {...baseProps}
+        map={null}
+        color={materialSettings.glassColorIntensity > 0 ? materialSettings.glassColor : "#ffffff"}
+        transmission={materialSettings.transmission}
+        ior={materialSettings.ior}
+        thickness={materialSettings.thickness}
+        attenuationDistance={materialSettings.attenuationDistance}
+        attenuationColor={materialSettings.attenuationColor}
+        transparent
+        opacity={1}
+        alphaMap={opacityMap}
+        side={THREE.DoubleSide} // back faces go into the transmission pass: thickness and inner layers show through
+        envMapIntensity={materialSettings.envMapIntensity || 1.5}
+        clearcoat={materialSettings.clearcoat}
+        clearcoatRoughness={materialSettings.clearcoatRoughness}
+        clearcoatNormalScale-x={materialSettings.clearcoatNormalScale ?? 1}
+        clearcoatNormalScale-y={materialSettings.clearcoatNormalScale ?? 1}
+        reflectivity={materialSettings.reflectivity}
+        specularIntensity={1}
+        specularColor="#ffffff"
+        iridescence={materialSettings.iridescence}
+        iridescenceIOR={materialSettings.iridescenceIOR}
+        iridescenceThicknessRange={[materialSettings.iridescenceThicknessMin, materialSettings.iridescenceThicknessMax]}
+      />
+    )
+  }
+  return <meshStandardMaterial ref={matRef} {...baseProps} />
 }
 
 interface SceneContentProps {
@@ -2371,15 +2359,64 @@ function SceneContent({
   onModelLoadError,
   onGeometrySettingsChange,
   backgroundColor,
-}: SceneContentProps & { onExportReady: (fn: () => void) => void, onExportGeometryReady: (fn: () => void) => void, onExportSTLReady: (fn: () => void) => void, onExportOBJReady: (fn: () => void) => void, backgroundColor?: string }) {
+  dotGrid = false,
+  dotColor = "rgba(0,0,0,0.18)",
+  layeredSettings,
+}: SceneContentProps & { layeredSettings?: LayeredSettings } & { onExportReady: (fn: () => void) => void, onExportGeometryReady: (fn: () => void) => void, onExportSTLReady: (fn: () => void) => void, onExportOBJReady: (fn: () => void) => void, backgroundColor?: string, dotGrid?: boolean, dotColor?: string }) {
   const { gl, scene, camera } = useThree()
-  
-  // Apply background color
+  const size = useThree((s) => s.size)
+  const dpr = useThree((s) => s.viewport.dpr)
+  const bgToneFixed = useRef<THREE.Material | null>(null)
+
+  // Apply background: flat colour, or the Knopika dot grid drawn into a screen-sized texture.
+  // Being the scene background, the dots are seen through glass and drop out of transparent PNG export.
   useEffect(() => {
-    if (backgroundColor) {
+    if (!backgroundColor) return
+    if (!dotGrid) {
       scene.background = new THREE.Color(backgroundColor)
+      return
     }
-  }, [backgroundColor, scene])
+    const w = Math.max(2, Math.round(size.width * dpr))
+    const h = Math.max(2, Math.round(size.height * dpr))
+    const c = document.createElement("canvas")
+    c.width = w
+    c.height = h
+    const ctx = c.getContext("2d")!
+    ctx.fillStyle = backgroundColor
+    ctx.fillRect(0, 0, w, h)
+    const step = 28 * dpr
+    const r = 1.45 * dpr
+    const ox = (w / 2) % step
+    const oy = (h / 2) % step
+    ctx.fillStyle = dotColor
+    ctx.beginPath()
+    for (let y = oy; y < h + step; y += step)
+      for (let x = ox; x < w + step; x += step) {
+        ctx.moveTo(x + r, y)
+        ctx.arc(x, y, r, 0, Math.PI * 2)
+      }
+    ctx.fill()
+    const tex = new THREE.CanvasTexture(c)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.generateMipmaps = false
+    tex.minFilter = THREE.LinearFilter
+    tex.magFilter = THREE.LinearFilter
+    scene.background = tex
+    return () => tex.dispose()
+  }, [backgroundColor, dotGrid, dotColor, size.width, size.height, dpr, scene])
+
+  // A background texture is drawn by three's internal plane, which tone-maps by default — that would tint the ground.
+  // Find that plane in the render list once and switch tone mapping off so dots sit on the exact ground colour.
+  useFrame(() => {
+    if (bgToneFixed.current) return
+    const rl = (gl as any).renderLists?.get?.(scene, 0)
+    const item = rl?.opaque?.find((i: any) => i?.material?.name === "BackgroundMaterial")
+    if (item) {
+      item.material.toneMapped = false
+      item.material.needsUpdate = true
+      bgToneFixed.current = item.material
+    }
+  })
 
   // Apply gradient material if enabled
   useEffect(() => {
@@ -2671,97 +2708,28 @@ function SceneContent({
 
   const [matcapTextureLoaded, setMatcapTextureLoaded] = useState<THREE.Texture | null>(null)
 
+  // Matcap texture: loaded once per URL; the hue shift is a shader uniform now (no CPU re-bake per tick)
   useEffect(() => {
     if (!showMatcap || !matcapTexture) {
       setMatcapTextureLoaded(null)
       return
     }
-
     let cancelled = false
-    const loader = new THREE.TextureLoader()
-
-    loader.load(matcapTexture, (loadedTexture) => {
-      if (cancelled) return
-
-      if (matcapHueShift === 0) {
-        loadedTexture.colorSpace = THREE.SRGBColorSpace
-        setMatcapTextureLoaded(loadedTexture)
-        return
-      }
-
-      // Apply hue shift via canvas
-      const canvas = document.createElement("canvas")
-      const ctx = canvas.getContext("2d")
-      const image = loadedTexture.image
-
-      if (!ctx || !image) {
-        setMatcapTextureLoaded(loadedTexture)
-        return
-      }
-
-      canvas.width = image.width
-      canvas.height = image.height
-      ctx.drawImage(image, 0, 0)
-
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-      const data = imageData.data
-
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i] / 255
-        const g = data[i + 1] / 255
-        const b = data[i + 2] / 255
-
-        const max = Math.max(r, g, b)
-        const min = Math.min(r, g, b)
-        let h = 0, s = 0
-        const l = (max + min) / 2
-
-        if (max !== min) {
-          const d = max - min
-          s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
-          switch (max) {
-            case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break
-            case g: h = ((b - r) / d + 2) / 6; break
-            case b: h = ((r - g) / d + 4) / 6; break
-          }
-        }
-
-        h = (h + matcapHueShift / 360) % 1
-
-        let r2, g2, b2
-        if (s === 0) {
-          r2 = g2 = b2 = l
-        } else {
-          const hue2rgb = (p: number, q: number, t: number) => {
-            if (t < 0) t += 1
-            if (t > 1) t -= 1
-            if (t < 1 / 6) return p + (q - p) * 6 * t
-            if (t < 1 / 2) return q
-            if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6
-            return p
-          }
-          const q = l < 0.5 ? l * (1 + s) : l + s - l * s
-          const p = 2 * l - q
-          r2 = hue2rgb(p, q, h + 1 / 3)
-          g2 = hue2rgb(p, q, h)
-          b2 = hue2rgb(p, q, h - 1 / 3)
-        }
-
-        data[i] = Math.round(r2 * 255)
-        data[i + 1] = Math.round(g2 * 255)
-        data[i + 2] = Math.round(b2 * 255)
-      }
-
-      ctx.putImageData(imageData, 0, 0)
-      // CanvasTexture sets image immediately — no empty-texture warning
-      const canvasTex = new THREE.CanvasTexture(canvas)
-      canvasTex.colorSpace = THREE.SRGBColorSpace
-      if (cancelled) { canvasTex.dispose(); return }
-      setMatcapTextureLoaded(canvasTex)
+    const cached = MATCAP_CACHE.get(matcapTexture)
+    if (cached) {
+      setMatcapTextureLoaded(cached)
+      return
+    }
+    new THREE.TextureLoader().load(matcapTexture, (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace
+      MATCAP_CACHE.set(matcapTexture, tex)
+      if (!cancelled) setMatcapTextureLoaded(tex)
     })
-
-    return () => { cancelled = true }
-  }, [matcapTexture, showMatcap, matcapHueShift])
+    return () => {
+      cancelled = true
+    }
+  }, [matcapTexture, showMatcap])
+  const matcapSettingsWithHue = useMemo(() => (matcapSettings ? { ...matcapSettings, hueShift: matcapHueShift || 0 } : matcapSettings), [matcapSettings, matcapHueShift])
 
   // Load normal map texture for matcap
   const matcapNormalMap = useMemo(() => {
@@ -2771,33 +2739,24 @@ function SceneContent({
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping
     texture.repeat.set(matcapSettings.normalRepeat || 1, matcapSettings.normalRepeat || 1)
     return texture
-  }, [matcapSettings?.normalMap, matcapSettings?.normalRepeat])
+  }, [matcapSettings?.normalMap])
 
   // Update normal map repeat when it changes
   useEffect(() => {
     if (matcapNormalMap && matcapSettings?.normalRepeat) {
       matcapNormalMap.repeat.set(matcapSettings.normalRepeat, matcapSettings.normalRepeat)
-      if (matcapNormalMap.image) {
-        matcapNormalMap.needsUpdate = true
-      }
     }
   }, [matcapNormalMap, matcapSettings?.normalRepeat])
 
   return (
     <>
       <group>
-        <TransformControls 
-          mode="rotate" 
-          enabled={showRotateControls}
-          showX={showRotateControls}
-          showY={showRotateControls}
-          showZ={showRotateControls}
-        >
+        <KnopikaRotGroup>
       {showMatcap ? (
         <>
       {geometrySettings.type === "sphere" ? (
-        <mesh>
-          <PrimitiveGeometry primitiveType={geometrySettings.primitiveType || "sphere"} />
+        <mesh name="inflated-geometry">
+          <PrimitiveGeometry primitiveType={geometrySettings.primitiveType || "sphere"} blob={(geometrySettings as any).blob} />
           <MatcapMaterialWithEffects 
             matcap={matcapTextureLoaded}
             normalMap={matcapNormalMap}
@@ -2805,6 +2764,7 @@ function SceneContent({
             rimIntensity={matcapSettings?.rimIntensity || 0}
             rimPower={matcapSettings?.rimPower || 3}
             rimColor={matcapSettings?.rimColor || "#ffffff"}
+            hueShift={matcapHueShift || 0}
           />
         </mesh>
       ) : geometrySettings.type === "model" ? (
@@ -2816,7 +2776,7 @@ function SceneContent({
               renderMode={renderMode}
               matcapTexture={matcapTextureLoaded}
               matcapNormalMap={matcapNormalMap}
-              matcapSettings={matcapSettings}
+              matcapSettings={matcapSettingsWithHue as any}
               gradientSettings={gradientSettings}
               inflationAmount={geometrySettings.inflationAmount || 0}
               inflateSphereEnabled={geometrySettings.inflateSphereEnabled || true}
@@ -2842,7 +2802,7 @@ function SceneContent({
               useMatcap={true}
               gradientSettings={gradientSettings}
               matcapNormalMap={matcapNormalMap}
-              matcapSettings={matcapSettings}
+              matcapSettings={matcapSettingsWithHue as any}
             />
           )}
         </>
@@ -2862,10 +2822,10 @@ function SceneContent({
           />
         </>
       )}
-      </TransformControls>
+      </KnopikaRotGroup>
       </group>
       <GridHelper visible={showGrid} />
-      <axesHelper args={[0.5]} position={[0, -1.2, 0]} visible={showRotateControls} />
+      <LayeredApplier settings={layeredSettings} seed={(geometrySettings as any).blob?.seed ?? 0} />
     </>
   )
 }
@@ -2877,7 +2837,7 @@ export interface PBRViewerRef {
   exportOBJ: () => void
 }
 
-export const PBRViewer = forwardRef<
+const PBRViewerInner = forwardRef<
   PBRViewerRef,
   {
   geometrySettings: GeometrySettings
@@ -2895,6 +2855,9 @@ export const PBRViewer = forwardRef<
     rimColor: string
   }
   backgroundColor?: string
+  dotGrid?: boolean
+  layeredSettings?: LayeredSettings
+  dotColor?: string
   showGrid?: boolean
   showRotateControls?: boolean
   gradientSettings?: {
@@ -2917,7 +2880,7 @@ export const PBRViewer = forwardRef<
   onGeometrySettingsChange?: (settings: Partial<GeometrySettings>) => void
   }
 >(function PBRViewer(
-  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, showGrid, showRotateControls, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
+  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, dotGrid, dotColor, layeredSettings, showGrid, showRotateControls, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
   ref,
   ) {
   const exportFnRef = useRef<(() => void) | null>(null)
@@ -2967,7 +2930,7 @@ export const PBRViewer = forwardRef<
   return (
     <div className="w-full h-full">
       <Canvas
-        camera={{ position: [0, 0, 3], fov: 50 }}
+        camera={{ position: [0, 0, 3.7], fov: 50 }}
         gl={{
           antialias: true,
           toneMapping: THREE.ACESFilmicToneMapping,
@@ -2993,6 +2956,9 @@ export const PBRViewer = forwardRef<
             showGrid={showGrid}
             showRotateControls={showRotateControls}
             backgroundColor={backgroundColor}
+            dotGrid={dotGrid}
+            dotColor={dotColor}
+            layeredSettings={layeredSettings}
             gradientSettings={gradientSettings}
             customMaterial={customMaterial}
             onModelLoadError={onModelLoadError}
@@ -3008,3 +2974,6 @@ export const PBRViewer = forwardRef<
     </div>
   )
 })
+
+/* Memoised: UI-only state in the page (panels, theme, search input…) no longer re-renders the 3D tree. */
+export const PBRViewer = memo(PBRViewerInner)

@@ -13,6 +13,15 @@ export interface BuiltInModel {
 
 export const builtInModels: BuiltInModel[] = [
   {
+    id: "stanford-bunny",
+    name: "Stanford Bunny",
+    description: "The classic 1994 range scan — full resolution, holes filled, lightly smoothed",
+    author: "Stanford University Computer Graphics Laboratory",
+    thumbnail: "/models/stanford-bunny.jpg",
+    glbUrl: "/models/stanford-bunny.glb",
+    categories: ["classic", "animals"],
+  },
+  {
     id: "avocado",
     name: "Avocado",
     description: "A simple avocado model",

@@ -1,12 +1,9 @@
 "use client"
 
 import { useRef, useState, useEffect, useCallback } from 'react'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Slider } from '@/components/ui/slider'
-import { Switch } from '@/components/ui/switch'
+import { Field, Switch as KSwitch } from '@/components/knopika/kk'
 import type { Point2D } from '@/lib/inflate-geometry'
-import { Upload, Trash2, Undo2, Pencil } from 'lucide-react'
+import { Upload, Trash2, Undo2 } from 'lucide-react'
 
 interface InflateCanvasProps {
   onContourChange: (contour: Point2D[]) => void
@@ -34,12 +31,25 @@ export function InflateCanvas({
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
+    // Knopika tokens from the surrounding panel (fallbacks keep the old dark look)
+    const cs = getComputedStyle(canvas)
+    const tok = (n: string, f: string) => cs.getPropertyValue(n).trim() || f
+    const C = {
+      bg: tok('--panel', '#1a1a1a'),
+      grid: tok('--panel-raised', '#2a2a2a'),
+      axis: tok('--panel-line', '#3a3a3a'),
+      ink: tok('--paper', '#00d4ff'),
+      start: tok('--ground', '#00ff88'),
+      end: tok('--signal-red', '#ff4444'),
+      muted: tok('--panel-muted', '#666'),
+    }
+
     // Clear canvas
-    ctx.fillStyle = '#1a1a1a'
+    ctx.fillStyle = C.bg
     ctx.fillRect(0, 0, width, height)
 
     // Draw grid
-    ctx.strokeStyle = '#2a2a2a'
+    ctx.strokeStyle = C.grid
     ctx.lineWidth = 1
     const gridSize = 20
     for (let x = 0; x <= width; x += gridSize) {
@@ -57,7 +67,7 @@ export function InflateCanvas({
 
     // Draw center lines for mirror mode
     if (mirrorMode) {
-      ctx.strokeStyle = '#3a3a3a'
+      ctx.strokeStyle = C.axis
       ctx.setLineDash([5, 5])
       ctx.beginPath()
       ctx.moveTo(width / 2, 0)
@@ -68,7 +78,7 @@ export function InflateCanvas({
 
     // Draw current path
     if (currentPath.length > 1) {
-      ctx.strokeStyle = '#00d4ff'
+      ctx.strokeStyle = C.ink
       ctx.lineWidth = brushSize
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
@@ -82,7 +92,7 @@ export function InflateCanvas({
 
       // Draw mirrored path
       if (mirrorMode) {
-        ctx.strokeStyle = '#00d4ff80'
+        ctx.globalAlpha = 0.5; ctx.strokeStyle = C.ink
         ctx.beginPath()
         ctx.moveTo(width - currentPath[0].x, currentPath[0].y)
         for (let i = 1; i < currentPath.length; i++) {
@@ -92,13 +102,13 @@ export function InflateCanvas({
       }
 
       // Draw start/end points
-      ctx.fillStyle = '#00ff88'
+      ctx.globalAlpha = 1; ctx.fillStyle = C.start
       ctx.beginPath()
       ctx.arc(currentPath[0].x, currentPath[0].y, 6, 0, Math.PI * 2)
       ctx.fill()
 
       if (currentPath.length > 2) {
-        ctx.fillStyle = '#ff4444'
+        ctx.fillStyle = C.end
         const last = currentPath[currentPath.length - 1]
         ctx.beginPath()
         ctx.arc(last.x, last.y, 6, 0, Math.PI * 2)
@@ -108,7 +118,7 @@ export function InflateCanvas({
 
     // Draw instructions
     if (currentPath.length === 0) {
-      ctx.fillStyle = '#666'
+      ctx.fillStyle = C.muted
       ctx.font = '14px sans-serif'
       ctx.textAlign = 'center'
       ctx.fillText('Draw a closed shape', width / 2, height / 2 - 10)
@@ -317,17 +327,12 @@ export function InflateCanvas({
   }
 
   return (
-    <div className="space-y-4">
-      {/* Canvas */}
-      <div 
-        className="relative rounded-lg overflow-hidden border border-neutral-700"
-        style={{ aspectRatio: '1/1' }}
-      >
+    <div className="kk-inflate-ui">
+      <div className="kk-inflate-canvas">
         <canvas
           ref={canvasRef}
           width={width}
           height={height}
-          className="w-full h-full cursor-crosshair touch-none"
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -336,83 +341,30 @@ export function InflateCanvas({
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         />
-        
-        {/* Overlay hint */}
-        {isDrawing && (
-          <div className="absolute top-2 left-2 px-2 py-1 bg-cyan-600/80 rounded text-xs text-white">
-            Drawing...
-          </div>
-        )}
+        {isDrawing && <span className="kk-inflate-badge">Drawing…</span>}
       </div>
 
-      {/* Controls */}
-      <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleClear}
-          className="flex-1 gap-2"
-        >
-          <Trash2 className="w-4 h-4" />
+      <div className="kk-row" style={{ gap: 6 }}>
+        <button type="button" className="kk-pill kk-grow" onClick={handleClear}>
+          <Trash2 className="kk-licon" />
           Clear
-        </Button>
-        
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleUndo}
-          disabled={history.length === 0}
-          className="flex-1 gap-2"
-        >
-          <Undo2 className="w-4 h-4" />
+        </button>
+        <button type="button" className="kk-pill kk-grow" onClick={handleUndo} disabled={history.length === 0}>
+          <Undo2 className="kk-licon" />
           Undo
-        </Button>
-        
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleLoadSVG}
-          className="flex-1 gap-2"
-        >
-          <Upload className="w-4 h-4" />
+        </button>
+        <button type="button" className="kk-pill kk-grow" onClick={handleLoadSVG}>
+          <Upload className="kk-licon" />
           Load SVG
-        </Button>
+        </button>
       </div>
 
-      {/* Options */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <Label className="text-xs text-zinc-500">Brush Size</Label>
-          <span className="text-xs text-white font-mono">{brushSize}px</span>
-        </div>
-        <Slider
-          value={[brushSize]}
-          onValueChange={([value]) => setBrushSize(value)}
-          min={1}
-          max={12}
-          step={1}
-          className="w-full"
-        />
-
-        <div className="flex items-center justify-between gap-3 p-2 rounded-lg bg-neutral-900/50">
-          <div className="flex items-center gap-2">
-            <Pencil className="w-4 h-4 text-zinc-400" />
-            <Label className="text-xs text-zinc-400">Mirror Drawing</Label>
-          </div>
-          <Switch
-            checked={mirrorMode}
-            onCheckedChange={setMirrorMode}
-            className="data-[state=checked]:bg-cyan-600 scale-90"
-          />
-        </div>
+      <Field icon="pen" label="Brush size" value={brushSize} min={1} max={12} step={1} format={(v) => `${v}px`} onChange={setBrushSize} />
+      <div className="kk-switchrow">
+        <span>Mirror drawing</span>
+        <KSwitch label="Mirror drawing" on={mirrorMode} onChange={setMirrorMode} />
       </div>
-
-      {/* Point count */}
-      {currentPath.length > 0 && (
-        <div className="text-xs text-zinc-500 text-center">
-          {currentPath.length} points
-        </div>
-      )}
+      {currentPath.length > 0 && <p className="hint2">{currentPath.length} points</p>}
     </div>
   )
 }

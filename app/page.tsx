@@ -20,6 +20,7 @@ import { BLOB_DEFAULT, type BlobSettings, type BlobBase } from "@/lib/blob"
 import { LAYERED_DEFAULT, LAYERED_PALETTES, type LayeredSettings } from "@/lib/layered-material"
 import { generateNormalMap } from "@/lib/procedural-normal"
 import { brush, useBrush } from "@/lib/brush/store"
+import { MATCAP_LIGHT_DEFAULT, setMatcapLight, type MatcapLight } from "@/lib/matcap-light"
 import { sketch, useSketch } from "@/lib/sketch/store"
 import { TERRAZZO_DEFAULT, TERRAZZO_PRESETS, type TerrazzoSettings } from "@/lib/terrazzo-material"
 import { TORTOISE_DEFAULT, TORTOISE_PRESETS, type TortoiseSettings } from "@/lib/tortoise-material"
@@ -937,6 +938,11 @@ export default function MaterialTool() {
     </Tile>
   )
 
+  // Matcap light: rotates the light painted into the matcap (shared uniform, no rebuilds)
+  const [mcLight, setMcLight] = useState<MatcapLight>({ ...MATCAP_LIGHT_DEFAULT })
+  const setMcl = (u: Partial<MatcapLight>) => setMcLight((p) => ({ ...p, ...u }))
+  useEffect(() => setMatcapLight(mcLight), [mcLight])
+
   // Layered material (Blob Forge): gradient layer over matcap "holes"
   const [layered, setLayered] = useState<LayeredSettings>({ ...LAYERED_DEFAULT })
   const setLay = (u: Partial<LayeredSettings>) => setLayered((p) => ({ ...p, ...u }))
@@ -1613,7 +1619,10 @@ export default function MaterialTool() {
             />
           </div>
 
-          {panel === "light" && renderMode === "pbr" && (
+          {panel === "light" && (renderMode === "matcap" || materialTypeTab === "layered") && (
+            <LightRig angle={mcLight.spin} onAngle={(a) => setMcl({ spin: a })} intensity={mcLight.gain} onIntensity={(v) => setMcl({ gain: Math.min(2, v) })} />
+          )}
+          {panel === "light" && renderMode === "pbr" && materialTypeTab !== "layered" && materialTypeTab !== "gradient" && (
             <LightRig
               angle={lightingSettings.envRotation}
               onAngle={(a) => setLightingSettings((l) => ({ ...l, envRotation: a }))}
@@ -2271,10 +2280,29 @@ export default function MaterialTool() {
           {/* right: lighting */}
           {panel === "light" && (
             <div {...win("light", "kk-panel sunbar enter")} aria-label="Lighting">
-              <PanelHead eyebrow="Light · Environment">
+              <PanelHead eyebrow={renderMode === "matcap" || materialTypeTab === "layered" ? "Light · Matcap" : "Light · Environment"}>
                 <IconButton size="sm" icon="close" label="Close lighting" onClick={() => setPanel("material")} />
               </PanelHead>
-              {renderMode !== "pbr" || materialTypeTab === "gradient" || materialTypeTab === "layered" ? (
+              {renderMode === "matcap" || materialTypeTab === "layered" ? (
+                <>
+                  <div className="kk-card">
+                    <Caption title="Matcap light" desc="The light is painted into the matcap — turn and tilt it to move the highlight without rotating the model." />
+                    <Field icon="orbit" label="Direction" value={mcLight.spin} min={0} max={Math.PI * 2} step={0.01} format={(v) => `${Math.round((v * 180) / Math.PI)}°`} onChange={(v) => setMcl({ spin: v })} />
+                    <Field icon="width" label="Tilt ↔" value={mcLight.tiltY} min={-Math.PI / 3} max={Math.PI / 3} step={0.01} format={(v) => `${Math.round((v * 180) / Math.PI)}°`} onChange={(v) => setMcl({ tiltY: v })} />
+                    <Field icon="height" label="Tilt ↕" value={mcLight.tiltX} min={-Math.PI / 3} max={Math.PI / 3} step={0.01} format={(v) => `${Math.round((v * 180) / Math.PI)}°`} onChange={(v) => setMcl({ tiltX: v })} />
+                    <Field icon="sun" label="Brightness" value={mcLight.gain} min={0} max={2} step={0.01} onChange={(v) => setMcl({ gain: v })} />
+                  </div>
+                  <div className="kk-row" style={{ gap: 6 }}>
+                    <button type="button" className="kk-pill kk-grow" onClick={() => setMcLight({ ...MATCAP_LIGHT_DEFAULT })}>
+                      <Icon name="refresh" />
+                      Reset
+                    </button>
+                  </div>
+                  <p className="hint2">
+                    <b>Drag the sun</b> to turn the painted light. Scroll over it for brightness.
+                  </p>
+                </>
+              ) : renderMode !== "pbr" || materialTypeTab === "gradient" ? (
                 <div className="kk-card">
                   <Caption
                     title="PBR lighting is off"

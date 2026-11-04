@@ -3,6 +3,7 @@
    so sliders never rebuild the shader. Object space is ≈ −1…1 for all Pólya shapes (they are fitted to 2 units). */
 
 import * as THREE from "three"
+import { MATCAP_LIGHT_GLSL, matcapRotUniform, matcapGainUniform } from "@/lib/matcap-light"
 
 export type LayeredAxis = "x" | "y" | "z"
 export type LayeredBlend = "replace" | "modulate"
@@ -79,6 +80,7 @@ uniform int uBlend; uniform float uIntensity;
 uniform float uCoverage; uniform float uHoleScale; uniform float uHoleSoft; uniform int uDetail; uniform float uBlur; uniform float uInvert;
 uniform float uAmbient; uniform float uGrain; uniform float uSeed;
 varying vec3 vObj; varying vec3 vN; varying vec3 vView;
+${MATCAP_LIGHT_GLSL}
 
 // Ashima 3D simplex noise
 vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
@@ -127,8 +129,9 @@ void main(){
   // layer 2: matcap
   vec3 vd = normalize(vView);
   vec3 xx = normalize(vec3(vd.z,0.0,-vd.x)); vec3 yy = cross(vd,xx);
-  vec2 muv = vec2(dot(xx,n), dot(yy,n))*0.495+0.5;
-  vec3 mc = uHasMatcap > 0.5 ? texture2D(uMatcap, muv).rgb * uIntensity : vec3(ndl);
+  vec3 mn = kkMatcapN(n);
+  vec2 muv = vec2(dot(xx,mn), dot(yy,mn))*0.495+0.5;
+  vec3 mc = uHasMatcap > 0.5 ? texture2D(uMatcap, muv).rgb * uIntensity * uMatcapGain : vec3(ndl);
 
   // holes: where the noise rises above the coverage threshold, the matcap shows through
   float nz = fbm(vObj * (0.35 + uHoleScale*0.95) + vec3(uSeed)) * 0.5 + 0.5;
@@ -175,6 +178,8 @@ export function createLayeredMaterial() {
       uAmbient: { value: 0.82 },
       uGrain: { value: 0 },
       uSeed: { value: 0 },
+      uMatcapRot: matcapRotUniform,
+      uMatcapGain: matcapGainUniform,
     },
   })
   return m

@@ -10,6 +10,7 @@ import { useThree } from "@react-three/fiber"
 import { TransformControls } from "@react-three/drei"
 import { createGradientMaterial } from "./gradient-shader"
 import { setMaterialHue, HUE_GLSL } from "@/lib/hue-shift"
+import { MATCAP_LIGHT_GLSL, matcapRotUniform, matcapGainUniform } from "@/lib/matcap-light"
 import { setTriplanar, triplanarMatcapShaders, triplanarMatcapUniforms } from "@/lib/triplanar"
 
 /** Spherical UVs around the geometry's centre; u is doubled so texels stay roughly square. */
@@ -730,6 +731,7 @@ function createMatcapMaterial(
     uniform vec3 rimColor;
     uniform bool hasNormalMap;
     ${HUE_GLSL}
+    ${MATCAP_LIGHT_GLSL}
 
     varying vec3 vNormal;
     varying vec3 vViewPosition;
@@ -769,9 +771,11 @@ function createMatcapMaterial(
       vec3 viewDir = normalize(vViewPosition);
       vec3 x = normalize(vec3(viewDir.z, 0.0, -viewDir.x));
       vec3 y = cross(viewDir, x);
-      vec2 matcapUv = vec2(dot(x, normal), dot(y, normal)) * 0.495 + 0.5;
+      vec3 mn = kkMatcapN(normal); // Light panel: rotate the painted light
+      vec2 matcapUv = vec2(dot(x, mn), dot(y, mn)) * 0.495 + 0.5;
 
       vec4 matcapColor = texture2D(matcap, matcapUv);
+      matcapColor.rgb *= uMatcapGain;
       if (uHueShift != 0.0) matcapColor.rgb = kkHueShift(matcapColor.rgb, uHueShift);
 
       // Apply rim lighting with color
@@ -793,6 +797,8 @@ function createMatcapMaterial(
       rimColor: { value: new THREE.Color(matcapSettings?.rimColor || "#ffffff") },
       hasNormalMap: { value: !!matcapNormalMap },
       uHueShift: { value: (matcapSettings as any)?.hueShift || 0 },
+      uMatcapRot: matcapRotUniform,
+      uMatcapGain: matcapGainUniform,
     }),
     ...triplanarMatcapShaders(vertexShader, fragmentShader),
     extensions: { derivatives: true },

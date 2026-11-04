@@ -4,6 +4,7 @@ import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber"
 import { OrbitControls, Environment } from "@react-three/drei"
 import { rot } from "@/lib/knopika/rotation"
 import { setMaterialHue, HUE_GLSL } from "@/lib/hue-shift"
+import { MATCAP_LIGHT_GLSL, matcapRotUniform, matcapGainUniform } from "@/lib/matcap-light"
 import { setTriplanar, triplanarMatcapShaders, triplanarMatcapUniforms } from "@/lib/triplanar"
 import { extrudeAsync, flattenShape } from "@/lib/extrude/client"
 import { createBlob, BLOB_DEFAULT, type BlobSettings } from "@/lib/blob"
@@ -248,6 +249,8 @@ function MatcapMaterialWithEffects({
       rimColor: { value: new THREE.Color(rimColor) },
       hasNormalMap: { value: !!normalMap },
       uHueShift: { value: hueShift },
+      uMatcapRot: matcapRotUniform,
+      uMatcapGain: matcapGainUniform,
     }),
     []
   )
@@ -290,6 +293,7 @@ function MatcapMaterialWithEffects({
     uniform vec3 rimColor;
     uniform bool hasNormalMap;
     ${HUE_GLSL}
+    ${MATCAP_LIGHT_GLSL}
 
     varying vec3 vNormal;
     varying vec3 vViewPosition;
@@ -329,9 +333,11 @@ function MatcapMaterialWithEffects({
       vec3 viewDir = normalize(vViewPosition);
       vec3 x = normalize(vec3(viewDir.z, 0.0, -viewDir.x));
       vec3 y = cross(viewDir, x);
-      vec2 matcapUv = vec2(dot(x, normal), dot(y, normal)) * 0.495 + 0.5;
+      vec3 mn = kkMatcapN(normal); // Light panel: rotate the painted light
+      vec2 matcapUv = vec2(dot(x, mn), dot(y, mn)) * 0.495 + 0.5;
 
       vec4 matcapColor = texture2D(matcap, matcapUv);
+      matcapColor.rgb *= uMatcapGain;
       if (uHueShift != 0.0) matcapColor.rgb = kkHueShift(matcapColor.rgb, uHueShift);
 
       // Apply rim lighting with color

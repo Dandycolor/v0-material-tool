@@ -29,8 +29,8 @@ export interface SketchParams {
   res: number // 2D cells along the longest side
 }
 
-/* 1D squared distance transform (Felzenszwalb & Huttenlocher) */
-function dt1(f: Float64Array, n: number, d: Float64Array, v: Int32Array, z: Float64Array) {
+/* EDT with feature transform: distance (cells) and index of the nearest source node */
+function dt1ft(f: Float64Array, n: number, d: Float64Array, arg: Int32Array, v: Int32Array, z: Float64Array) {
   let k = 0
   v[0] = 0
   z[0] = -Infinity
@@ -50,27 +50,36 @@ function dt1(f: Float64Array, n: number, d: Float64Array, v: Int32Array, z: Floa
   for (let q = 0; q < n; q++) {
     while (z[k + 1] < q) k++
     d[q] = (q - v[k]) * (q - v[k]) + f[v[k]]
+    arg[q] = v[k]
   }
 }
-/** Euclidean distance (in cells) from every cell to the nearest cell where src = 1 */
-function edt(src: Uint8Array, W: number, H: number): Float32Array {
+function edtFT(src: Uint8Array, W: number, H: number) {
   const INF = 1e20
   const n = Math.max(W, H)
   const f = new Float64Array(n), d = new Float64Array(n), z = new Float64Array(n + 1)
-  const v = new Int32Array(n)
+  const v = new Int32Array(n), arg = new Int32Array(n)
   const g = new Float64Array(W * H)
+  const rowOf = new Int32Array(W * H) // nearest source row in this column
   for (let x = 0; x < W; x++) {
     for (let y = 0; y < H; y++) f[y] = src[y * W + x] ? 0 : INF
-    dt1(f, H, d, v, z)
-    for (let y = 0; y < H; y++) g[y * W + x] = d[y]
+    dt1ft(f, H, d, arg, v, z)
+    for (let y = 0; y < H; y++) {
+      g[y * W + x] = d[y]
+      rowOf[y * W + x] = arg[y]
+    }
   }
-  const out = new Float32Array(W * H)
+  const dist = new Float32Array(W * H)
+  const near = new Int32Array(W * H)
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) f[x] = g[y * W + x]
-    dt1(f, W, d, v, z)
-    for (let x = 0; x < W; x++) out[y * W + x] = Math.sqrt(d[x])
+    dt1ft(f, W, d, arg, v, z)
+    for (let x = 0; x < W; x++) {
+      const cx = arg[x]
+      dist[y * W + x] = Math.sqrt(d[x])
+      near[y * W + x] = rowOf[y * W + cx] * W + cx
+    }
   }
-  return out
+  return { dist, near }
 }
 
 export function meshSketch(strokes: SketchStroke[], prm: SketchParams): BrushMeshResult | null {
@@ -87,24 +96,34 @@ export function meshSketch(strokes: SketchStroke[], prm: SketchParams): BrushMes
     wMax = Math.max(wMax, s.w)
   }
   const span = Math.max(x1 - x0, y1 - y0) + wMax
-  // fine 2D raster (supersampled vs. the 3D grid, keeps the outline smooth)
-  const SS = 2
-  const res3 = Math.max(64, Math.min(720, prm.res))
-  const h3 = span / res3 // mesh grid cell
-  const h2 = h3 / SS // 2D cell
+  const res = Math.max(64, Math.min(720, prm.res))
+  const h3 = span / res // grid cell = mesh cell
   const pad = wMax + 4 * h3
   const ox = x0 - pad, oy = y0 - pad
-  const W = Math.ceil((x1 - x0 + 2 * pad) / h2) + 1
-  const H = Math.ceil((y1 - y0 + 2 * pad) / h2) + 1
-  const mask = new Uint8Array(W * H)
+  const nx = Math.ceil((x1 - x0 + 2 * pad) / h3) + 1
+  const ny = Math.ceil((y1 - y0 + 2 * pad) / h3) + 1
+  const N = nx * ny
+  const mask = new Uint8Array(N) // inside test at the grid nodes (x = ox + i·h, y = oy + j·h)
+
+  // boundary primitives, used to refine the distance to the exact outline:
+  // kind 0 = polygon edge, 1 = capsule (round-cone) segment
+  const prim: number[] = [] // kind, ax, ay, bx, by, ra, rb
+  const addPrim = (k: number, ax: number, ay: number, bx: number, by: number, ra: number, rb: number) => prim.push(k, ax, ay, bx, by, ra, rb)
 
   // filled regions: even-odd scanline over all closed strokes
   if (prm.fill) {
     const polys = list.filter((s) => s.closed && s.p.length >= 6)
+    for (const s of polys) {
+      const p = s.p, n = p.length / 2
+      for (let i = 0; i < n; i++) {
+        const k = (i + 1) % n
+        addPrim(0, p[i * 2], p[i * 2 + 1], p[k * 2], p[k * 2 + 1], 0, 0)
+      }
+    }
     if (polys.length) {
       const xs: number[] = []
-      for (let j = 0; j < H; j++) {
-        const y = oy + (j + 0.5) * h2
+      for (let j = 0; j < ny; j++) {
+        const y = oy + j * h3
         xs.length = 0
         for (const s of polys) {
           const p = s.p, n = p.length / 2
@@ -118,22 +137,21 @@ export function meshSketch(strokes: SketchStroke[], prm: SketchParams): BrushMes
         if (xs.length < 2) continue
         xs.sort((a, b) => a - b)
         for (let q = 0; q + 1 < xs.length; q += 2) {
-          const i0 = Math.max(0, Math.ceil((xs[q] - ox) / h2 - 0.5))
-          const i1 = Math.min(W - 1, Math.floor((xs[q + 1] - ox) / h2 - 0.5))
-          if (i1 >= i0) mask.fill(1, j * W + i0, j * W + i1 + 1)
+          const i0 = Math.max(0, Math.ceil((xs[q] - ox) / h3))
+          const i1 = Math.min(nx - 1, Math.floor((xs[q + 1] - ox) / h3))
+          if (i1 >= i0) mask.fill(1, j * nx + i0, j * nx + i1 + 1)
         }
       }
     }
   }
 
-  // bands: open strokes (and closed outlines when not filled / to round off the filled edge)
+  // bands: open strokes (and closed outlines when not filled)
   for (const s of list) {
     const p = s.p
     const n = p.length / 2
     const closed = s.closed && n >= 3
     if (closed && prm.fill) continue
     const segs = closed ? n : n - 1
-    // arc length for the taper
     const arc = new Float64Array(n + 1)
     for (let i = 1; i <= n; i++) {
       const k = i % n
@@ -152,54 +170,94 @@ export function meshSketch(strokes: SketchStroke[], prm: SketchParams): BrushMes
       const k = closed ? (i + 1) % n : Math.min(n - 1, i + 1)
       const ax = p[i * 2], ay = p[i * 2 + 1], bx = p[k * 2], by = p[k * 2 + 1]
       const ra = rad(arc[i]), rb = rad(closed && k === 0 ? arc[n] : arc[k])
+      addPrim(1, ax, ay, bx, by, ra, rb)
       const rm = Math.max(ra, rb)
-      const i0 = Math.max(0, Math.floor((Math.min(ax, bx) - rm - ox) / h2)), i1 = Math.min(W - 1, Math.ceil((Math.max(ax, bx) + rm - ox) / h2))
-      const j0 = Math.max(0, Math.floor((Math.min(ay, by) - rm - oy) / h2)), j1 = Math.min(H - 1, Math.ceil((Math.max(ay, by) + rm - oy) / h2))
+      const i0 = Math.max(0, Math.floor((Math.min(ax, bx) - rm - ox) / h3)), i1 = Math.min(nx - 1, Math.ceil((Math.max(ax, bx) + rm - ox) / h3))
+      const j0 = Math.max(0, Math.floor((Math.min(ay, by) - rm - oy) / h3)), j1 = Math.min(ny - 1, Math.ceil((Math.max(ay, by) + rm - oy) / h3))
       const dx = bx - ax, dy = by - ay, dd = dx * dx + dy * dy
       for (let j = j0; j <= j1; j++) {
-        const y = oy + (j + 0.5) * h2
+        const y = oy + j * h3
         for (let ii = i0; ii <= i1; ii++) {
-          const x = ox + (ii + 0.5) * h2
+          const x = ox + ii * h3
           let t = dd > 0 ? ((x - ax) * dx + (y - ay) * dy) / dd : 0
           t = t < 0 ? 0 : t > 1 ? 1 : t
           const ex = x - ax - dx * t, ey = y - ay - dy * t
-          if (ex * ex + ey * ey <= (ra + (rb - ra) * t) ** 2) mask[j * W + ii] = 1
+          if (ex * ex + ey * ey <= (ra + (rb - ra) * t) ** 2) mask[j * nx + ii] = 1
         }
       }
     }
   }
 
-  // signed distance (inside > 0), in local units
-  const inv = new Uint8Array(W * H)
   let any = 0
-  for (let i = 0; i < W * H; i++) {
+  const inv = new Uint8Array(N)
+  for (let i = 0; i < N; i++) {
     inv[i] = mask[i] ? 0 : 1
     any |= mask[i]
   }
   if (!any) return null
-  const dIn = edt(inv, W, H) // inside: distance to the nearest outside cell
-  const dOut = edt(mask, W, H) // outside: distance to the nearest inside cell
-  const sd2 = new Float32Array(W * H)
-  for (let i = 0; i < W * H; i++) sd2[i] = (mask[i] ? dIn[i] - 0.5 : -(dOut[i] - 0.5)) * h2
+  // distance transform with feature transform: for every node, the nearest node on the other side
+  const fIn = edtFT(inv, nx, ny) // inside nodes → nearest outside node
+  const fOut = edtFT(mask, nx, ny) // outside nodes → nearest inside node
 
-  // down-sample to the 3D grid (box filter over SS×SS) + optional blur
-  const nx = Math.floor((W - 1) / SS) + 1
-  const ny = Math.floor((H - 1) / SS) + 1
-  let sd = new Float32Array(nx * ny)
+  // spatial hash of the primitives
+  const B = 6
+  const bw = Math.ceil(nx / B), bh = Math.ceil(ny / B)
+  const buckets: number[][] = Array.from({ length: bw * bh }, () => [])
+  const np = prim.length / 7
+  for (let q = 0; q < np; q++) {
+    const o = q * 7
+    const r = Math.max(prim[o + 5], prim[o + 6])
+    const bi0 = Math.max(0, Math.floor((Math.min(prim[o + 1], prim[o + 3]) - r - ox) / h3 / B))
+    const bi1 = Math.min(bw - 1, Math.floor((Math.max(prim[o + 1], prim[o + 3]) + r - ox) / h3 / B))
+    const bj0 = Math.max(0, Math.floor((Math.min(prim[o + 2], prim[o + 4]) - r - oy) / h3 / B))
+    const bj1 = Math.min(bh - 1, Math.floor((Math.max(prim[o + 2], prim[o + 4]) + r - oy) / h3 / B))
+    for (let bj = bj0; bj <= bj1; bj++) for (let bi = bi0; bi <= bi1; bi++) buckets[bj * bw + bi].push(q)
+  }
+
+  // exact signed distance near and far: the feature node q lies next to the true outline; among the
+  // primitives around q, the one whose outline passes by q gives the exact distance from p
+  let sd = new Float32Array(N)
+  const seen = new Int32Array(np).fill(-1)
   for (let j = 0; j < ny; j++)
     for (let i = 0; i < nx; i++) {
-      let s = 0, c = 0
-      for (let b = 0; b < SS; b++)
-        for (let a = 0; a < SS; a++) {
-          const X = i * SS + a, Y = j * SS + b
-          if (X < W && Y < H) {
-            s += sd2[Y * W + X]
-            c++
+      const k = j * nx + i
+      const inside = mask[k] === 1
+      const f = inside ? fIn : fOut
+      const qk = f.near[k]
+      const fallback = (f.dist[k] - 0.5) * h3
+      const qx = ox + (qk % nx) * h3, qy = oy + Math.floor(qk / nx) * h3
+      const px = ox + i * h3, py = oy + j * h3
+      let best = Infinity
+      const qbi = Math.floor((qk % nx) / B), qbj = Math.floor(Math.floor(qk / nx) / B)
+      for (let bj = Math.max(0, qbj - 1); bj <= Math.min(bh - 1, qbj + 1); bj++)
+        for (let bi = Math.max(0, qbi - 1); bi <= Math.min(bw - 1, qbi + 1); bi++) {
+          const lst = buckets[bj * bw + bi]
+          for (let t = 0; t < lst.length; t++) {
+            const q = lst[t]
+            if (seen[q] === k) continue
+            seen[q] = k
+            const o = q * 7
+            const ax = prim[o + 1], ay = prim[o + 2], bx = prim[o + 3], by = prim[o + 4]
+            const dx = bx - ax, dy = by - ay, dd = dx * dx + dy * dy
+            const isCap = prim[o] === 1
+            // distance from a point to this primitive's outline
+            const bd = (x: number, y: number) => {
+              let u = dd > 0 ? ((x - ax) * dx + (y - ay) * dy) / dd : 0
+              u = u < 0 ? 0 : u > 1 ? 1 : u
+              const da = Math.hypot(x - ax - dx * u, y - ay - dy * u)
+              return isCap ? Math.abs(da - (prim[o + 5] + (prim[o + 6] - prim[o + 5]) * u)) : da
+            }
+            // the outline must pass right by the feature node, i.e. it is the union's outline there
+            if (bd(qx, qy) > 1.05 * h3) continue
+            const db = bd(px, py)
+            if (db < best) best = db
           }
         }
-      sd[j * nx + i] = s / c
+      const d = best < Infinity && Math.abs(best - fallback) < 1.5 * h3 ? best : fallback
+      sd[k] = inside ? Math.max(d, 1e-6) : -Math.max(d, 1e-6)
     }
-  const blurs = Math.round(prm.smooth * 4)
+
+  const blurs = Math.round(prm.smooth * 3)
   for (let it = 0; it < blurs; it++) {
     const o = new Float32Array(sd.length)
     for (let j = 0; j < ny; j++)
@@ -236,9 +294,7 @@ export function meshSketch(strokes: SketchStroke[], prm: SketchParams): BrushMes
     Hf[i] = hgt
   }
   // grid origin: cell centres of the 2D raster blocks
-  const gx = ox + (SS / 2) * h2
-  const gy = oy + (SS / 2) * h2
-  return heightMesh(sd, Hf, nx, ny, h3, gx, gy, prm.doubleSided)
+  return heightMesh(sd, Hf, nx, ny, h3, ox, oy, prm.doubleSided)
 }
 
 /* 2.5D mesh straight from the 2D fields: top = H(x,y), bottom = -H (or a flat back), joined at

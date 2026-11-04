@@ -91,173 +91,89 @@ function distToEdge(px: number, py: number, polygon: Point2D[]): number {
 }
 
 // ============================================================================
-// Mesh Operations
+// Mesh operations (typed arrays / CSR adjacency — no string keys in hot loops)
 // ============================================================================
 
-interface HalfEdge {
-  vert: number
-  twin?: number
-  next: number
-  face: number
+/** Resample a closed polyline to evenly spaced points (drawn contours often have
+    hundreds of uneven points; the mesh only needs boundary spacing ≈ interior spacing). */
+function resampleClosed(polygon: Point2D[], spacing: number, maxPts = 1600): Point2D[] {
+  const n = polygon.length
+  const seg = new Float64Array(n)
+  let L = 0
+  for (let i = 0; i < n; i++) {
+    const a = polygon[i], b = polygon[(i + 1) % n]
+    seg[i] = Math.hypot(b.x - a.x, b.y - a.y)
+    L += seg[i]
+  }
+  const count = Math.max(24, Math.min(maxPts, Math.round(L / Math.max(spacing, 1e-6))))
+  const out: Point2D[] = []
+  const d = L / count
+  let i = 0, acc = 0
+  for (let k = 0; k < count; k++) {
+    const t = k * d
+    while (i < n - 1 && acc + seg[i] < t) { acc += seg[i]; i++ }
+    const a = polygon[i], b = polygon[(i + 1) % n]
+    const f = seg[i] > 0 ? (t - acc) / seg[i] : 0
+    out.push({ x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f })
+  }
+  return out
 }
 
-function buildHalfEdgeMesh(coords: number[], triangles: number[]) {
-  const numTris = triangles.length / 3
-  const halfEdges: HalfEdge[] = []
-  
-  // Create half-edges for each triangle
-  for (let t = 0; t < numTris; t++) {
+/** Undirected edge adjacency in CSR form with summed cotangent weights. */
+function buildCotangentCSR(coords: Float64Array, triangles: Uint32Array, numVerts: number) {
+  // collect directed half-edges (v0 -> v1) with the cotangent of the opposite corner
+  const nT = triangles.length / 3
+  const hv0 = new Uint32Array(nT * 3), hv1 = new Uint32Array(nT * 3), hw = new Float64Array(nT * 3)
+  for (let t = 0; t < nT; t++) {
     for (let e = 0; e < 3; e++) {
-      const i = t * 3 + e
-      halfEdges.push({
-        vert: triangles[t * 3 + e],
-        next: t * 3 + ((e + 1) % 3),
-        face: t,
-      })
+      const v0 = triangles[t * 3 + e], v1 = triangles[t * 3 + ((e + 1) % 3)], v2 = triangles[t * 3 + ((e + 2) % 3)]
+      const dx0 = coords[v0 * 2] - coords[v2 * 2], dy0 = coords[v0 * 2 + 1] - coords[v2 * 2 + 1]
+      const dx1 = coords[v1 * 2] - coords[v2 * 2], dy1 = coords[v1 * 2 + 1] - coords[v2 * 2 + 1]
+      let cot = (dx0 * dx1 + dy0 * dy1) / (dx0 * dy1 - dy0 * dx1 + 1e-10)
+      if (cot < 0) cot = 0.1 // obtuse fallback (as before)
+      cot = Math.min(10, cot)
+      const h = t * 3 + e
+      hv0[h] = v0; hv1[h] = v1; hw[h] = cot * 0.5
     }
   }
-  
-  // Link twins
-  const edgeMap = new Map<string, number>()
-  for (let i = 0; i < halfEdges.length; i++) {
-    const he = halfEdges[i]
-    const v0 = he.vert
-    const v1 = halfEdges[he.next].vert
-    const key = `${Math.min(v0, v1)}:${Math.max(v0, v1)}`
-    const twin = edgeMap.get(key)
-    if (twin !== undefined) {
-      halfEdges[i].twin = twin
-      halfEdges[twin].twin = i
-    } else {
-      edgeMap.set(key, i)
-    }
+  // degree count: each undirected edge appears for both endpoints
+  const deg = new Uint32Array(numVerts + 1)
+  for (let h = 0; h < hv0.length; h++) { deg[hv0[h]]++; deg[hv1[h]]++ }
+  const off = new Uint32Array(numVerts + 1)
+  for (let v = 0; v < numVerts; v++) off[v + 1] = off[v] + deg[v]
+  const nbr = new Int32Array(off[numVerts]).fill(-1)
+  const wt = new Float64Array(off[numVerts])
+  const fill = off.slice(0, numVerts)
+  const addTo = (a: number, b: number, w: number) => {
+    // merge duplicates (an interior edge is shared by two triangles)
+    for (let k = off[a]; k < fill[a]; k++) if (nbr[k] === b) { wt[k] += w; return }
+    nbr[fill[a]] = b; wt[fill[a]] = w; fill[a]++
   }
-  
-  return halfEdges
+  for (let h = 0; h < hv0.length; h++) { addTo(hv0[h], hv1[h], hw[h]); addTo(hv1[h], hv0[h], hw[h]) }
+  return { off, end: fill, nbr, wt }
 }
 
-function buildVertexNeighbors(coords: number[], halfEdges: HalfEdge[]) {
-  const numVerts = coords.length / 2
-  const neighbors: number[][] = Array.from({ length: numVerts }, () => [])
-  
-  for (let i = 0; i < halfEdges.length; i++) {
-    const he = halfEdges[i]
-    const v0 = he.vert
-    const v1 = halfEdges[he.next].vert
-    if (!neighbors[v0].includes(v1)) {
-      neighbors[v0].push(v1)
-    }
-  }
-  
-  return neighbors
-}
+type CSR = ReturnType<typeof buildCotangentCSR>
 
-// Cotangent Laplacian weights
-function computeCotangentWeights(coords: number[], halfEdges: HalfEdge[]) {
-  const numVerts = coords.length / 2
-  const weights = new Map<string, number>()
-  
-  for (let i = 0; i < halfEdges.length; i++) {
-    const he = halfEdges[i]
-    const v0 = he.vert
-    const v1 = halfEdges[he.next].vert
-    const v2 = halfEdges[halfEdges[he.next].next].vert
-    
-    // Cotangent at v2 for edge v0-v1
-    const x0 = coords[v0 * 2], y0 = coords[v0 * 2 + 1]
-    const x1 = coords[v1 * 2], y1 = coords[v1 * 2 + 1]
-    const x2 = coords[v2 * 2], y2 = coords[v2 * 2 + 1]
-    
-    const dx0 = x0 - x2, dy0 = y0 - y2
-    const dx1 = x1 - x2, dy1 = y1 - y2
-    
-    const dot = dx0 * dx1 + dy0 * dy1
-    const cross = dx0 * dy1 - dy0 * dx1
-    
-    let cot = dot / (cross + 1e-10)
-    // For obtuse triangles (cot < 0), use a fallback uniform weight
-    // to avoid negative Laplacian weights which cause inversions
-    if (cot < 0) cot = 0.1
-    cot = Math.min(10, cot) // Clamp for stability
-    
-    const key = `${Math.min(v0, v1)}:${Math.max(v0, v1)}`
-    weights.set(key, (weights.get(key) || 0) + cot * 0.5)
-  }
-  
-  return weights
-}
-
-// Solve Poisson equation: Δu = f using cotangent Laplacian (Gauss-Seidel)
-function solvePoissonCotangent(
-  coords: number[],
-  neighbors: number[][],
-  weights: Map<string, number>,
-  boundary: Set<number>,
-  boundaryValues: Map<number, number>,
-  rhs: Float32Array,
-): Float32Array {
-  const numVerts = coords.length / 2
+/** Δu = rhs with u = 0 on the boundary, Gauss-Seidel (same scheme and iteration count as before). */
+function solvePoisson(csr: CSR, boundary: Uint8Array, rhs: Float32Array, numVerts: number) {
   const u = new Float32Array(numVerts)
-  
-  // Initialize interior with average of boundary
-  let avgBoundary = 0
-  let bCount = 0
-  boundaryValues.forEach(v => { avgBoundary += v; bCount++ })
-  if (bCount > 0) avgBoundary /= bCount
-  
-  for (let i = 0; i < numVerts; i++) u[i] = avgBoundary
-  boundary.forEach(i => { u[i] = boundaryValues.get(i) || 0 })
-  
-  // Gauss-Seidel iterations (faster convergence than Jacobi)
+  const { off, end, nbr, wt } = csr
   for (let iter = 0; iter < 80; iter++) {
     let maxChange = 0
-    
     for (let i = 0; i < numVerts; i++) {
-      if (boundary.has(i)) continue
-      
-      let sum = 0
-      let weightSum = 0
-      
-      for (const j of neighbors[i]) {
-        const key = `${Math.min(i, j)}:${Math.max(i, j)}`
-        const w = weights.get(key) || 0
-        sum += w * u[j]
-        weightSum += w
-      }
-      
-      if (weightSum > 1e-10) {
-        const newVal = (sum - rhs[i]) / weightSum
-        maxChange = Math.max(maxChange, Math.abs(newVal - u[i]))
-        u[i] = newVal
+      if (boundary[i]) continue
+      let sum = 0, ws = 0
+      for (let k = off[i]; k < end[i]; k++) { const w = wt[k]; sum += w * u[nbr[k]]; ws += w }
+      if (ws > 1e-10) {
+        const nv = (sum - rhs[i]) / ws
+        const ch = Math.abs(nv - u[i])
+        if (ch > maxChange) maxChange = ch
+        u[i] = nv
       }
     }
-    
-    // Early exit if converged
     if (maxChange < 1e-5) break
   }
-  
-  return u
-}
-
-// Solve biharmonic equation: ∇⁴u = 0 via two Poisson solves
-function solveBiharmonic(
-  coords: number[],
-  neighbors: number[][],
-  weights: Map<string, number>,
-  boundary: Set<number>,
-  boundaryValues: Map<number, number>,
-): Float32Array {
-  const numVerts = coords.length / 2
-  
-  // First solve: Δv = 0 with v = 1 on boundary, v = 0 elsewhere (initial guess)
-  const rhs1 = new Float32Array(numVerts)
-  const v = solvePoissonCotangent(coords, neighbors, weights, boundary, boundaryValues, rhs1)
-  
-  // Second solve: Δu = v with u = 0 on boundary
-  const boundaryZero = new Map<number, number>()
-  boundary.forEach(i => boundaryZero.set(i, 0))
-  const u = solvePoissonCotangent(coords, neighbors, weights, boundary, boundaryZero, v)
-  
   return u
 }
 
@@ -291,269 +207,205 @@ function sharpRidgeProfile(r: number, sharpness = 5): number {
 // Main Pipeline
 // ============================================================================
 
+/** Everything that depends only on the contour and the grid resolution (the expensive part). */
+interface InflateBase {
+  coords: Float64Array
+  numVerts: number
+  triangles: Uint32Array
+  boundary: Uint8Array
+  csr: CSR
+  dome: Float32Array // smooth Poisson field, 0 on boundary … 1 at the centre
+  sdf: Float32Array // raw distance-to-edge field, 0 … 1 (sharp medial ridges)
+  boundaryEdges: Uint32Array // pairs of front-face vertex ids on the outline
+  cx: number
+  cy: number
+  size: number
+}
+
+const BASE_CACHE = new WeakMap<Point2D[], Map<number, InflateBase | null>>()
+
+function prepareInflate(polygonIn: Point2D[], gridResolution: number): InflateBase | null {
+  const bounds = getBounds(polygonIn)
+  const w = bounds.maxX - bounds.minX
+  const h = bounds.maxY - bounds.minY
+  if (w < 1 || h < 1) return null
+  const size = Math.max(w, h)
+  const cx = bounds.minX + w * 0.5
+  const cy = bounds.minY + h * 0.5
+
+  const steinerDensity = Math.max(8, Math.floor(gridResolution * 0.6))
+  const step = size / steinerDensity
+  // boundary sampled at roughly the interior spacing (was: every input point × N subdivisions)
+  const polygon = resampleClosed(polygonIn, step * 0.75)
+  const P = polygon.length
+
+  const pts: number[] = []
+  const nB = P
+  for (const p of polygon) pts.push(p.x, p.y)
+
+  // interior Steiner grid — scanline inside test per row instead of a full ray test per point
+  const xs: number[] = []
+  for (let row = 0; row < steinerDensity; row++) {
+    const y = bounds.minY + row * step + step * 0.5
+    xs.length = 0
+    for (let i = 0, j = P - 1; i < P; j = i++) {
+      const yi = polygon[i].y, yj = polygon[j].y
+      if (yi > y !== yj > y) xs.push(((polygon[j].x - polygon[i].x) * (y - yi)) / (yj - yi) + polygon[i].x)
+    }
+    if (xs.length < 2) continue
+    xs.sort((a, b) => a - b)
+    for (let col = 0; col < steinerDensity; col++) {
+      const x = bounds.minX + col * step + step * 0.5
+      let inside = false
+      for (let k = 0; k < xs.length && xs[k] < x; k++) inside = !inside
+      if (inside && distToEdge(x, y, polygon) > step * 0.3) pts.push(x, y)
+    }
+  }
+
+  const coords = Float64Array.from(pts)
+  const numVerts = coords.length / 2
+  if (numVerts < 3) return null
+
+  let del: Delaunator<ArrayLike<number>>
+  try {
+    del = new Delaunator(coords)
+  } catch (e) {
+    console.error('[v0] Delaunay triangulation failed:', e)
+    return null
+  }
+  const raw = del.triangles
+  const tri: number[] = []
+  for (let i = 0; i < raw.length; i += 3) {
+    const a = raw[i], b = raw[i + 1], c = raw[i + 2]
+    const mx = (coords[a * 2] + coords[b * 2] + coords[c * 2]) / 3
+    const my = (coords[a * 2 + 1] + coords[b * 2 + 1] + coords[c * 2 + 1]) / 3
+    if (pointInPolygon(mx, my, polygon)) tri.push(a, b, c)
+  }
+  if (tri.length < 3) return null
+  const triangles = Uint32Array.from(tri)
+
+  const boundary = new Uint8Array(numVerts)
+  for (let i = 0; i < nB; i++) boundary[i] = 1
+
+  const csr = buildCotangentCSR(coords, triangles, numVerts)
+
+  // smooth dome: Δu = -1, u = 0 on the boundary, normalised over interior vertices
+  const rhs = new Float32Array(numVerts)
+  for (let i = 0; i < numVerts; i++) rhs[i] = boundary[i] ? 0 : -1
+  const field = solvePoisson(csr, boundary, rhs, numVerts)
+  let minF = Infinity, maxF = -Infinity
+  for (let i = 0; i < numVerts; i++) if (!boundary[i]) { if (field[i] < minF) minF = field[i]; if (field[i] > maxF) maxF = field[i] }
+  const range = maxF - minF
+  const dome = new Float32Array(numVerts)
+  for (let i = 0; i < numVerts; i++) dome[i] = boundary[i] || !(range > 1e-10) ? 0 : (field[i] - minF) / range
+
+  // raw SDF for the sharp-ridge mode
+  const sdf = new Float32Array(numVerts)
+  let maxSdf = 0
+  for (let i = 0; i < numVerts; i++) {
+    if (boundary[i]) continue
+    const d = distToEdge(coords[i * 2], coords[i * 2 + 1], polygon)
+    sdf[i] = d
+    if (d > maxSdf) maxSdf = d
+  }
+  if (maxSdf > 0) for (let i = 0; i < numVerts; i++) sdf[i] /= maxSdf
+
+  // outline edges (used once by exactly one triangle) for stitching the two halves
+  const edgeUse = new Map<number, number>()
+  const key = (a: number, b: number) => (a < b ? a * numVerts + b : b * numVerts + a)
+  for (let i = 0; i < triangles.length; i += 3)
+    for (let j = 0; j < 3; j++) {
+      const k = key(triangles[i + j], triangles[i + ((j + 1) % 3)])
+      edgeUse.set(k, (edgeUse.get(k) || 0) + 1)
+    }
+  const be: number[] = []
+  for (let i = 0; i < triangles.length; i += 3)
+    for (let j = 0; j < 3; j++) {
+      const a = triangles[i + j], b = triangles[i + ((j + 1) % 3)]
+      if (edgeUse.get(key(a, b)) === 1) be.push(a, b)
+    }
+
+  return { coords, numVerts, triangles, boundary, csr, dome, sdf, boundaryEdges: Uint32Array.from(be), cx, cy, size }
+}
+
+/** Cheap part: heights + buffers. Volume / smoothing / ridge / double-sided changes only run this. */
+function buildInflated(base: InflateBase, opts: InflateOptions): THREE.BufferGeometry {
+  const { coords, numVerts, triangles, boundary, csr, dome, sdf, boundaryEdges, cx, cy, size } = base
+  const heights = new Float32Array(numVerts)
+  const tmp = new Float32Array(numVerts)
+  const smoothPass = (keep: number) => {
+    tmp.set(heights)
+    for (let i = 0; i < numVerts; i++) {
+      if (boundary[i]) continue
+      const a = csr.off[i], b = csr.end[i]
+      if (b === a) continue
+      let sum = 0
+      for (let k = a; k < b; k++) sum += heights[csr.nbr[k]]
+      tmp[i] = (sum / (b - a)) * (1 - keep) + heights[i] * keep
+    }
+    heights.set(tmp)
+  }
+  if (opts.sharpRidge) {
+    for (let i = 0; i < numVerts; i++) heights[i] = sharpRidgeProfile(sdf[i], opts.ridgeSharpness ?? 5) * opts.amount
+    smoothPass(0.85)
+  } else {
+    for (let i = 0; i < numVerts; i++) heights[i] = inflateProfile(dome[i]) * opts.amount
+    const it = Math.max(2, opts.smoothingIterations * 3)
+    for (let k = 0; k < it; k++) smoothPass(0.4)
+  }
+
+  const scale = 2 / size
+  const halves = opts.doubleSided ? 2 : 1
+  const pos = new Float32Array(numVerts * 3 * halves)
+  const uv = new Float32Array(numVerts * 2 * halves)
+  for (let hlf = 0; hlf < halves; hlf++) {
+    const sgn = hlf === 0 ? 1 : -1
+    for (let i = 0; i < numVerts; i++) {
+      const o = (hlf * numVerts + i)
+      const x = (coords[i * 2] - cx) * scale
+      const y = -(coords[i * 2 + 1] - cy) * scale
+      pos[o * 3] = x; pos[o * 3 + 1] = y; pos[o * 3 + 2] = sgn * heights[i] * scale
+      uv[o * 2] = (x + 1) * 0.5; uv[o * 2 + 1] = (y + 1) * 0.5
+    }
+  }
+  const idxCount = triangles.length * halves + (opts.doubleSided ? boundaryEdges.length * 3 : 0)
+  const index = numVerts * halves > 65535 ? new Uint32Array(idxCount) : new Uint16Array(idxCount)
+  index.set(triangles)
+  let o = triangles.length
+  if (opts.doubleSided) {
+    for (let i = 0; i < triangles.length; i += 3) {
+      index[o++] = triangles[i + 2] + numVerts
+      index[o++] = triangles[i + 1] + numVerts
+      index[o++] = triangles[i] + numVerts
+    }
+    for (let i = 0; i < boundaryEdges.length; i += 2) {
+      const a = boundaryEdges[i], b = boundaryEdges[i + 1]
+      index[o++] = a; index[o++] = b + numVerts; index[o++] = b
+      index[o++] = a; index[o++] = a + numVerts; index[o++] = b + numVerts
+    }
+  }
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
+  geo.setIndex(new THREE.BufferAttribute(index, 1))
+  geo.computeVertexNormals()
+  return geo
+}
+
 export function inflatePolygon(
   polygon: Point2D[],
   options: Partial<InflateOptions> = {},
 ): THREE.BufferGeometry | null {
   const opts = { ...DEFAULT_OPTIONS, ...options }
-  
   if (polygon.length < 3) return null
-
-  const bounds = getBounds(polygon)
-  const w = bounds.maxX - bounds.minX
-  const h = bounds.maxY - bounds.minY
-  if (w < 1 || h < 1) return null
-
-  const size = Math.max(w, h)
-  const cx = bounds.minX + w * 0.5
-  const cy = bounds.minY + h * 0.5
-
-  // ── Step 1: Generate vertices ─────────────────────────────────────────────
-  // Add boundary vertices (subdivided for smoother edges)
-  const coords: number[] = []
-  const boundaryIndices = new Set<number>()
-  
-  // Subdivide boundary edges for denser boundary sampling
-  const boundarySubdivide = Math.max(1, Math.floor(opts.gridResolution / 30))
-  for (let i = 0; i < polygon.length; i++) {
-    const a = polygon[i]
-    const b = polygon[(i + 1) % polygon.length]
-    for (let s = 0; s < boundarySubdivide; s++) {
-      const t = s / boundarySubdivide
-      boundaryIndices.add(coords.length / 2)
-      coords.push(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)
-    }
+  let byGrid = BASE_CACHE.get(polygon)
+  if (!byGrid) { byGrid = new Map(); BASE_CACHE.set(polygon, byGrid) }
+  let base = byGrid.get(opts.gridResolution)
+  if (base === undefined) {
+    base = prepareInflate(polygon, opts.gridResolution)
+    byGrid.set(opts.gridResolution, base)
   }
-  
-  // Add Steiner points inside polygon using gridResolution for uniform density
-  const steinerDensity = Math.max(8, Math.floor(opts.gridResolution * 0.6))
-  const step = size / steinerDensity
-  
-  for (let row = 0; row < steinerDensity; row++) {
-    for (let col = 0; col < steinerDensity; col++) {
-      const x = bounds.minX + col * step + step * 0.5
-      const y = bounds.minY + row * step + step * 0.5
-      
-      if (pointInPolygon(x, y, polygon)) {
-        const dist = distToEdge(x, y, polygon)
-        if (dist > step * 0.3) { // Avoid points too close to boundary
-          coords.push(x, y)
-        }
-      }
-    }
-  }
-
-  const numVerts = coords.length / 2
-  if (numVerts < 3) return null
-
-  // ── Step 2: Delaunay triangulation ────────────────────────────────────────
-  let triangulation: Delaunator<ArrayLike<number>>
-  try {
-    triangulation = new Delaunator(coords)
-  } catch (e) {
-    console.error('[v0] Delaunay triangulation failed:', e)
-    return null
-  }
-
-  // Filter triangles to only those inside the polygon (Delaunay builds convex hull)
-  const rawTriangles = triangulation.triangles
-  const triangles: number[] = []
-
-  for (let i = 0; i < rawTriangles.length; i += 3) {
-    const a = rawTriangles[i], b = rawTriangles[i + 1], c = rawTriangles[i + 2]
-    // Centroid of triangle
-    const mx = (coords[a * 2] + coords[b * 2] + coords[c * 2]) / 3
-    const my = (coords[a * 2 + 1] + coords[b * 2 + 1] + coords[c * 2 + 1]) / 3
-    if (pointInPolygon(mx, my, polygon)) {
-      triangles.push(a, b, c)
-    }
-  }
-
-  if (triangles.length < 3) return null
-
-  // ── Step 3: Build mesh data structures ────────────────────────────────────
-  const halfEdges = buildHalfEdgeMesh(coords, triangles)
-  const neighbors = buildVertexNeighbors(coords, halfEdges)
-  const weights = computeCotangentWeights(coords, halfEdges)
-  
-  // ── Step 4: Solve for smooth scalar field ─────────────────────────────────
-  // Harmonic field: boundary = 0, interior solved so it rises toward center.
-  // We use: Δu = 0, u = 0 on boundary.
-  // Since all boundary is 0, interior naturally gets non-zero values via the
-  // second Poisson solve in biharmonic. We instead solve a plain harmonic
-  // where boundary = 0 and we use the "distance" metric to drive it.
-  //
-  // Simpler & more reliable: solve Δu = -1 with u = 0 on boundary.
-  // This is the classic "drum membrane" / Poisson equation which gives a
-  // smooth dome-shaped field that peaks at the medial center.
-  
-  const boundaryZero = new Map<number, number>()
-  boundaryIndices.forEach(i => boundaryZero.set(i, 0))
-  
-  const negOne = new Float32Array(numVerts)
-  for (let i = 0; i < numVerts; i++) {
-    negOne[i] = boundaryIndices.has(i) ? 0 : -1
-  }
-  
-  const harmonicField = solvePoissonCotangent(coords, neighbors, weights, boundaryIndices, boundaryZero, negOne)
-  
-  // Normalize to [0, 1] across interior vertices only
-  let minF = Infinity, maxF = -Infinity
-  for (let i = 0; i < numVerts; i++) {
-    if (!boundaryIndices.has(i)) {
-      if (harmonicField[i] < minF) minF = harmonicField[i]
-      if (harmonicField[i] > maxF) maxF = harmonicField[i]
-    }
-  }
-  
-
-  
-  const normalizedField = new Float32Array(numVerts)
-  const range = maxF - minF
-  for (let i = 0; i < numVerts; i++) {
-    if (boundaryIndices.has(i)) {
-      normalizedField[i] = 0
-    } else {
-      normalizedField[i] = range > 1e-10 ? (harmonicField[i] - minF) / range : 0
-    }
-  }
-
-  // Raw SDF field: actual distance-to-boundary, NOT smoothed by Poisson.
-  // This produces sharp medial-axis ridges (voronoi skeleton effect).
-  const rawSdfField = new Float32Array(numVerts)
-  let maxSdf = 0
-  for (let i = 0; i < numVerts; i++) {
-    if (boundaryIndices.has(i)) { rawSdfField[i] = 0; continue }
-    const d = distToEdge(coords[i * 2], coords[i * 2 + 1], polygon)
-    rawSdfField[i] = d
-    if (d > maxSdf) maxSdf = d
-  }
-  if (maxSdf > 0) {
-    for (let i = 0; i < numVerts; i++) rawSdfField[i] /= maxSdf
-  }
-
-  // ── Step 5: Apply height profile ──────────────────────────────────────────
-  // r=0 at boundary (zero height), r=1 at center (peak height)
-  const heights = new Float32Array(numVerts)
-
-  if (opts.sharpRidge) {
-    // Sharp ridge mode: raw SDF — preserves sharp medial-axis ridges (voronoi effect)
-    for (let i = 0; i < numVerts; i++) {
-      const r = rawSdfField[i]
-      heights[i] = sharpRidgeProfile(r, opts.ridgeSharpness ?? 5) * opts.amount
-    }
-    // Minimal smoothing — just 1 pass to remove single-vertex spikes
-    const smoothed = heights.slice()
-    for (let i = 0; i < numVerts; i++) {
-      if (boundaryIndices.has(i)) continue
-      const nbrs = neighbors[i]
-      if (nbrs.length === 0) continue
-      let sum = 0
-      for (const j of nbrs) sum += heights[j]
-      smoothed[i] = sum / nbrs.length * 0.15 + heights[i] * 0.85
-    }
-    heights.set(smoothed)
-  } else {
-    // Smooth dome mode: inflate profile + Laplacian smoothing
-    for (let i = 0; i < numVerts; i++) {
-      const r = normalizedField[i]
-      heights[i] = inflateProfile(r) * opts.amount
-    }
-    // Laplacian smoothing to eliminate faceting
-    const smoothIter = Math.max(2, opts.smoothingIterations * 3)
-    for (let iter = 0; iter < smoothIter; iter++) {
-      const smoothed = heights.slice()
-      for (let i = 0; i < numVerts; i++) {
-        if (boundaryIndices.has(i)) continue
-        const nbrs = neighbors[i]
-        if (nbrs.length === 0) continue
-        let sum = 0
-        for (const j of nbrs) sum += heights[j]
-        smoothed[i] = sum / nbrs.length * 0.6 + heights[i] * 0.4
-      }
-      heights.set(smoothed)
-    }
-  }
-  
-  // ── Step 6: Build BufferGeometry ──────────────────────────────────────────
-  const scale = 2 / size
-  const positions: number[] = []
-  const indexArr: number[] = []
-
-  // Front face: Y-flipped for correct orientation
-  for (let i = 0; i < numVerts; i++) {
-    positions.push(
-      (coords[i * 2] - cx) * scale,
-      -(coords[i * 2 + 1] - cy) * scale,
-      heights[i] * scale,
-    )
-  }
-
-  // Front triangles: CCW winding after Y-flip
-  for (let i = 0; i < triangles.length; i += 3) {
-    indexArr.push(triangles[i], triangles[i + 1], triangles[i + 2])
-  }
-
-  if (opts.doubleSided) {
-    // Back face
-    for (let i = 0; i < numVerts; i++) {
-      positions.push(
-        (coords[i * 2] - cx) * scale,
-        -(coords[i * 2 + 1] - cy) * scale,
-        -heights[i] * scale,
-      )
-    }
-
-    // Back triangles: reversed winding
-    for (let i = 0; i < triangles.length; i += 3) {
-      indexArr.push(
-        triangles[i + 2] + numVerts,
-        triangles[i + 1] + numVerts,
-        triangles[i] + numVerts,
-      )
-    }
-
-    // Stitch boundary edges
-    const edgeCount = new Map<string, { a: number; b: number; count: number }>()
-
-    for (let i = 0; i < triangles.length; i += 3) {
-      for (let j = 0; j < 3; j++) {
-        const a = triangles[i + j]
-        const b = triangles[i + (j + 1) % 3]
-        const key = a < b ? `${a}:${b}` : `${b}:${a}`
-        const existing = edgeCount.get(key)
-        if (existing) {
-          existing.count++
-        } else {
-          edgeCount.set(key, { a, b, count: 1 })
-        }
-      }
-    }
-
-    edgeCount.forEach(({ a, b, count }) => {
-      if (count !== 1) return
-      const fa = a, fb = b
-      const ba = a + numVerts, bb = b + numVerts
-      indexArr.push(fa, bb, fb)
-      indexArr.push(fa, ba, bb)
-    })
-  }
-
-  // Generate UVs
-  const uvs: number[] = []
-  for (let i = 0; i < positions.length; i += 3) {
-    const x = positions[i]
-    const y = positions[i + 1]
-    uvs.push((x + 1) * 0.5, (y + 1) * 0.5)
-  }
-
-  const geo = new THREE.BufferGeometry()
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
-  geo.setIndex(indexArr)
-  geo.computeVertexNormals()
-
-  return geo
+  return base ? buildInflated(base, opts) : null
 }
 
 export const createInflatedGeometry = inflatePolygon

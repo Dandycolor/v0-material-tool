@@ -718,6 +718,7 @@
 .polya .mat-lib .kk-swatch.is-round{border-radius:50%}
 .polya .mat-lib .kk-swatch:hover{transform:scale(1.05)}
 .polya .mat-lib .kk-swatch.is-on{box-shadow:0 0 0 2.5px var(--panel),0 0 0 5px var(--paper);transform:none}
+.polya .mat-lib.ts-presets{grid-template-columns:repeat(5,1fr);gap:8px;margin-top:8px}
 .polya .mat-lib .kk-swatch .kk-icon{width:22px;height:22px}
 .polya .matset{position:absolute;right:calc(16px + 272px + 12px + env(safe-area-inset-right,0px));top:calc(72px + env(safe-area-inset-top,0px));bottom:calc(72px + env(safe-area-inset-bottom,0px));margin-block:auto;height:max-content;max-height:calc(100% - 144px);overflow-y:auto;scrollbar-width:none;width:268px;z-index:4}
 .polya .matset::-webkit-scrollbar{display:none}

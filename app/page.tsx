@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useRef, useEffect } from "react"
+import { useState, useCallback, useRef, useEffect, Fragment } from "react"
 import type React from "react"
 import useSWR from "swr"
 
@@ -555,46 +555,6 @@ const MATERIAL_PRESETS = {
     envMapIntensity: 1.0,
     normalRepeat: 1,
   },
-  scratchedGlass: {
-    name: "Scratched Glass",
-    baseColor: null,
-    normalMap: "/images/scratched-glass-normal.jpg",
-    roughnessMap: "/images/scratched-glass-roughness.jpg",
-    displacementMap: "/images/scratched-glass-height.jpg",
-    metalnessMap: "/images/scratched-glass-metallic.jpg",
-    opacityMap: "/images/scratched-glass-opacity.jpg",
-    refractionMap: "/images/scratched-glass-refraction.jpg",
-    reflectionMap: "/images/scratched-glass-reflection.jpg",
-    refractionGlossinessMap: "/images/scratched-glass-refraction-glossiness.jpg",
-    glossinessMap: "/images/scratched-glass-glossiness.jpg",
-    emissiveMap: "/images/scratched-glass-emissive.jpg",
-    diffuseMap: "/images/scratched-glass-diffuse.jpg",
-    aoMap: "/images/scratched-glass-ao.jpg",
-    invertedIORMap: "/images/scratched-glass-inverted-ior.jpg",
-    metalness: 0,
-    roughness: 0.1,
-    normalScale: 1.0,
-    displacementScale: 0,
-    defaultTint: "#ffffff",
-    useHueShift: false,
-    transmission: 0.98,
-    ior: 1.52,
-    thickness: 0.5,
-    attenuationDistance: 2.0,
-    attenuationColor: "#ffffff",
-    clearcoat: 0.5,
-    clearcoatRoughness: 0.1,
-    clearcoatNormalScale: 1.0,
-    glassColor: "#ffffff",
-    glassColorIntensity: 0,
-    iridescence: 0,
-    iridescenceIOR: 1.3,
-    iridescenceThicknessMin: 100,
-    iridescenceThicknessMax: 400,
-    reflectivity: 0.5,
-    envMapIntensity: 1.0,
-    normalRepeat: 1,
-  },
   clearGlass: {
     name: "Clear Glass",
     baseColor: null,
@@ -945,7 +905,7 @@ export default function MaterialTool() {
 
   const [selectedPreset, setSelectedPreset] = useState<keyof typeof MATERIAL_PRESETS | "custom">("plastic")
   const [activeTab, setActiveTab] = useState("material") // tabs are gone: the material panel is always the context
-  const [materialTypeTab, setMaterialTypeTab] = useState<"pbr" | "custom" | "gradient" | "matcap" | "layered" | "procedural">(
+  const [materialTypeTab, setMaterialTypeTab] = useState<"pbr" | "custom" | "gradient" | "matcap" | "layered">(
     selectedPreset === "custom" ? "custom" : "pbr"
   )
   const [backgroundColor, setBackgroundColor] = useState("#9724f5") // Knopika "Violet" ground
@@ -966,6 +926,9 @@ export default function MaterialTool() {
   // Procedural tortoiseshell acetate
   const [tortoise, setTortoise] = useState<TortoiseSettings>({ ...TORTOISE_DEFAULT })
   const setTs = (u: Partial<TortoiseSettings>) => setTortoise((p) => ({ ...p, ...u }))
+  // Tortoiseshell lives in the PBR library (in place of the old Scratched Glass)
+  const [tsPicked, setTsPicked] = useState(false)
+  const tsOn = materialTypeTab === "pbr" && tsPicked
 
   // Gradient settings
   const [showGradient, setShowGradient] = useState(false)
@@ -1008,7 +971,6 @@ export default function MaterialTool() {
       
       // Layered (gradient + matcap holes) is its own material mode
       setLayered((prev) => ({ ...prev, enabled: materialTypeTab === "layered" }))
-      setTortoise((prev) => ({ ...prev, enabled: materialTypeTab === "procedural" }))
       // Auto-enable/disable gradient based on tab selection
       if (materialTypeTab === "gradient") {
         setGradientSettings(prev => ({ ...prev, enabled: true }))
@@ -1019,6 +981,9 @@ export default function MaterialTool() {
       setRenderMode("pbr")
     }
   }, [activeTab, materialTypeTab])
+  useEffect(() => {
+    setTortoise((prev) => (prev.enabled === tsOn ? prev : { ...prev, enabled: tsOn }))
+  }, [tsOn])
 
   // Replace Noun Project API state with Iconify
   // Noun Project API state
@@ -1468,7 +1433,7 @@ export default function MaterialTool() {
   const curPrim = PRIMS.find((p) => p.type === geometrySettings.primitiveType) || PRIMS[0]
   const curMode = MODES.find((m) => m.t === geoType) || MODES[0]
 
-  const isGlass = selectedPreset === "dirtyGlass" || selectedPreset === "scratchedGlass" || selectedPreset === "clearGlass"
+  const isGlass = selectedPreset === "dirtyGlass" || selectedPreset === "clearGlass"
   const presetName =
     selectedPreset === "custom" ? "Custom material" : MATERIAL_PRESETS[selectedPreset as keyof typeof MATERIAL_PRESETS]?.name || "Material"
   const GLASS_THUMB = "radial-gradient(circle at 34% 30%, #ffffff 0 12%, #cfe8ff 26%, #7fa7c9 62%, #3d5a75)"
@@ -1490,7 +1455,7 @@ export default function MaterialTool() {
         desc: "Procedural shading with its own light — PBR lighting is off.",
         thumb: `radial-gradient(circle at 40% 35%, ${gradientSettings.color1}, ${gradientSettings.color2})`,
       }
-    if (materialTypeTab === "procedural") {
+    if (tsOn) {
       const pr = TORTOISE_PRESETS.find((p) => p.c[0] === tortoise.c0 && p.c[3] === tortoise.c3)
       return {
         title: `Tortoiseshell · ${pr?.name || "Custom"}`,
@@ -1519,7 +1484,6 @@ export default function MaterialTool() {
     { v: "gradient", icon: "layers", label: "Gradient" },
     { v: "matcap", icon: "eye", label: "Matcap" },
     { v: "layered", icon: "spark", label: "Layered" },
-    { v: "procedural", icon: "wave", label: "Procedural" },
   ] as const
 
   // bottom bar pill with an ink slider
@@ -1818,7 +1782,12 @@ export default function MaterialTool() {
               {materialTypeTab === "pbr" && (
                 <div className="mat-lib">
                   {Object.entries(MATERIAL_PRESETS).map(([key, preset]) => (
-                    <Tile key={key} round image={preset.baseColor || undefined} color={GLASS_THUMB} title={preset.name} on={selectedPreset === key} onClick={() => pickMaterial(() => handlePresetChange(key))} />
+                    <Fragment key={key}>
+                      <Tile round image={preset.baseColor || undefined} color={GLASS_THUMB} title={preset.name} on={!tsPicked && selectedPreset === key} onClick={() => pickMaterial(() => { setTsPicked(false); handlePresetChange(key) })} />
+                      {key === "dirtyGlass" && (
+                        <Tile round color={tortoiseThumb([tortoise.c0, tortoise.c1, tortoise.c2, tortoise.c3])} title="Tortoiseshell" on={tsPicked} onClick={() => pickMaterial(() => setTsPicked(true))} />
+                      )}
+                    </Fragment>
                   ))}
                 </div>
               )}
@@ -1857,20 +1826,6 @@ export default function MaterialTool() {
                       title={p.name}
                       on={layered.colorA === p.colors[0] && layered.colorB === p.colors[1] && layered.colorC === p.colors[2]}
                       onClick={() => pickMaterial(() => setLay({ colorA: p.colors[0], colorB: p.colors[1], colorC: p.colors[2] }))}
-                    />
-                  ))}
-                </div>
-              )}
-              {materialTypeTab === "procedural" && (
-                <div className="mat-lib">
-                  {TORTOISE_PRESETS.map((p) => (
-                    <Tile
-                      key={p.name}
-                      round
-                      color={tortoiseThumb(p.c)}
-                      title={p.name}
-                      on={tortoise.c0 === p.c[0] && tortoise.c3 === p.c[3]}
-                      onClick={() => pickMaterial(() => setTs({ c0: p.c[0], c1: p.c[1], c2: p.c[2], c3: p.c[3], spots: p.spots, translucency: p.translucency, hue: 0 }))}
                     />
                   ))}
                 </div>
@@ -1967,8 +1922,23 @@ export default function MaterialTool() {
                 </>
               )}
 
-              {materialTypeTab === "procedural" && (
+              {tsOn && (
                 <>
+                  <div className="kk-card">
+                    <span className="tlabel">PRESETS</span>
+                    <div className="mat-lib ts-presets">
+                      {TORTOISE_PRESETS.map((p) => (
+                        <Tile
+                          key={p.name}
+                          round
+                          color={tortoiseThumb(p.c)}
+                          title={p.name}
+                          on={tortoise.c0 === p.c[0] && tortoise.c3 === p.c[3]}
+                          onClick={() => setTs({ c0: p.c[0], c1: p.c[1], c2: p.c[2], c3: p.c[3], spots: p.spots, translucency: p.translucency, hue: 0 })}
+                        />
+                      ))}
+                    </div>
+                  </div>
                   <div className="kk-card">
                     <span className="tlabel">COLOUR</span>
                     <Field icon="hue" label="Hue" value={tortoise.hue} min={0} max={360} step={1} format={(v) => `${Math.round(v)}°`} onChange={(v) => setTs({ hue: v })} />
@@ -2095,7 +2065,7 @@ export default function MaterialTool() {
                 </>
               )}
 
-              {(materialTypeTab === "pbr" || materialTypeTab === "custom") && (
+              {((materialTypeTab === "pbr" && !tsOn) || materialTypeTab === "custom") && (
                 <>
                   <div className="kk-card" id="matSurface">
                     <Field icon="layers" label="Normal scale" value={materialSettings.normalScale} min={0} max={3} step={0.1} onChange={(v) => setMat({ normalScale: v })} />
@@ -2103,7 +2073,7 @@ export default function MaterialTool() {
                     {geoType === "sphere" && (
                       <Field icon="height" label="Displacement" value={materialSettings.displacementScale} min={0} max={1} step={0.01} onChange={(v) => setMat({ displacementScale: v })} />
                     )}
-                    {selectedPreset !== "dirtyGlass" && selectedPreset !== "scratchedGlass" && (
+                    {selectedPreset !== "dirtyGlass" && (
                       <Field icon="dial" label="Metalness" value={materialSettings.metalness} min={0} max={1} step={0.01} onChange={(v) => setMat({ metalness: v })} />
                     )}
                     <Field icon="grid" label="Texture scale" hint="Tiling of the textures" value={materialSettings.textureScale} min={0.1} max={10} step={0.1} onChange={(v) => setMat({ textureScale: v })} />

@@ -9,6 +9,7 @@ import { extrudeAsync, flattenShape } from "@/lib/extrude/client"
 import { createBlob, BLOB_DEFAULT, type BlobSettings } from "@/lib/blob"
 import { createLayeredMaterial, updateLayeredMaterial, type LayeredSettings } from "@/lib/layered-material"
 import { createTortoiseMaterial, updateTortoiseMaterial, type TortoiseSettings } from "@/lib/tortoise-material"
+import { createTerrazzoMaterial, updateTerrazzoMaterial, type TerrazzoSettings } from "@/lib/terrazzo-material"
 
 /* Override materials (Layered, Tortoise…): while on, every mesh of the shape wears the shared override;
    switching off puts each mesh's own material back. Checked every frame so meshes that remount
@@ -43,6 +44,14 @@ function LayeredApplier({ settings, seed }: { settings?: LayeredSettings; seed: 
   useEffect(() => {
     if (settings) updateLayeredMaterial(mat, settings, seed)
   }, [mat, settings, seed])
+  return <OverrideApplier material={mat} on={!!settings?.enabled} />
+}
+
+function TerrazzoApplier({ settings }: { settings?: TerrazzoSettings }) {
+  const mat = useMemo(() => createTerrazzoMaterial(), [])
+  useEffect(() => {
+    if (settings) updateTerrazzoMaterial(mat, settings)
+  }, [mat, settings])
   return <OverrideApplier material={mat} on={!!settings?.enabled} />
 }
 
@@ -2384,7 +2393,8 @@ function SceneContent({
   dotColor = "rgba(0,0,0,0.18)",
   layeredSettings,
   tortoiseSettings,
-}: SceneContentProps & { layeredSettings?: LayeredSettings; tortoiseSettings?: TortoiseSettings } & { onExportReady: (fn: () => void) => void, onExportGeometryReady: (fn: () => void) => void, onExportSTLReady: (fn: () => void) => void, onExportOBJReady: (fn: () => void) => void, backgroundColor?: string, dotGrid?: boolean, dotColor?: string }) {
+  terrazzoSettings,
+}: SceneContentProps & { layeredSettings?: LayeredSettings; tortoiseSettings?: TortoiseSettings; terrazzoSettings?: TerrazzoSettings } & { onExportReady: (fn: () => void) => void, onExportGeometryReady: (fn: () => void) => void, onExportSTLReady: (fn: () => void) => void, onExportOBJReady: (fn: () => void) => void, backgroundColor?: string, dotGrid?: boolean, dotColor?: string }) {
   const { gl, scene, camera } = useThree()
   const size = useThree((s) => s.size)
   const dpr = useThree((s) => s.viewport.dpr)
@@ -2849,6 +2859,7 @@ function SceneContent({
       <GridHelper visible={showGrid} />
       <LayeredApplier settings={layeredSettings} seed={(geometrySettings as any).blob?.seed ?? 0} />
       <TortoiseApplier settings={tortoiseSettings} />
+      <TerrazzoApplier settings={terrazzoSettings} />
     </>
   )
 }
@@ -2881,6 +2892,7 @@ const PBRViewerInner = forwardRef<
   dotGrid?: boolean
   layeredSettings?: LayeredSettings
   tortoiseSettings?: TortoiseSettings
+  terrazzoSettings?: TerrazzoSettings
   dotColor?: string
   showGrid?: boolean
   showRotateControls?: boolean
@@ -2904,7 +2916,7 @@ const PBRViewerInner = forwardRef<
   onGeometrySettingsChange?: (settings: Partial<GeometrySettings>) => void
   }
 >(function PBRViewer(
-  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, dotGrid, dotColor, layeredSettings, tortoiseSettings, showGrid, showRotateControls, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
+  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, dotGrid, dotColor, layeredSettings, tortoiseSettings, terrazzoSettings, showGrid, showRotateControls, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
   ref,
   ) {
   const exportFnRef = useRef<(() => void) | null>(null)
@@ -2984,6 +2996,7 @@ const PBRViewerInner = forwardRef<
             dotColor={dotColor}
             layeredSettings={layeredSettings}
             tortoiseSettings={tortoiseSettings}
+            terrazzoSettings={terrazzoSettings}
             gradientSettings={gradientSettings}
             customMaterial={customMaterial}
             onModelLoadError={onModelLoadError}

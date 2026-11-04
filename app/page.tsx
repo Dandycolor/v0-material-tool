@@ -19,6 +19,7 @@ import { WEIGHTS } from "@/lib/knopika/icons"
 import { BLOB_DEFAULT, type BlobSettings, type BlobBase } from "@/lib/blob"
 import { LAYERED_DEFAULT, LAYERED_PALETTES, type LayeredSettings } from "@/lib/layered-material"
 import { generateNormalMap } from "@/lib/procedural-normal"
+import { TERRAZZO_DEFAULT, TERRAZZO_PRESETS, type TerrazzoSettings } from "@/lib/terrazzo-material"
 import { TORTOISE_DEFAULT, TORTOISE_PRESETS, type TortoiseSettings } from "@/lib/tortoise-material"
 import { installUISounds, setSoundEnabled, UISound } from "@/lib/knopika/sounds"
 
@@ -941,8 +942,13 @@ export default function MaterialTool() {
   const [tortoise, setTortoise] = useState<TortoiseSettings>({ ...TORTOISE_DEFAULT })
   const setTs = (u: Partial<TortoiseSettings>) => setTortoise((p) => ({ ...p, ...u }))
   // Tortoiseshell lives in the PBR library (in place of the old Scratched Glass)
-  const [tsPicked, setTsPicked] = useState(false)
+  // Procedural terrazzo replaces the Terrazzo texture set
+  const [terrazzo, setTerrazzo] = useState<TerrazzoSettings>({ ...TERRAZZO_DEFAULT })
+  const setTz = (u: Partial<TerrazzoSettings>) => setTerrazzo((p) => ({ ...p, ...u }))
+  const [procPick, setProcPick] = useState<"" | "tortoise" | "terrazzo">("")
+  const tsPicked = procPick === "tortoise"
   const tsOn = materialTypeTab === "pbr" && tsPicked
+  const tzOn = materialTypeTab === "pbr" && procPick === "terrazzo"
 
   // Gradient settings
   const [showGradient, setShowGradient] = useState(false)
@@ -998,6 +1004,9 @@ export default function MaterialTool() {
   useEffect(() => {
     setTortoise((prev) => (prev.enabled === tsOn ? prev : { ...prev, enabled: tsOn }))
   }, [tsOn])
+  useEffect(() => {
+    setTerrazzo((prev) => (prev.enabled === tzOn ? prev : { ...prev, enabled: tzOn }))
+  }, [tzOn])
 
   // Replace Noun Project API state with Iconify
   // Noun Project API state
@@ -1454,6 +1463,9 @@ export default function MaterialTool() {
   // CSS preview of a tortoiseshell palette (spots over amber)
   const tortoiseThumb = (c: string[], hue = 0) =>
     `radial-gradient(circle at 30% 26%, #ffffff70 0 6%, transparent 22%), radial-gradient(ellipse 30% 18% at 30% 60%, ${c[0]} 0 55%, transparent 75%), radial-gradient(ellipse 26% 14% at 70% 38%, ${c[0]} 0 50%, transparent 72%), radial-gradient(ellipse 34% 20% at 62% 78%, ${c[1]} 0 55%, transparent 78%), radial-gradient(ellipse 24% 16% at 22% 30%, ${c[1]} 0 50%, transparent 75%), linear-gradient(140deg, ${c[3]}, ${c[2]} 45%, ${c[1]})` + (hue ? "" : "")
+  // CSS preview of a terrazzo palette (angular chips on the binder)
+  const terrazzoThumb = (b: string, c: string[]) =>
+    `radial-gradient(circle at 30% 26%, #ffffff80 0 5%, transparent 20%), conic-gradient(from 20deg at 30% 62%, ${c[0]} 0 30deg, transparent 30deg) 0 0 / 100% 100% no-repeat, linear-gradient(35deg, transparent 56%, ${c[1]} 56% 64%, transparent 64%), linear-gradient(120deg, transparent 22%, ${c[2]} 22% 28%, transparent 28%), linear-gradient(160deg, transparent 70%, ${c[3]} 70% 77%, transparent 77%), linear-gradient(80deg, transparent 40%, ${c[0]} 40% 45%, transparent 45%), ${b}`
   const pickMaterial = (fn: () => void) => {
     fn()
     setMatSetOpen(true)
@@ -1469,6 +1481,14 @@ export default function MaterialTool() {
         desc: "Procedural shading with its own light — PBR lighting is off.",
         thumb: `radial-gradient(circle at 40% 35%, ${gradientSettings.color1}, ${gradientSettings.color2})`,
       }
+    if (tzOn) {
+      const pr = TERRAZZO_PRESETS.find((p) => p.base === terrazzo.base && p.c[0] === terrazzo.c1)
+      return {
+        title: `Terrazzo · ${pr?.name || "Custom"}`,
+        desc: "Stone chips set in a polished binder — fully procedural, no seams.",
+        thumb: terrazzoThumb(terrazzo.base, [terrazzo.c1, terrazzo.c2, terrazzo.c3, terrazzo.c4]),
+      }
+    }
     if (tsOn) {
       const pr = TORTOISE_PRESETS.find((p) => p.c[0] === tortoise.c0 && p.c[3] === tortoise.c3)
       return {
@@ -1550,6 +1570,7 @@ export default function MaterialTool() {
               dotGrid={showDots}
               layeredSettings={layered}
               tortoiseSettings={tortoise}
+              terrazzoSettings={terrazzo}
               dotColor={tv.vars["--on-ground-faint"]}
               showGrid={showGrid}
               showRotateControls={showRotateControls}
@@ -1797,9 +1818,13 @@ export default function MaterialTool() {
                 <div className="mat-lib">
                   {Object.entries(MATERIAL_PRESETS).map(([key, preset]) => (
                     <Fragment key={key}>
-                      <Tile round image={preset.baseColor || undefined} color={GLASS_THUMB} title={preset.name} on={!tsPicked && selectedPreset === key} onClick={() => pickMaterial(() => { setTsPicked(false); handlePresetChange(key) })} />
+                      {key === "terrazzo" ? (
+                        <Tile round color={terrazzoThumb(terrazzo.base, [terrazzo.c1, terrazzo.c2, terrazzo.c3, terrazzo.c4])} title="Terrazzo" on={procPick === "terrazzo"} onClick={() => pickMaterial(() => setProcPick("terrazzo"))} />
+                      ) : (
+                        <Tile round image={preset.baseColor || undefined} color={GLASS_THUMB} title={preset.name} on={!procPick && selectedPreset === key} onClick={() => pickMaterial(() => { setProcPick(""); handlePresetChange(key) })} />
+                      )}
                       {key === "dirtyGlass" && (
-                        <Tile round color={tortoiseThumb([tortoise.c0, tortoise.c1, tortoise.c2, tortoise.c3])} title="Tortoiseshell" on={tsPicked} onClick={() => pickMaterial(() => setTsPicked(true))} />
+                        <Tile round color={tortoiseThumb([tortoise.c0, tortoise.c1, tortoise.c2, tortoise.c3])} title="Tortoiseshell" on={tsPicked} onClick={() => pickMaterial(() => setProcPick("tortoise"))} />
                       )}
                     </Fragment>
                   ))}
@@ -1935,6 +1960,49 @@ export default function MaterialTool() {
                       />
                     )}
                     <Field icon="snow" label="Noise" value={(gradientSettings as any).noise || 0} min={0} max={2} step={0.1} onChange={(v) => setGradientSettings((prev) => ({ ...prev, noise: v }) as any)} />
+                  </div>
+                </>
+              )}
+
+              {tzOn && (
+                <>
+                  <div className="kk-card">
+                    <span className="tlabel">PRESETS</span>
+                    <div className="mat-lib ts-presets">
+                      {TERRAZZO_PRESETS.map((p) => (
+                        <Tile key={p.name} round color={terrazzoThumb(p.base, p.c)} title={p.name} on={terrazzo.base === p.base && terrazzo.c1 === p.c[0]} onClick={() => setTz({ base: p.base, c1: p.c[0], c2: p.c[1], c3: p.c[2], c4: p.c[3], hue: 0 })} />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="kk-card">
+                    <span className="tlabel">COLOUR</span>
+                    <Field icon="hue" label="Hue" value={terrazzo.hue} min={0} max={360} step={1} format={(v) => `${Math.round(v)}°`} onChange={(v) => setTz({ hue: v })} />
+                    <div className="kk-colorbar" style={{ ["--c" as string]: `linear-gradient(90deg, ${terrazzo.base} 0 30%, ${terrazzo.c1} 30% 47%, ${terrazzo.c2} 47% 64%, ${terrazzo.c3} 64% 82%, ${terrazzo.c4} 82%)`, filter: `hue-rotate(${terrazzo.hue}deg)` }} />
+                    <ColorField label="Binder" value={terrazzo.base} onChange={(v) => setTz({ base: v })} />
+                    <ColorField label="Stone 1" value={terrazzo.c1} onChange={(v) => setTz({ c1: v })} />
+                    <ColorField label="Stone 2" value={terrazzo.c2} onChange={(v) => setTz({ c2: v })} />
+                    <ColorField label="Stone 3" value={terrazzo.c3} onChange={(v) => setTz({ c3: v })} />
+                    <ColorField label="Stone 4" value={terrazzo.c4} onChange={(v) => setTz({ c4: v })} />
+                  </div>
+                  <div className="kk-card">
+                    <div className="kk-row kk-row--between">
+                      <span className="tlabel">CHIPS</span>
+                      <button type="button" className="kk-pill" onClick={() => setTz({ seed: Math.floor(Math.random() * 9999) })} title="New pattern">
+                        <Icon name="shuffle" />
+                        Shuffle
+                      </button>
+                    </div>
+                    <Field icon="width" label="Size" value={terrazzo.size} min={0.3} max={3} step={0.01} onChange={(v) => setTz({ size: v })} />
+                    <Field icon="circle" label="Amount" value={terrazzo.amount} min={0} max={1} step={0.01} onChange={(v) => setTz({ amount: v })} />
+                    <Field icon="grid" label="Fines" value={terrazzo.fines} min={0} max={1} step={0.01} onChange={(v) => setTz({ fines: v })} />
+                    <Field icon="pan" label="Gap" value={terrazzo.gap} min={0} max={1} step={0.01} onChange={(v) => setTz({ gap: v })} />
+                    <Field icon="dial" label="Variation" value={terrazzo.variation} min={0} max={1} step={0.01} onChange={(v) => setTz({ variation: v })} />
+                    <Field icon="snow" label="Specks" value={terrazzo.specks} min={0} max={1} step={0.01} onChange={(v) => setTz({ specks: v })} />
+                  </div>
+                  <div className="kk-card">
+                    <span className="tlabel">FINISH</span>
+                    <Field icon="drop" label="Roughness" value={terrazzo.roughness} min={0} max={1} step={0.01} onChange={(v) => setTz({ roughness: v })} />
+                    <Field icon="spark" label="Gloss" value={terrazzo.gloss} min={0} max={1} step={0.01} onChange={(v) => setTz({ gloss: v })} />
                   </div>
                 </>
               )}
@@ -2083,7 +2151,7 @@ export default function MaterialTool() {
                 </>
               )}
 
-              {((materialTypeTab === "pbr" && !tsOn) || materialTypeTab === "custom") && (
+              {((materialTypeTab === "pbr" && !tsOn && !tzOn) || materialTypeTab === "custom") && (
                 <>
                   <div className="kk-card" id="matSurface">
                     <Field icon="layers" label="Normal scale" value={materialSettings.normalScale} min={0} max={3} step={0.1} onChange={(v) => setMat({ normalScale: v })} />

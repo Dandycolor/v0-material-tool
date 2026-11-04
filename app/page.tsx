@@ -18,6 +18,7 @@ import { THEME_DEFAULT, GROUNDS, TUNER_ROWS, FONTS_DISPLAY, FONTS_UI, fmtRow, th
 import { WEIGHTS } from "@/lib/knopika/icons"
 import { BLOB_DEFAULT, type BlobSettings, type BlobBase } from "@/lib/blob"
 import { LAYERED_DEFAULT, LAYERED_PALETTES, type LayeredSettings } from "@/lib/layered-material"
+import { generateNormalMap } from "@/lib/procedural-normal"
 import { TORTOISE_DEFAULT, TORTOISE_PRESETS, type TortoiseSettings } from "@/lib/tortoise-material"
 import { installUISounds, setSoundEnabled, UISound } from "@/lib/knopika/sounds"
 
@@ -920,6 +921,19 @@ export default function MaterialTool() {
     metalness: CUSTOM_TEXTURES.metalness[0].url,
   })
   
+  // Generative normal map (the "Random" tile in every normal-map picker)
+  const [procNormal, setProcNormal] = useState<string | null>(null)
+  const rollNormal = () => {
+    const url = generateNormalMap()
+    setProcNormal(url)
+    return url
+  }
+  const randomNormalTile = ({ on, onPick, round }: { on: boolean; onPick: (url: string) => void; round?: boolean }) => (
+    <Tile round={round} image={procNormal || undefined} color="var(--panel-line)" title="Random normal map" on={on} onClick={() => onPick(rollNormal())}>
+      <Icon name="shuffle" />
+    </Tile>
+  )
+
   // Layered material (Blob Forge): gradient layer over matcap "holes"
   const [layered, setLayered] = useState<LayeredSettings>({ ...LAYERED_DEFAULT })
   const setLay = (u: Partial<LayeredSettings>) => setLayered((p) => ({ ...p, ...u }))
@@ -1877,6 +1891,9 @@ export default function MaterialTool() {
                           {CUSTOM_TEXTURES[kind].map((tex) => (
                             <Tile key={tex.id} image={tex.url} title={tex.name} on={customMaterial[kind] === tex.url} onClick={() => setCustomMaterial((prev) => ({ ...prev, [kind]: tex.url }))} />
                           ))}
+                          {kind === "normal" && (
+                            randomNormalTile({ on: !!procNormal && customMaterial.normal === procNormal, onPick: (url) => setCustomMaterial((prev) => ({ ...prev, normal: url })) })
+                          )}
                         </div>
                       </div>
                     ))}
@@ -2048,6 +2065,7 @@ export default function MaterialTool() {
                           onClick={() => setMatcapSettings({ ...matcapSettings, normalMap: `/images/custom/normal-${i}.jpg` })}
                         />
                       ))}
+                      {randomNormalTile({ round: true, on: !!procNormal && matcapSettings.normalMap === procNormal, onPick: (url) => setMatcapSettings((prev) => ({ ...prev, normalMap: url })) })}
                     </div>
                     {matcapSettings.normalMap && (
                       <>

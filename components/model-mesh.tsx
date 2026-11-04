@@ -10,6 +10,7 @@ import { useThree } from "@react-three/fiber"
 import { TransformControls } from "@react-three/drei"
 import { createGradientMaterial } from "./gradient-shader"
 import { setMaterialHue, HUE_GLSL } from "@/lib/hue-shift"
+import { setTriplanar, triplanarMatcapShaders, triplanarMatcapUniforms } from "@/lib/triplanar"
 
 /** Spherical UVs around the geometry's centre; u is doubled so texels stay roughly square. */
 function ensureUVs(g: THREE.BufferGeometry) {
@@ -309,6 +310,7 @@ export function ModelMesh({
 
         if (renderMode === "matcap" && matcapTexture) {
           newMaterial = createMatcapMaterial(matcapTexture, matcapNormalMap, matcapSettings)
+          ;(newMaterial as THREE.ShaderMaterial).uniforms.kkTpScale.value = child.userData.kkTpScale ?? 1
         } else if (gradientSettings?.enabled) {
           newMaterial = createGradientMaterial(gradientSettings)
         } else if (hasCustomTextures) {
@@ -474,6 +476,8 @@ export function ModelMesh({
         m.iridescenceThicknessRange = [s.iridescenceThicknessMin ?? 100, s.iridescenceThicknessMax ?? 400]
       }
       setMaterialHue(m, s.useHueShift ? s.hueShift : 0)
+      // triplanar: model UVs (often generated, full of islands) are not used for our maps
+      setTriplanar(m, { scale: child.userData.kkTpScale ?? 1, repeat: textureScale })
     })
   }, [scene, materialSettings, envIntensity, textureScale, normalScaleVector, matcapSettings, renderMode, matcapTexture, gradientSettings, colorMap, normalMap, roughnessMap, metalnessMap, usePotteryMode])
 
@@ -519,6 +523,11 @@ export function ModelMesh({
       box.setFromObject(loadedScene)
       const center = box.getCenter(new THREE.Vector3())
       loadedScene.position.copy(center.multiplyScalar(-1))
+      // triplanar texture density: each mesh's scale in the fitted (≈2 unit) model space
+      loadedScene.updateMatrixWorld(true)
+      loadedScene.traverse((child: any) => {
+        if (child instanceof Mesh) child.userData.kkTpScale = child.matrixWorld.getMaxScaleOnAxis()
+      })
       
       // Сохраняем оригинальные материалы и геометрию модели в userData
       loadedScene.traverse((child) => {
@@ -775,7 +784,7 @@ function createMatcapMaterial(
   `
 
   return new THREE.ShaderMaterial({
-    uniforms: {
+    uniforms: triplanarMatcapUniforms({
       matcap: { value: matcapTexture },
       normalMap: { value: matcapNormalMap || null },
       normalIntensity: { value: matcapSettings?.normalIntensity || 1 },
@@ -784,9 +793,8 @@ function createMatcapMaterial(
       rimColor: { value: new THREE.Color(matcapSettings?.rimColor || "#ffffff") },
       hasNormalMap: { value: !!matcapNormalMap },
       uHueShift: { value: (matcapSettings as any)?.hueShift || 0 },
-    },
-    vertexShader,
-    fragmentShader,
+    }),
+    ...triplanarMatcapShaders(vertexShader, fragmentShader),
     extensions: { derivatives: true },
     side: THREE.FrontSide,
   })

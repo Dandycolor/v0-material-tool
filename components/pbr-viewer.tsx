@@ -4,6 +4,7 @@ import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber"
 import { OrbitControls, Environment } from "@react-three/drei"
 import { rot } from "@/lib/knopika/rotation"
 import { setMaterialHue, HUE_GLSL } from "@/lib/hue-shift"
+import { setTriplanar, triplanarMatcapShaders, triplanarMatcapUniforms } from "@/lib/triplanar"
 import { extrudeAsync, flattenShape } from "@/lib/extrude/client"
 import { createBlob, BLOB_DEFAULT, type BlobSettings } from "@/lib/blob"
 import { createLayeredMaterial, updateLayeredMaterial, type LayeredSettings } from "@/lib/layered-material"
@@ -216,7 +217,7 @@ function MatcapMaterialWithEffects({
   const materialRef = useRef<THREE.ShaderMaterial>(null)
 
   const uniforms = useMemo(
-    () => ({
+    () => triplanarMatcapUniforms({
       matcap: { value: matcap },
       normalMap: { value: normalMap },
       normalIntensity: { value: normalIntensity },
@@ -324,8 +325,7 @@ function MatcapMaterialWithEffects({
     <shaderMaterial
       ref={materialRef}
       uniforms={uniforms}
-      vertexShader={vertexShader}
-      fragmentShader={fragmentShader}
+      {...triplanarMatcapShaders(vertexShader, fragmentShader)}
       extensions={{ derivatives: true }}
     />
   )
@@ -2264,8 +2264,11 @@ function Material({
   // hue shift runs on the GPU (one uniform), see lib/hue-shift.ts
   const hue = materialSettings.useHueShift ? materialSettings.hueShift : 0
   useEffect(() => {
-    if (matRef.current) setMaterialHue(matRef.current, hue)
-  }, [hue, isGlass])
+    if (!matRef.current) return
+    setMaterialHue(matRef.current, hue)
+    // maps are projected triplanar in object space: no UV seams on any shape
+    setTriplanar(matRef.current, { scale: 1, repeat: textureScale })
+  }, [hue, isGlass, textureScale])
 
   const tint = materialSettings.useHueShift ? "#ffffff" : materialSettings.colorTint
   const color = useMemo(() => new THREE.Color(tint), [tint])

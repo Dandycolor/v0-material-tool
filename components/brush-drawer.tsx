@@ -46,6 +46,24 @@ export function BrushDrawer({ active }: { active: boolean }) {
 
   useEffect(() => () => (geo.dispose(), mat.dispose()), [geo, mat])
 
+  // brush-size cursor: a ring (dark outline + light inner line + faint fill) facing the camera
+  const ring = useRef<THREE.Group>(null)
+  const ringParts = useMemo(() => {
+    const mk = (g: THREE.BufferGeometry, color: string, opacity: number) => {
+      const m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false })
+      const mesh = new THREE.Mesh(g, m)
+      mesh.renderOrder = 999
+      return mesh
+    }
+    return [
+      mk(new THREE.CircleGeometry(1, 64), "#ffffff", 0.18),
+      mk(new THREE.RingGeometry(0.93, 1, 96), "#111111", 0.85),
+      mk(new THREE.RingGeometry(0.87, 0.93, 96), "#ffffff", 0.7),
+    ]
+  }, [])
+  useEffect(() => () => ringParts.forEach((m) => (m.geometry.dispose(), (m.material as THREE.Material).dispose())), [ringParts])
+  const hover = useRef({ on: false, p: new THREE.Vector3(), flashUntil: 0, lastSize: -1 })
+
   useEffect(() => {
     if (!active) return
     const el = gl.domElement
@@ -121,12 +139,25 @@ export function BrushDrawer({ active }: { active: boolean }) {
     }
     const onMove = (e: PointerEvent) => {
       const s = st.current
-      if (!s.on || !s.sm) return
+      if (!s.on || !s.sm) {
+        // hover: where the ring cursor sits (plane through the shape's centre)
+        const r = el.getBoundingClientRect()
+        const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom && (e.target as Element) === el
+        hover.current.on = inside
+        if (inside && group.current) {
+          setRay(e)
+          const c = new THREE.Vector3().setFromMatrixPosition(group.current.matrixWorld)
+          const pl = new THREE.Plane().setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()), c)
+          if (ray.ray.intersectPlane(pl, hit)) hover.current.p.copy(hit)
+        }
+        return
+      }
       setRay(e)
       if (!ray.ray.intersectPlane(s.plane, hit)) return
       // steady the hand: the pen pulls a point on a string
       const k = 1 - brush.get().settings.smooth * 0.88
       s.sm.lerp(hit, k)
+      hover.current.p.copy(s.sm)
       const p = toLocal(s.sm.clone())
       const n = s.pts.length
       const r = radius(e)
@@ -216,6 +247,29 @@ export function BrushDrawer({ active }: { active: boolean }) {
       cursor.current = c
       gl.domElement.style.cursor = c
     }
+    // ring cursor
+    const g = ring.current
+    if (g && group.current) {
+      const h = hover.current
+      const now = performance.now()
+      if (h.lastSize !== b.settings.size) {
+        // size slider moved: flash the ring (at the centre when the pointer is off the canvas)
+        if (h.lastSize >= 0) {
+          h.flashUntil = now + 1400
+          if (!h.on) h.p.setFromMatrixPosition(group.current.matrixWorld)
+        }
+        h.lastSize = b.settings.size
+      }
+      const show = active && b.drawing && (h.on || st.current.on || now < h.flashUntil)
+      g.visible = show
+      if (show) {
+        const inv = new THREE.Matrix4().copy(group.current.matrixWorld).invert()
+        g.position.copy(h.p).applyMatrix4(inv)
+        const pq = group.current.getWorldQuaternion(new THREE.Quaternion()).invert()
+        g.quaternion.copy(pq.multiply(camera.quaternion))
+        g.scale.setScalar(b.settings.size)
+      }
+    }
     if (s.waitMesh && !b.busy && inst.current) {
       s.waitMesh = false
       inst.current.count = 0
@@ -226,6 +280,11 @@ export function BrushDrawer({ active }: { active: boolean }) {
   return (
     <group ref={group}>
       <instancedMesh ref={inst} args={[geo, mat, MAX]} count={0} visible={false} frustumCulled={false} />
+      <group ref={ring} visible={false}>
+        {ringParts.map((m, i) => (
+          <primitive key={i} object={m} />
+        ))}
+      </group>
     </group>
   )
 }

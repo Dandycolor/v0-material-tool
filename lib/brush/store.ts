@@ -15,7 +15,7 @@ export interface BrushSettings {
   quality: number // grid cells across the drawing
 }
 
-export const BRUSH_DEFAULT: BrushSettings = { size: 0.045, puff: 0.65, blend: 0.35, smooth: 0.5, taper: 0.5, quality: 160 }
+export const BRUSH_DEFAULT: BrushSettings = { size: 0.07, puff: 0.65, blend: 0.35, smooth: 0.5, taper: 0.5, quality: 160 }
 
 interface State {
   strokes: BrushStroke[]

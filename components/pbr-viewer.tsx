@@ -2179,7 +2179,8 @@ function PBRMesh({
       {geometrySettings.type === "sphere" ? (
         <mesh key={fullTextureKey} ref={sphereMeshRef} name="inflated-geometry">
           <PrimitiveGeometry primitiveType={geometrySettings.primitiveType || "sphere"} blob={(geometrySettings as any).blob} />
-          <Material materialSettings={materialSettings} />
+          {/* brush strokes have no UVs: no displacement map (it would swell every bead) */}
+          <Material materialSettings={materialSettings} shapeType={geometrySettings.primitiveType === "brush" ? "extruded" : "sphere"} />
         </mesh>
       ) : geometrySettings.type === "model" ? (
         geometrySettings.modelUrl && (
@@ -2283,6 +2284,13 @@ function Material({
     // maps are projected triplanar in object space: no UV seams on any shape
     setTriplanar(matRef.current, { scale: 1, repeat: textureScale })
   }, [hue, isGlass, textureScale])
+
+  // a map appearing / disappearing changes the shader defines: three only recompiles on needsUpdate
+  // (e.g. switching to the brush drops the displacement map — without this the old program keeps displacing)
+  const mapSig = [colorMap, normalMap, roughnessMap, isExtruded ? null : displacementMap, metalnessMap, opacityMap].map((t) => (t ? 1 : 0)).join("")
+  useEffect(() => {
+    if (matRef.current) matRef.current.needsUpdate = true
+  }, [mapSig])
 
   const tint = materialSettings.useHueShift ? "#ffffff" : materialSettings.colorTint
   const color = useMemo(() => new THREE.Color(tint), [tint])

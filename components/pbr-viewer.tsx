@@ -76,6 +76,13 @@ import { createGradientMaterial } from "./gradient-shader"
 import { inflatePolygon as createInflatedGeometryFromContour } from "@/lib/inflate-geometry"
 
 // Object rotation driven by the Knopika orbit rig (turn around Y, then tilt around the screen X axis)
+/** linear luminance of the ground < 0.2 (≈ 0.48 in sRGB) → draw guides in a light ink */
+function isDarkGround(bg?: string) {
+  if (!bg) return false
+  const c = new THREE.Color(bg)
+  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b < 0.2
+}
+
 function KnopikaRotGroup({ children }: { children?: any }) {
   const ref = useRef<THREE.Group>(null)
   useFrame(() => {
@@ -2870,8 +2877,8 @@ function SceneContent({
           />
         </>
       )}
-      <BrushDrawer active={geometrySettings.type === "sphere" && geometrySettings.primitiveType === "brush"} />
-      <SketchDrawer active={geometrySettings.type === "sphere" && geometrySettings.primitiveType === "sketch"} />
+      <BrushDrawer active={geometrySettings.type === "sphere" && geometrySettings.primitiveType === "brush"} dark={isDarkGround(backgroundColor)} />
+      <SketchDrawer active={geometrySettings.type === "sphere" && geometrySettings.primitiveType === "sketch"} dark={isDarkGround(backgroundColor)} />
       </KnopikaRotGroup>
       </group>
       <GridHelper visible={showGrid} />

@@ -28,7 +28,7 @@ export function useBrushDrawing() {
   return useSyncExternalStore(brush.subscribe, () => brush.get().drawing, () => true)
 }
 
-export function BrushDrawer({ active }: { active: boolean }) {
+export function BrushDrawer({ active, dark = false }: { active: boolean; dark?: boolean }) {
   const { gl, camera, scene } = useThree()
   const group = useRef<THREE.Group>(null)
   const inst = useRef<THREE.InstancedMesh>(null)
@@ -61,6 +61,14 @@ export function BrushDrawer({ active }: { active: boolean }) {
       mk(new THREE.RingGeometry(0.87, 0.93, 96), "#ffffff", 0.7),
     ]
   }, [])
+  // ring colours follow the background (outline = ink, inner line + fill = paper)
+  useEffect(() => {
+    const ink = dark ? 0xf4f1ec : 0x111111
+    const paper = dark ? 0x111111 : 0xffffff
+    ;(ringParts[0].material as THREE.MeshBasicMaterial).color.setHex(paper)
+    ;(ringParts[1].material as THREE.MeshBasicMaterial).color.setHex(ink)
+    ;(ringParts[2].material as THREE.MeshBasicMaterial).color.setHex(paper)
+  }, [dark, ringParts])
   useEffect(() => () => ringParts.forEach((m) => (m.geometry.dispose(), (m.material as THREE.Material).dispose())), [ringParts])
   const hover = useRef({ on: false, p: new THREE.Vector3(), flashUntil: 0, lastSize: -1 })
 

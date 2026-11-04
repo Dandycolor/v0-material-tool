@@ -9,6 +9,9 @@
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react"
 import { useFrame, useThree } from "@react-three/fiber"
 import * as THREE from "three"
+import { Line2 } from "three/examples/jsm/lines/Line2.js"
+import { LineGeometry } from "three/examples/jsm/lines/LineGeometry.js"
+import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js"
 import { sketch } from "@/lib/sketch/store"
 
 const MAXP = 8000
@@ -23,19 +26,19 @@ export function useSketchDrawing() {
 
 const closeDist = (w: number) => Math.max(0.07, w * 1.6)
 
-export function SketchDrawer({ active }: { active: boolean }) {
+export function SketchDrawer({ active, dark = false }: { active: boolean; dark?: boolean }) {
   const { gl, camera } = useThree()
   const group = useRef<THREE.Group>(null)
+  // stroke preview: a fat screen-space line (2.5 px) in the theme's ink colour
   const line = useMemo(() => {
-    const g = new THREE.BufferGeometry()
-    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(MAXP * 3), 3))
-    g.setDrawRange(0, 0)
-    const m = new THREE.LineBasicMaterial({ color: "#111111", transparent: true, opacity: 0.9, depthTest: false })
-    const l = new THREE.Line(g, m)
+    const m = new LineMaterial({ color: 0x111111, linewidth: 2.5, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false })
+    const l = new Line2(new LineGeometry(), m)
     l.renderOrder = 999
     l.frustumCulled = false
+    l.visible = false
     return l
   }, [])
+  const lineDirty = useRef(false)
   const mk = (g: THREE.BufferGeometry, color: string, opacity: number) => {
     const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false, side: THREE.DoubleSide }))
     m.renderOrder = 999
@@ -43,6 +46,14 @@ export function SketchDrawer({ active }: { active: boolean }) {
   }
   const cursor = useMemo(() => [mk(new THREE.CircleGeometry(1, 48), "#ffffff", 0.18), mk(new THREE.RingGeometry(0.9, 1, 64), "#111111", 0.85)], [])
   const snap = useMemo(() => mk(new THREE.RingGeometry(0.8, 1, 48), "#2bd47a", 0.95), [])
+  // ink / paper follow the background: light lines on a dark ground and the other way round
+  useEffect(() => {
+    const ink = dark ? 0xf4f1ec : 0x111111
+    const paper = dark ? 0x111111 : 0xffffff
+    ;(line.material as LineMaterial).color.setHex(ink)
+    ;(cursor[0].material as THREE.MeshBasicMaterial).color.setHex(paper)
+    ;(cursor[1].material as THREE.MeshBasicMaterial).color.setHex(ink)
+  }, [dark, line, cursor])
   useEffect(
     () => () => {
       ;[line, ...cursor, snap].forEach((o: any) => (o.geometry.dispose(), o.material.dispose()))
@@ -75,16 +86,12 @@ export function SketchDrawer({ active }: { active: boolean }) {
       out.set(hit.x, hit.y)
       return true
     }
-    const pos = line.geometry.attributes.position as THREE.BufferAttribute
     const push = (x: number, y: number) => {
       const s = st.current
       const n = s.pts.length / 2
       if (n >= MAXP - 1) return
       s.pts.push(x, y)
-      pos.setXYZ(n, x, y, 0)
-      pos.needsUpdate = true
-      line.geometry.setDrawRange(0, n + 1)
-      line.visible = true
+      lineDirty.current = true
     }
     const p2 = new THREE.Vector2()
     const onDown = (e: PointerEvent) => {
@@ -133,9 +140,8 @@ export function SketchDrawer({ active }: { active: boolean }) {
       if (closed) {
         // drop the tail that overlaps the start
         while (pts.length > 6 && Math.hypot(pts[pts.length - 2] - pts[0], pts[pts.length - 1] - pts[1]) < w * 0.4) pts = pts.slice(0, -2)
-        pos.setXYZ(pts.length / 2, pts[0], pts[1], 0)
-        line.geometry.setDrawRange(0, pts.length / 2 + 1)
-        pos.needsUpdate = true
+        s.pts = pts.concat([pts[0], pts[1]])
+        lineDirty.current = true
       }
       s.near = false
       s.waitMesh = true
@@ -200,7 +206,22 @@ export function SketchDrawer({ active }: { active: boolean }) {
     if (s.waitMesh && !b.busy) {
       s.waitMesh = false
       line.visible = false
-      line.geometry.setDrawRange(0, 0)
+    }
+    if (lineDirty.current) {
+      lineDirty.current = false
+      const n = s.pts.length / 2
+      if (n >= 2) {
+        const xyz = new Float32Array(n * 3)
+        for (let i = 0; i < n; i++) {
+          xyz[i * 3] = s.pts[i * 2]
+          xyz[i * 3 + 1] = s.pts[i * 2 + 1]
+        }
+        line.geometry.dispose()
+        line.geometry = new LineGeometry()
+        ;(line.geometry as LineGeometry).setPositions(xyz)
+        line.computeLineDistances()
+        line.visible = true
+      }
     }
     if (!active && line.visible) line.visible = false
   })

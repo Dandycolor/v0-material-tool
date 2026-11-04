@@ -138,7 +138,7 @@ export function meshStrokes(strokes: BrushStroke[], prm: BrushMeshParams): Brush
 
 /* Surface Nets: one vertex per sign-changing cell (mean of its edge crossings), one quad per
    sign-changing grid edge. */
-function surfaceNets(F: Float32Array, nx: number, ny: number, nz: number, h: number, ox: number, oy: number, oz: number): BrushMeshResult | null {
+export function surfaceNets(F: Float32Array, nx: number, ny: number, nz: number, h: number, ox: number, oy: number, oz: number): BrushMeshResult | null {
   const cx = nx - 1, cy = ny - 1, cz = nz - 1
   const cellVert = new Int32Array(cx * cy * cz).fill(-1)
   const pos: number[] = []

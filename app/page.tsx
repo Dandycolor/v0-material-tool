@@ -20,6 +20,7 @@ import { BLOB_DEFAULT, type BlobSettings, type BlobBase } from "@/lib/blob"
 import { LAYERED_DEFAULT, LAYERED_PALETTES, type LayeredSettings } from "@/lib/layered-material"
 import { generateNormalMap } from "@/lib/procedural-normal"
 import { brush, useBrush } from "@/lib/brush/store"
+import { sketch, useSketch } from "@/lib/sketch/store"
 import { TERRAZZO_DEFAULT, TERRAZZO_PRESETS, type TerrazzoSettings } from "@/lib/terrazzo-material"
 import { TORTOISE_DEFAULT, TORTOISE_PRESETS, type TortoiseSettings } from "@/lib/tortoise-material"
 import { installUISounds, setSoundEnabled, UISound } from "@/lib/knopika/sounds"
@@ -1417,12 +1418,27 @@ export default function MaterialTool() {
   const setLight = (u: Partial<typeof lightingSettings>) => setLightingSettings({ ...lightingSettings, ...u })
 
   // the brush is a primitive under the hood (so every material path works), shown as its own mode
-  const geoType = (geometrySettings.type === "sphere" && geometrySettings.primitiveType === "brush" ? "brush" : geometrySettings.type) as string
+  const geoType = (
+    geometrySettings.type === "sphere" && geometrySettings.primitiveType === "brush"
+      ? "brush"
+      : geometrySettings.type === "sphere" && (geometrySettings.primitiveType as string) === "sketch"
+        ? "inflate"
+        : geometrySettings.type
+  ) as string
+  const sketchState = useSketch()
+  const ks = sketchState.settings
   const brushState = useBrush()
   const bs = brushState.settings
   const pickMode = (t: "sphere" | "extruded" | "model" | "inflate" | "brush") => {
     if (t === geoType) {
-      if (t !== "sphere" && t !== "brush") setSourceOpen((o) => !o)
+      if (t !== "sphere" && t !== "brush" && t !== "inflate") setSourceOpen((o) => !o)
+      return
+    }
+    if (t === "inflate") {
+      // drawn straight in the 3D view (a primitive under the hood, like the brush)
+      setGeometrySettings({ ...geometrySettings, type: "sphere", primitiveType: "sketch" as any })
+      sketch.setDrawing(true)
+      setSourceOpen(false)
       return
     }
     if (t === "brush") {
@@ -1431,7 +1447,7 @@ export default function MaterialTool() {
       setSourceOpen(false)
       return
     }
-    if (t === "sphere" && geometrySettings.primitiveType === "brush") {
+    if (t === "sphere" && (geometrySettings.primitiveType === "brush" || (geometrySettings.primitiveType as string) === "sketch")) {
       setGeometrySettings({ ...geometrySettings, type: "sphere", primitiveType: "sphere" })
       setSourceOpen(false)
       return
@@ -2497,6 +2513,12 @@ export default function MaterialTool() {
             </div>
           )}
 
+          {geoType === "inflate" && !sketchState.strokes.length && (
+            <div className="brush-hint" aria-live="polite">
+              <Icon name="pen" />
+              Draw a shape — close a loop to fill it, a loop inside cuts a hole. Hold Space to orbit
+            </div>
+          )}
           {geoType === "brush" && !brushState.strokes.length && (
             <div className="brush-hint" aria-live="polite">
               <Icon name="brush" />
@@ -2613,15 +2635,27 @@ export default function MaterialTool() {
 
             {geoType === "inflate" && (
               <>
-                {GP({ icon: "inflate", label: "Volume", value: geometrySettings.inflateVolume ?? 100, min: 10, max: 200, step: 5, onChange: (v) => setGeo({ inflateVolume: v }) })}
-                {!geometrySettings.inflateSharpRidge &&
-                  GP({ icon: "wave", label: "Smoothing", value: geometrySettings.inflateSmoothing ?? 3, min: 0, max: 10, step: 1, onChange: (v) => setGeo({ inflateSmoothing: v }) })}
-                {GP({ icon: "grid", label: "Grid resolution", value: geometrySettings.inflateGridResolution ?? 150, min: 40, max: 240, step: 5, onChange: (v) => setGeo({ inflateGridResolution: v }) })}
+                {GP({ icon: "width", label: "Width", value: ks.width, min: 0.015, max: 0.3, step: 0.001, onChange: (v) => sketch.setSettings({ width: v }), fmt: (v) => (v * 100).toFixed(1) })}
+                {GP({ icon: "inflate", label: "Volume", value: ks.volume, min: 0.1, max: 2, step: 0.01, onChange: (v) => sketch.setSettings({ volume: v }) })}
+                {GP({ icon: "angle", label: "Angle", value: ks.sharp, min: 0, max: 1, step: 0.01, onChange: (v) => sketch.setSettings({ sharp: v }), fmt: (v) => (v < 0.34 ? "round" : v > 0.66 ? "sharp" : "soft") })}
+                {GP({ icon: "height", label: "Plateau", value: ks.plateau, min: 0, max: 1, step: 0.01, onChange: (v) => sketch.setSettings({ plateau: v }) })}
+                {GP({ icon: "star", label: "Taper", value: ks.taper, min: 0, max: 1, step: 0.01, onChange: (v) => sketch.setSettings({ taper: v }) })}
+                {GP({ icon: "wave", label: "Smooth", value: ks.smooth, min: 0, max: 1, step: 0.01, onChange: (v) => sketch.setSettings({ smooth: v }) })}
                 <span className="sep" />
-                {GT({ icon: "mirror", label: "Double sided", on: geometrySettings.inflateBothSides ?? true, onChange: (v) => setGeo({ inflateBothSides: v }) })}
-                {GT({ icon: "star", label: "Sharp ridge", on: geometrySettings.inflateSharpRidge ?? false, onChange: (v) => setGeo({ inflateSharpRidge: v }) })}
-                {geometrySettings.inflateSharpRidge &&
-                  GP({ icon: "angle", label: "Ridge sharpness", value: geometrySettings.inflateRidgeSharpness ?? 5, min: 1, max: 10, step: 1, onChange: (v) => setGeo({ inflateRidgeSharpness: v }) })}
+                {GT({ icon: "circle", label: "Fill", on: ks.fill, onChange: (v) => sketch.setSettings({ fill: v }) })}
+                {GT({ icon: "mirror", label: "Double sided", on: ks.doubleSided, onChange: (v) => sketch.setSettings({ doubleSided: v }) })}
+                {GT({ icon: "pen", label: sketchState.drawing ? "Draw" : "Orbit", on: sketchState.drawing, onChange: (v) => sketch.setDrawing(v) })}
+                <span className="kk-pillgroup gbtns">
+                  <button type="button" className="kk-ibtn kk-ibtn--ground" aria-label="Undo stroke" title="Undo (Ctrl+Z)" disabled={!sketchState.strokes.length} onClick={() => sketch.undo()}>
+                    <Icon name="undo" />
+                  </button>
+                  <button type="button" className="kk-ibtn kk-ibtn--ground" aria-label="Redo stroke" title="Redo (Shift+Ctrl+Z)" disabled={!sketchState.redo.length} onClick={() => sketch.redoStroke()}>
+                    <Icon name="undo" className="kk-flipx" />
+                  </button>
+                  <button type="button" className="kk-ibtn kk-ibtn--ground" aria-label="Clear drawing" title="Clear" disabled={!sketchState.strokes.length} onClick={() => sketch.clear()}>
+                    <Icon name="trash" />
+                  </button>
+                </span>
               </>
             )}
           </div>

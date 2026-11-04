@@ -8,6 +8,7 @@ import { setTriplanar, triplanarMatcapShaders, triplanarMatcapUniforms } from "@
 import { extrudeAsync, flattenShape } from "@/lib/extrude/client"
 import { createBlob, BLOB_DEFAULT, type BlobSettings } from "@/lib/blob"
 import { BrushDrawer, BrushGeometry, useBrushDrawing } from "@/components/brush-drawer"
+import { SketchDrawer, SketchGeometry, useSketchDrawing } from "@/components/sketch-drawer"
 import { createLayeredMaterial, updateLayeredMaterial, type LayeredSettings } from "@/lib/layered-material"
 import { createTortoiseMaterial, updateTortoiseMaterial, type TortoiseSettings } from "@/lib/tortoise-material"
 import { createTerrazzoMaterial, updateTerrazzoMaterial, type TerrazzoSettings } from "@/lib/terrazzo-material"
@@ -192,6 +193,8 @@ function PrimitiveGeometry({ primitiveType, blob }: { primitiveType: string; blo
   switch (primitiveType) {
     case "brush":
       return <BrushGeometry />
+    case "sketch":
+      return <SketchGeometry />
     case "blob":
       return <BlobGeometry settings={{ ...BLOB_DEFAULT, ...(blob || {}) }} />
     case "cone":
@@ -345,7 +348,7 @@ function MatcapMaterialWithEffects({
 
 interface GeometrySettings {
   type: "sphere" | "extruded" | "model" | "inflate"
-  primitiveType?: "sphere" | "cone" | "torus" | "torusKnot" | "capsule" | "blob" | "brush"
+  primitiveType?: "sphere" | "cone" | "torus" | "torusKnot" | "capsule" | "blob" | "brush" | "sketch"
   svgPath: string
   svgSource?: "iconify" | "upload"
   thickness: number
@@ -2165,7 +2168,7 @@ function PBRMesh({
   // Center geometry when it updates
   useEffect(() => {
     // brush strokes live in the shape's own space: never re-centre them
-    if (geometrySettings.primitiveType === "brush") return
+    if (geometrySettings.primitiveType === "brush" || geometrySettings.primitiveType === "sketch") return
     if (sphereMeshRef.current?.geometry) {
       sphereMeshRef.current.geometry.center()
     }
@@ -2180,7 +2183,7 @@ function PBRMesh({
         <mesh key={fullTextureKey} ref={sphereMeshRef} name="inflated-geometry">
           <PrimitiveGeometry primitiveType={geometrySettings.primitiveType || "sphere"} blob={(geometrySettings as any).blob} />
           {/* brush strokes have no UVs: no displacement map (it would swell every bead) */}
-          <Material materialSettings={materialSettings} shapeType={geometrySettings.primitiveType === "brush" ? "extruded" : "sphere"} />
+          <Material materialSettings={materialSettings} shapeType={geometrySettings.primitiveType === "brush" || geometrySettings.primitiveType === "sketch" ? "extruded" : "sphere"} />
         </mesh>
       ) : geometrySettings.type === "model" ? (
         geometrySettings.modelUrl && (
@@ -2868,6 +2871,7 @@ function SceneContent({
         </>
       )}
       <BrushDrawer active={geometrySettings.type === "sphere" && geometrySettings.primitiveType === "brush"} />
+      <SketchDrawer active={geometrySettings.type === "sphere" && geometrySettings.primitiveType === "sketch"} />
       </KnopikaRotGroup>
       </group>
       <GridHelper visible={showGrid} />
@@ -3017,16 +3021,21 @@ const PBRViewerInner = forwardRef<
             onGeometrySettingsChange={onGeometrySettingsChange}
           />
         </Suspense>
-        <ViewOrbit enabled={!showRotateControls} brushMode={geometrySettings.type === "sphere" && geometrySettings.primitiveType === "brush"} />
+        <ViewOrbit
+          enabled={!showRotateControls}
+          brushMode={geometrySettings.type === "sphere" && geometrySettings.primitiveType === "brush"}
+          sketchMode={geometrySettings.type === "sphere" && geometrySettings.primitiveType === "sketch"}
+        />
       </Canvas>
     </div>
   )
 })
 
 /* Orbit is off while the brush is drawing (hold Space or switch Draw off to orbit). */
-function ViewOrbit({ enabled, brushMode }: { enabled: boolean; brushMode: boolean }) {
+function ViewOrbit({ enabled, brushMode, sketchMode }: { enabled: boolean; brushMode: boolean; sketchMode: boolean }) {
   const drawing = useBrushDrawing()
-  return <OrbitControls enabled={enabled && !(brushMode && drawing)} enableDamping dampingFactor={0.05} />
+  const sketching = useSketchDrawing()
+  return <OrbitControls enabled={enabled && !(brushMode && drawing) && !(sketchMode && sketching)} enableDamping dampingFactor={0.05} />
 }
 
 /* Memoised: UI-only state in the page (panels, theme, search input…) no longer re-renders the 3D tree. */

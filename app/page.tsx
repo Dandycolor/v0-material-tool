@@ -19,6 +19,7 @@ import { WEIGHTS } from "@/lib/knopika/icons"
 import { BLOB_DEFAULT, type BlobSettings, type BlobBase } from "@/lib/blob"
 import { LAYERED_DEFAULT, LAYERED_PALETTES, type LayeredSettings } from "@/lib/layered-material"
 import { generateNormalMap } from "@/lib/procedural-normal"
+import { brush, useBrush } from "@/lib/brush/store"
 import { TERRAZZO_DEFAULT, TERRAZZO_PRESETS, type TerrazzoSettings } from "@/lib/terrazzo-material"
 import { TORTOISE_DEFAULT, TORTOISE_PRESETS, type TortoiseSettings } from "@/lib/tortoise-material"
 import { installUISounds, setSoundEnabled, UISound } from "@/lib/knopika/sounds"
@@ -1415,10 +1416,24 @@ export default function MaterialTool() {
   const setMat = (u: Partial<MaterialSettings>) => setMaterialSettings({ ...materialSettings, ...u })
   const setLight = (u: Partial<typeof lightingSettings>) => setLightingSettings({ ...lightingSettings, ...u })
 
-  const geoType = geometrySettings.type as string
-  const pickMode = (t: "sphere" | "extruded" | "model" | "inflate") => {
+  // the brush is a primitive under the hood (so every material path works), shown as its own mode
+  const geoType = (geometrySettings.type === "sphere" && geometrySettings.primitiveType === "brush" ? "brush" : geometrySettings.type) as string
+  const brushState = useBrush()
+  const bs = brushState.settings
+  const pickMode = (t: "sphere" | "extruded" | "model" | "inflate" | "brush") => {
     if (t === geoType) {
-      if (t !== "sphere") setSourceOpen((o) => !o)
+      if (t !== "sphere" && t !== "brush") setSourceOpen((o) => !o)
+      return
+    }
+    if (t === "brush") {
+      setGeometrySettings({ ...geometrySettings, type: "sphere", primitiveType: "brush" as any })
+      brush.setDrawing(true)
+      setSourceOpen(false)
+      return
+    }
+    if (t === "sphere" && geometrySettings.primitiveType === "brush") {
+      setGeometrySettings({ ...geometrySettings, type: "sphere", primitiveType: "sphere" })
+      setSourceOpen(false)
       return
     }
     if (t === "extruded") {
@@ -1435,6 +1450,7 @@ export default function MaterialTool() {
     { t: "extruded", icon: "pen", label: "Vector" },
     { t: "model", icon: "cube", label: "3D model" },
     { t: "inflate", icon: "inflate", label: "Inflate" },
+    { t: "brush", icon: "brush", label: "3D brush" },
   ] as const
   const PRIMS: { type: "sphere" | "cone" | "torus" | "torusKnot" | "capsule"; label: string; svg: React.ReactNode }[] = [
     { type: "sphere", label: "Sphere", svg: <circle cx="12" cy="12" r="8.5" /> },
@@ -2481,6 +2497,13 @@ export default function MaterialTool() {
             </div>
           )}
 
+          {geoType === "brush" && !brushState.strokes.length && (
+            <div className="brush-hint" aria-live="polite">
+              <Icon name="brush" />
+              Draw on the canvas — hold Space to orbit, rotate the shape to paint in 3D
+            </div>
+          )}
+
           {/* bottom: geometry parameters */}
           <div className="geobar">
             <span className="gname" role="img" aria-label={geoType === "sphere" ? curPrim.label : curMode.label} title={geoType === "sphere" ? curPrim.label : curMode.label}>
@@ -2562,6 +2585,29 @@ export default function MaterialTool() {
                     {GP({ icon: "orbit", label: "Lathe segments", value: geometrySettings.latheSegments, min: 16, max: 64, step: 4, onChange: (v) => setGeo({ latheSegments: v }) })}
                   </>
                 )}
+              </>
+            )}
+
+            {geoType === "brush" && (
+              <>
+                {GP({ icon: "width", label: "Size", value: bs.size, min: 0.012, max: 0.25, step: 0.001, onChange: (v) => brush.setSettings({ size: v }), fmt: (v) => (v * 100).toFixed(1) })}
+                {GP({ icon: "inflate", label: "Puff", value: bs.puff, min: 0.25, max: 1, step: 0.01, onChange: (v) => brush.setSettings({ puff: v }) })}
+                {GP({ icon: "drop", label: "Melt", value: bs.blend, min: 0, max: 1, step: 0.01, onChange: (v) => brush.setSettings({ blend: v }) })}
+                {GP({ icon: "wave", label: "Steady", value: bs.smooth, min: 0, max: 1, step: 0.01, onChange: (v) => brush.setSettings({ smooth: v }) })}
+                {GP({ icon: "angle", label: "Taper", value: bs.taper, min: 0, max: 1, step: 0.01, onChange: (v) => brush.setSettings({ taper: v }) })}
+                <span className="sep" />
+                {GT({ icon: "brush", label: brushState.drawing ? "Draw" : "Orbit", on: brushState.drawing, onChange: (v) => brush.setDrawing(v) })}
+                <span className="kk-pillgroup gbtns">
+                  <button type="button" className="kk-ibtn kk-ibtn--ground" aria-label="Undo stroke" title="Undo (Ctrl+Z)" disabled={!brushState.strokes.length} onClick={() => brush.undo()}>
+                    <Icon name="undo" />
+                  </button>
+                  <button type="button" className="kk-ibtn kk-ibtn--ground" aria-label="Redo stroke" title="Redo (Shift+Ctrl+Z)" disabled={!brushState.redo.length} onClick={() => brush.redoStroke()}>
+                    <Icon name="undo" className="kk-flipx" />
+                  </button>
+                  <button type="button" className="kk-ibtn kk-ibtn--ground" aria-label="Clear drawing" title="Clear" disabled={!brushState.strokes.length} onClick={() => brush.clear()}>
+                    <Icon name="trash" />
+                  </button>
+                </span>
               </>
             )}
 

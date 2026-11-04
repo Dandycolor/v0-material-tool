@@ -7,6 +7,7 @@ import { setMaterialHue, HUE_GLSL } from "@/lib/hue-shift"
 import { setTriplanar, triplanarMatcapShaders, triplanarMatcapUniforms } from "@/lib/triplanar"
 import { extrudeAsync, flattenShape } from "@/lib/extrude/client"
 import { createBlob, BLOB_DEFAULT, type BlobSettings } from "@/lib/blob"
+import { BrushDrawer, BrushGeometry, useBrushDrawing } from "@/components/brush-drawer"
 import { createLayeredMaterial, updateLayeredMaterial, type LayeredSettings } from "@/lib/layered-material"
 import { createTortoiseMaterial, updateTortoiseMaterial, type TortoiseSettings } from "@/lib/tortoise-material"
 import { createTerrazzoMaterial, updateTerrazzoMaterial, type TerrazzoSettings } from "@/lib/terrazzo-material"
@@ -189,6 +190,8 @@ function PrimitiveGeometry({ primitiveType, blob }: { primitiveType: string; blo
   const segments = 256
   
   switch (primitiveType) {
+    case "brush":
+      return <BrushGeometry />
     case "blob":
       return <BlobGeometry settings={{ ...BLOB_DEFAULT, ...(blob || {}) }} />
     case "cone":
@@ -342,7 +345,7 @@ function MatcapMaterialWithEffects({
 
 interface GeometrySettings {
   type: "sphere" | "extruded" | "model" | "inflate"
-  primitiveType?: "sphere" | "cone" | "torus" | "torusKnot" | "capsule"
+  primitiveType?: "sphere" | "cone" | "torus" | "torusKnot" | "capsule" | "blob" | "brush"
   svgPath: string
   svgSource?: "iconify" | "upload"
   thickness: number
@@ -2161,6 +2164,8 @@ function PBRMesh({
   
   // Center geometry when it updates
   useEffect(() => {
+    // brush strokes live in the shape's own space: never re-centre them
+    if (geometrySettings.primitiveType === "brush") return
     if (sphereMeshRef.current?.geometry) {
       sphereMeshRef.current.geometry.center()
     }
@@ -2854,6 +2859,7 @@ function SceneContent({
           />
         </>
       )}
+      <BrushDrawer active={geometrySettings.type === "sphere" && geometrySettings.primitiveType === "brush"} />
       </KnopikaRotGroup>
       </group>
       <GridHelper visible={showGrid} />
@@ -3003,15 +3009,17 @@ const PBRViewerInner = forwardRef<
             onGeometrySettingsChange={onGeometrySettingsChange}
           />
         </Suspense>
-        <OrbitControls 
-          enabled={!showRotateControls}
-          enableDamping 
-          dampingFactor={0.05} 
-        />
+        <ViewOrbit enabled={!showRotateControls} brushMode={geometrySettings.type === "sphere" && geometrySettings.primitiveType === "brush"} />
       </Canvas>
     </div>
   )
 })
+
+/* Orbit is off while the brush is drawing (hold Space or switch Draw off to orbit). */
+function ViewOrbit({ enabled, brushMode }: { enabled: boolean; brushMode: boolean }) {
+  const drawing = useBrushDrawing()
+  return <OrbitControls enabled={enabled && !(brushMode && drawing)} enableDamping dampingFactor={0.05} />
+}
 
 /* Memoised: UI-only state in the page (panels, theme, search input…) no longer re-renders the 3D tree. */
 export const PBRViewer = memo(PBRViewerInner)

@@ -25,11 +25,11 @@ export const SKETCH_DEFAULT: SketchSettings = {
   sharp: 0.85,
   plateau: 0,
   taper: 0.7,
-  smooth: 0.3,
+  smooth: 0.5,
   fill: true,
   doubleSided: true,
   steady: 0.5,
-  quality: 200,
+  quality: 460,
 }
 
 interface State {
@@ -58,7 +58,9 @@ function load() {
     const raw = localStorage.getItem(KEY)
     if (raw) {
       const d = JSON.parse(raw)
-      state = { ...state, strokes: d.strokes || [], settings: { ...SKETCH_DEFAULT, ...(d.settings || {}) } }
+      // quality is not user-set: always take the current default (the mesher changed)
+      const { quality: _q, ...saved } = d.settings || {}
+      state = { ...state, strokes: d.strokes || [], settings: { ...SKETCH_DEFAULT, ...saved } }
     }
   } catch {}
   if (!state.strokes.length) state = { ...state, strokes: starter() }

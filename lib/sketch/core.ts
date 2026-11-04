@@ -8,7 +8,7 @@
      round → a dome
    The solid { |z| ≤ H(x,y) } (or 0 ≤ z ≤ H with a flat back) is polygonised with Surface Nets. */
 
-import { surfaceNets, type BrushMeshResult } from "../brush/core"
+import type { BrushMeshResult } from "../brush/core"
 
 export interface SketchStroke {
   /** x, y pairs in the shape's local XY plane */
@@ -88,9 +88,9 @@ export function meshSketch(strokes: SketchStroke[], prm: SketchParams): BrushMes
   }
   const span = Math.max(x1 - x0, y1 - y0) + wMax
   // fine 2D raster (supersampled vs. the 3D grid, keeps the outline smooth)
-  const SS = 3
-  const res3 = Math.max(48, Math.min(260, prm.res))
-  const h3 = span / res3 // 3D cell
+  const SS = 2
+  const res3 = Math.max(64, Math.min(720, prm.res))
+  const h3 = span / res3 // mesh grid cell
   const h2 = h3 / SS // 2D cell
   const pad = wMax + 4 * h3
   const ox = x0 - pad, oy = y0 - pad
@@ -227,86 +227,127 @@ export function meshSketch(strokes: SketchStroke[], prm: SketchParams): BrushMes
   const pw = 1 - (1 - prm.sharp) * 0.6 // 1 = straight roof, 0.4 = dome
   const vol = prm.volume
   const cap = prm.plateau > 0 ? (1 - prm.plateau * 0.85) * vol * ref * Math.pow(sdMax / ref, pw) : Infinity
-  const edge = 1.2 * h3
   const Hf = new Float32Array(sd.length)
-  let hMax = 0
   for (let i = 0; i < sd.length; i++) {
     const d = sd[i]
-    let hgt: number
-    // the rim keeps a thin vertical wall (edge) so the silhouette follows the smooth 2D outline
-    // instead of a knife edge thinner than a voxel (which aliases into stairs)
-    if (d <= 0) hgt = edge + d * 3
-    else {
-      hgt = vol * ref * Math.pow(d / ref, pw)
-      if (hgt > cap) hgt = cap + (hgt - cap) * 0.04
-      hgt += edge
-    }
+    if (d <= 0) continue
+    let hgt = vol * ref * Math.pow(d / ref, pw)
+    if (hgt > cap) hgt = cap + (hgt - cap) * 0.04
     Hf[i] = hgt
-    if (hgt > hMax) hMax = hgt
-  }
-
-  // 3D field: F = |z| - H  (or max(-z, z - H) for a flat back)
-  const zPad = 3 * h3
-  const zLo = prm.doubleSided ? -(hMax + zPad) : -zPad
-  const nz = Math.ceil((hMax + zPad - zLo) / h3) + 1
-  const N = nx * ny * nz
-  if (N > 1.6e7) return null
-  const F = new Float32Array(N)
-  const sxy = nx * ny
-  for (let k = 0; k < nz; k++) {
-    const z = zLo + k * h3
-    const az = Math.abs(z)
-    for (let c = 0; c < sxy; c++) {
-      const hh = Hf[c]
-      F[k * sxy + c] = prm.doubleSided ? az - hh : Math.max(-z, z - hh)
-    }
   }
   // grid origin: cell centres of the 2D raster blocks
   const gx = ox + (SS / 2) * h2
   const gy = oy + (SS / 2) * h2
-  const r = surfaceNets(F, nx, ny, nz, h3, gx, gy, zLo)
-  if (r) relax(r, 2)
-  return r
+  return heightMesh(sd, Hf, nx, ny, h3, gx, gy, prm.doubleSided)
 }
 
-/* Taubin smoothing (shrink-free): irons out the voxel stair on rims and walls. */
-function relax(r: BrushMeshResult, iters: number) {
-  const P = r.position, I = r.index
-  const n = P.length / 3
-  const deg = new Uint32Array(n)
-  for (let t = 0; t < I.length; t += 3) for (let e = 0; e < 3; e++) deg[I[t + e]] += 2
-  const off = new Uint32Array(n + 1)
-  for (let i = 0; i < n; i++) off[i + 1] = off[i] + deg[i]
-  const adj = new Uint32Array(off[n])
-  const fill = off.slice(0, n)
-  for (let t = 0; t < I.length; t += 3)
-    for (let e = 0; e < 3; e++) {
-      const a = I[t + e], b = I[t + ((e + 1) % 3)], c = I[t + ((e + 2) % 3)]
-      adj[fill[a]++] = b
-      adj[fill[a]++] = c
+/* 2.5D mesh straight from the 2D fields: top = H(x,y), bottom = -H (or a flat back), joined at
+   the outline. The outline is the zero crossing of the signed distance found per grid edge
+   (marching squares), so the silhouette is as smooth as the 2D field — no voxel stairs — and the
+   rim closes into a clean knife edge. Normals come from the height gradient (crisp creases). */
+function heightMesh(sd: Float32Array, Hf: Float32Array, nx: number, ny: number, h: number, gx: number, gy: number, doubleSided: boolean): BrushMeshResult | null {
+  const pos: number[] = []
+  const nor: number[] = []
+  const idx: number[] = []
+  const node = new Int32Array(nx * ny).fill(-1) // top vertex per inside node
+  const nodeB = new Int32Array(nx * ny).fill(-1) // bottom vertex
+  const ex = new Int32Array(nx * ny).fill(-1) // crossing on edge (i,j)-(i+1,j)
+  const ey = new Int32Array(nx * ny).fill(-1) // crossing on edge (i,j)-(i,j+1)
+  const at = (i: number, j: number) => sd[j * nx + i]
+  // normals read a lightly blurred copy of the height: hides the distance-transform's direction
+  // quantisation (fine radial streaks) without moving any vertex
+  const Hn = new Float32Array(Hf.length)
+  for (let j = 0; j < ny; j++)
+    for (let i = 0; i < nx; i++) {
+      const k = j * nx + i
+      if (Hf[k] <= 0) continue
+      let sum = 0, c = 0
+      for (let b = -1; b <= 1; b++)
+        for (let a = -1; a <= 1; a++) {
+          const X = i + a, Y = j + b
+          if (X < 0 || Y < 0 || X >= nx || Y >= ny) continue
+          const v = Hf[Y * nx + X]
+          if (v <= 0 && (a || b)) continue
+          const w = a === 0 && b === 0 ? 4 : a === 0 || b === 0 ? 2 : 1
+          sum += v * w
+          c += w
+        }
+      Hn[k] = sum / c
     }
-  const tmp = new Float32Array(P.length)
-  const step = (lam: number) => {
-    for (let i = 0; i < n; i++) {
-      let sx = 0, sy = 0, sz = 0
-      const k0 = off[i], k1 = off[i + 1]
-      if (k1 === k0) {
-        tmp[i * 3] = P[i * 3]; tmp[i * 3 + 1] = P[i * 3 + 1]; tmp[i * 3 + 2] = P[i * 3 + 2]
-        continue
-      }
-      for (let k = k0; k < k1; k++) {
-        const j = adj[k]
-        sx += P[j * 3]; sy += P[j * 3 + 1]; sz += P[j * 3 + 2]
-      }
-      const m = 1 / (k1 - k0)
-      tmp[i * 3] = P[i * 3] + lam * (sx * m - P[i * 3])
-      tmp[i * 3 + 1] = P[i * 3 + 1] + lam * (sy * m - P[i * 3 + 1])
-      tmp[i * 3 + 2] = P[i * 3 + 2] + lam * (sz * m - P[i * 3 + 2])
+  const H = (i: number, j: number) => Hn[Math.min(ny - 1, Math.max(0, j)) * nx + Math.min(nx - 1, Math.max(0, i))]
+  const S = (i: number, j: number) => sd[Math.min(ny - 1, Math.max(0, j)) * nx + Math.min(nx - 1, Math.max(0, i))]
+
+  const nodeV = (i: number, j: number, bottom: boolean) => {
+    const arr = bottom ? nodeB : node
+    const k = j * nx + i
+    if (arr[k] >= 0) return arr[k]
+    const hh = Hf[k]
+    const z = bottom ? (doubleSided ? -hh : 0) : hh
+    arr[k] = pos.length / 3
+    pos.push(gx + i * h, gy + j * h, z)
+    if (bottom && !doubleSided) nor.push(0, 0, -1)
+    else {
+      // height gradient (one-sided at the rim so the knife edge stays sharp)
+      const dx = (H(i + 1, j) - H(i - 1, j)) / (2 * h)
+      const dy = (H(i, j + 1) - H(i, j - 1)) / (2 * h)
+      const s = bottom ? -1 : 1
+      const l = Math.hypot(dx, dy, 1)
+      nor.push((-dx / l) * s * (bottom ? -1 : 1), (-dy / l) * s * (bottom ? -1 : 1), (1 / l) * s)
     }
-    P.set(tmp)
+    return arr[k]
   }
-  for (let it = 0; it < iters; it++) {
-    step(0.5)
-    step(-0.53)
+  const edgeV = (i0: number, j0: number, i1: number, j1: number) => {
+    const horiz = j0 === j1
+    const k = j0 * nx + i0
+    const arr = horiz ? ex : ey
+    if (arr[k] >= 0) return arr[k]
+    const a = at(i0, j0), b = at(i1, j1)
+    const t = a / (a - b)
+    arr[k] = pos.length / 3
+    const x = gx + (i0 + (i1 - i0) * t) * h, y = gy + (j0 + (j1 - j0) * t) * h
+    pos.push(x, y, 0)
+    // rim normal: outward in the plane (minus the sd gradient)
+    const fi = i0 + (i1 - i0) * t, fj = j0 + (j1 - j0) * t
+    const ii = Math.round(fi), jj = Math.round(fj)
+    let gxs = S(ii + 1, jj) - S(ii - 1, jj), gys = S(ii, jj + 1) - S(ii, jj - 1)
+    const gl = Math.hypot(gxs, gys) || 1
+    if (doubleSided) nor.push(-gxs / gl, -gys / gl, 0)
+    else nor.push((-gxs / gl) * 0.7, (-gys / gl) * 0.7, 0.7)
+    return arr[k]
   }
+
+  const poly: number[] = []
+  const polyB: number[] = []
+  const C = [[0, 0], [1, 0], [1, 1], [0, 1]]
+  for (let j = 0; j < ny - 1; j++)
+    for (let i = 0; i < nx - 1; i++) {
+      const v = [at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)]
+      const ins = v.map((x) => x > 0)
+      if (!ins[0] && !ins[1] && !ins[2] && !ins[3]) continue
+      poly.length = 0
+      polyB.length = 0
+      for (let c = 0; c < 4; c++) {
+        const [ci, cj] = C[c]
+        const [di, dj] = C[(c + 1) % 4]
+        if (ins[c]) {
+          poly.push(nodeV(i + ci, j + cj, false))
+          polyB.push(nodeV(i + ci, j + cj, true))
+        }
+        if (ins[c] !== ins[(c + 1) % 4]) {
+          // canonical edge direction (low → high index) so both cells share the vertex
+          const a0 = [i + ci, j + cj], a1 = [i + di, j + dj]
+          const [p0, p1] = a0[0] + a0[1] * nx <= a1[0] + a1[1] * nx ? [a0, a1] : [a1, a0]
+          const e = edgeV(p0[0], p0[1], p1[0], p1[1])
+          poly.push(e)
+          polyB.push(e)
+        }
+      }
+      // fan: top counter-clockwise (+z), bottom reversed
+      for (let k = 1; k + 1 < poly.length; k++) {
+        idx.push(poly[0], poly[k], poly[k + 1])
+        idx.push(polyB[0], polyB[k + 1], polyB[k])
+      }
+    }
+  if (!idx.length) return null
+  return { position: new Float32Array(pos), normal: new Float32Array(nor), index: new Uint32Array(idx) }
 }

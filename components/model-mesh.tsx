@@ -400,16 +400,21 @@ export function ModelMesh({
           )
         }
 
+        // an override material (Layered / Tortoiseshell / Terrazzo) is worn on top: swap the
+        // material underneath it and leave the shared override alone
+        const wearingOverride = !!(child.material as any)?.userData?.kkOverride
+        const prevMat = wearingOverride ? child.userData.kkOrigMat : child.material
         // Освобождаем старый материал (кроме оригинального)
-        if (child.material && !child.userData.isOriginalMaterial) {
-          if (Array.isArray(child.material)) {
-            child.material.forEach(m => m.dispose())
+        if (prevMat && !child.userData.isOriginalMaterial) {
+          if (Array.isArray(prevMat)) {
+            prevMat.forEach((m: THREE.Material) => m.dispose())
           } else {
-            child.material.dispose()
+            prevMat.dispose()
           }
         }
 
-        child.material = newMaterial
+        if (wearingOverride) child.userData.kkOrigMat = newMaterial
+        else child.material = newMaterial
         
         // Enable double-sided rendering for pottery wheel mode to avoid culled faces
         if (usePotteryMode && newMaterial instanceof THREE.Material) {
@@ -443,7 +448,9 @@ export function ModelMesh({
     const isGlass = s.transmission > 0
     scene.traverse((child) => {
       if (!(child instanceof Mesh)) return
-      const m = child.material as any
+      // never touch a shared override material; update the one underneath instead
+      const m = ((child.material as any)?.userData?.kkOverride ? child.userData.kkOrigMat : child.material) as any
+      if (!m) return
       if (!m) return
       if (m.isShaderMaterial && m.uniforms?.matcap) {
         m.uniforms.normalIntensity.value = matcapSettings?.normalIntensity || 1

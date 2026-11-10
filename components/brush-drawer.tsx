@@ -52,6 +52,8 @@ export function BrushDrawer({ active, dark = false }: { active: boolean; dark?: 
     const mk = (g: THREE.BufferGeometry, color: string, opacity: number) => {
       const m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false })
       const mesh = new THREE.Mesh(g, m)
+      mesh.userData.kkHelper = true
+      mesh.userData.ownMat = m
       mesh.renderOrder = 999
       return mesh
     }
@@ -65,11 +67,11 @@ export function BrushDrawer({ active, dark = false }: { active: boolean; dark?: 
   useEffect(() => {
     const ink = dark ? 0xf4f1ec : 0x111111
     const paper = dark ? 0x111111 : 0xffffff
-    ;(ringParts[0].material as THREE.MeshBasicMaterial).color.setHex(paper)
-    ;(ringParts[1].material as THREE.MeshBasicMaterial).color.setHex(ink)
-    ;(ringParts[2].material as THREE.MeshBasicMaterial).color.setHex(paper)
+    ;(ringParts[0].userData.ownMat as THREE.MeshBasicMaterial).color.setHex(paper)
+    ;(ringParts[1].userData.ownMat as THREE.MeshBasicMaterial).color.setHex(ink)
+    ;(ringParts[2].userData.ownMat as THREE.MeshBasicMaterial).color.setHex(paper)
   }, [dark, ringParts])
-  useEffect(() => () => ringParts.forEach((m) => (m.geometry.dispose(), (m.material as THREE.Material).dispose())), [ringParts])
+  useEffect(() => () => ringParts.forEach((m) => (m.geometry.dispose(), (m.userData.ownMat as THREE.Material).dispose())), [ringParts])
   const hover = useRef({ on: false, p: new THREE.Vector3(), flashUntil: 0, lastSize: -1 })
 
   useEffect(() => {
@@ -287,7 +289,7 @@ export function BrushDrawer({ active, dark = false }: { active: boolean; dark?: 
 
   return (
     <group ref={group}>
-      <instancedMesh ref={inst} args={[geo, mat, MAX]} count={0} visible={false} frustumCulled={false} />
+      <instancedMesh ref={inst} args={[geo, mat, MAX]} count={0} visible={false} frustumCulled={false} userData={{ kkHelper: true }} />
       <group ref={ring} visible={false}>
         {ringParts.map((m, i) => (
           <primitive key={i} object={m} />

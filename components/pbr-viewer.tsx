@@ -25,7 +25,8 @@ function OverrideApplier({ material, on }: { material: THREE.Material; on: boole
   }, [material])
   useFrame(() => {
     scene.traverse((o: any) => {
-      if (!o.isMesh || !o.geometry) return
+      // drawing guides (brush preview, rings, sketch line) are not part of the shape
+      if (!o.isMesh || !o.geometry || o.userData.kkHelper) return
       if (on) {
         if (o.material !== material) {
           if (!o.material?.userData?.kkOverride) o.userData.kkOrigMat = o.material

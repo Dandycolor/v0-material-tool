@@ -33,6 +33,8 @@ export function SketchDrawer({ active, dark = false }: { active: boolean; dark?:
   const line = useMemo(() => {
     const m = new LineMaterial({ color: 0x111111, linewidth: 2.5, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false })
     const l = new Line2(new LineGeometry(), m)
+    l.userData.kkHelper = true
+    l.userData.ownMat = m
     l.renderOrder = 999
     l.frustumCulled = false
     l.visible = false
@@ -41,6 +43,8 @@ export function SketchDrawer({ active, dark = false }: { active: boolean; dark?:
   const lineDirty = useRef(false)
   const mk = (g: THREE.BufferGeometry, color: string, opacity: number) => {
     const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false, side: THREE.DoubleSide }))
+    m.userData.kkHelper = true
+    m.userData.ownMat = m.material
     m.renderOrder = 999
     return m
   }
@@ -50,13 +54,14 @@ export function SketchDrawer({ active, dark = false }: { active: boolean; dark?:
   useEffect(() => {
     const ink = dark ? 0xf4f1ec : 0x111111
     const paper = dark ? 0x111111 : 0xffffff
-    ;(line.material as LineMaterial).color.setHex(ink)
-    ;(cursor[0].material as THREE.MeshBasicMaterial).color.setHex(paper)
-    ;(cursor[1].material as THREE.MeshBasicMaterial).color.setHex(ink)
+    // (own materials, never whatever the mesh happens to wear)
+    ;(line.userData.ownMat as LineMaterial).color.setHex(ink)
+    ;(cursor[0].userData.ownMat as THREE.MeshBasicMaterial).color.setHex(paper)
+    ;(cursor[1].userData.ownMat as THREE.MeshBasicMaterial).color.setHex(ink)
   }, [dark, line, cursor])
   useEffect(
     () => () => {
-      ;[line, ...cursor, snap].forEach((o: any) => (o.geometry.dispose(), o.material.dispose()))
+      ;[line, ...cursor, snap].forEach((o: any) => (o.geometry.dispose(), (o.userData.ownMat || o.material).dispose()))
     },
     [line, cursor, snap],
   )

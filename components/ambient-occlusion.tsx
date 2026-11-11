@@ -64,7 +64,17 @@ function AOChain({ settings }: { settings: AOSettings }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gl, scene, camera, size.width, size.height, dpr])
 
-  useEffect(() => () => chain.composer.dispose(), [chain])
+  // the composer switches the renderer's autoClear off; put it back when AO goes off, otherwise the
+  // normal render never clears and the last AO frame stays "frozen" under the new one
+  useEffect(
+    () => () => {
+      chain.composer.dispose()
+      gl.autoClear = true
+      gl.setRenderTarget(null)
+      gl.clear()
+    },
+    [chain, gl],
+  )
   useEffect(() => {
     const c = chain.ao.configuration
     c.intensity = settings.intensity

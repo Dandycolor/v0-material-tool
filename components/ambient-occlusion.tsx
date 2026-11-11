@@ -4,7 +4,7 @@
    While any of them is on it takes over rendering: scene (tone mapped as usual) → [N8AO] →
    [bloom + chromatic aberration] → screen. PNG export renders through the same chain (renderFrame). */
 
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import { useFrame, useThree } from "@react-three/fiber"
 import * as THREE from "three"
 import { EffectComposer, RenderPass, EffectPass, BloomEffect, ChromaticAberrationEffect } from "postprocessing"
@@ -142,7 +142,25 @@ function PostChain({ ao: aoS, post }: { ao: AOSettings; post: PostSettings }) {
   }, [chain])
 
   // priority 1: this frame callback renders instead of the default render
+  // N8AO only restarts its accumulation when the camera moves: rotating the model (Rotate panel),
+  // swapping geometry or materials left a ghost of the old frame. Watch the scene too.
+  const sig = useRef("")
   useFrame((_, delta) => {
+    if (chain.ao) {
+      let h = 0
+      let parts = ""
+      scene.traverse((o: any) => {
+        if (!o.isMesh || !o.visible || o.userData.kkHelper) return
+        const e = o.matrixWorld.elements
+        h += e[0] * 1.3 + e[1] * 2.1 + e[2] * 3.7 + e[4] * 5.3 + e[5] * 7.1 + e[8] * 11.3 + e[12] * 13.7 + e[13] * 17.9 + e[14] * 19.1
+        parts += o.geometry?.uuid?.slice(0, 4) + (o.material?.uuid?.slice(0, 4) ?? "")
+      })
+      const k = h.toFixed(5) + parts
+      if (k !== sig.current) {
+        sig.current = k
+        ;(chain.ao as any).needsFrame = true
+      }
+    }
     // the buffers already hold display (sRGB) values: no second encode at the end
     if (chain.fx) chain.fx.fullscreenMaterial.encodeOutput = false
     chain.composer.render(delta)

@@ -13,6 +13,7 @@ import { AmbientOcclusion, AO_DEFAULT, renderFrame, type AOSettings } from "@/co
 import { SketchDrawer, SketchGeometry, useSketchDrawing } from "@/components/sketch-drawer"
 import { createLayeredMaterial, updateLayeredMaterial, type LayeredSettings } from "@/lib/layered-material"
 import { createTortoiseMaterial, updateTortoiseMaterial, type TortoiseSettings } from "@/lib/tortoise-material"
+import { createCandyMaterial, updateCandyMaterial, type CandySettings } from "@/lib/candy-material"
 import { createTerrazzoMaterial, updateTerrazzoMaterial, type TerrazzoSettings } from "@/lib/terrazzo-material"
 
 /* Override materials (Layered, Tortoise…): while on, every mesh of the shape wears the shared override;
@@ -49,6 +50,14 @@ function LayeredApplier({ settings, seed }: { settings?: LayeredSettings; seed: 
   useEffect(() => {
     if (settings) updateLayeredMaterial(mat, settings, seed)
   }, [mat, settings, seed])
+  return <OverrideApplier material={mat} on={!!settings?.enabled} />
+}
+
+function CandyApplier({ settings }: { settings?: CandySettings }) {
+  const mat = useMemo(() => createCandyMaterial(), [])
+  useEffect(() => {
+    if (settings) updateCandyMaterial(mat, settings)
+  }, [mat, settings])
   return <OverrideApplier material={mat} on={!!settings?.enabled} />
 }
 
@@ -2425,7 +2434,8 @@ function SceneContent({
   layeredSettings,
   tortoiseSettings,
   terrazzoSettings,
-}: SceneContentProps & { layeredSettings?: LayeredSettings; tortoiseSettings?: TortoiseSettings; terrazzoSettings?: TerrazzoSettings } & { onExportReady: (fn: () => void) => void, onExportGeometryReady: (fn: () => void) => void, onExportSTLReady: (fn: () => void) => void, onExportOBJReady: (fn: () => void) => void, backgroundColor?: string, dotGrid?: boolean, dotColor?: string }) {
+  candySettings,
+}: SceneContentProps & { layeredSettings?: LayeredSettings; tortoiseSettings?: TortoiseSettings; terrazzoSettings?: TerrazzoSettings; candySettings?: CandySettings } & { onExportReady: (fn: () => void) => void, onExportGeometryReady: (fn: () => void) => void, onExportSTLReady: (fn: () => void) => void, onExportOBJReady: (fn: () => void) => void, backgroundColor?: string, dotGrid?: boolean, dotColor?: string }) {
   const { gl, scene, camera } = useThree()
   const size = useThree((s) => s.size)
   const dpr = useThree((s) => s.viewport.dpr)
@@ -2893,6 +2903,7 @@ function SceneContent({
       <LayeredApplier settings={layeredSettings} seed={(geometrySettings as any).blob?.seed ?? 0} />
       <TortoiseApplier settings={tortoiseSettings} />
       <TerrazzoApplier settings={terrazzoSettings} />
+      <CandyApplier settings={candySettings} />
     </>
   )
 }
@@ -2926,6 +2937,7 @@ const PBRViewerInner = forwardRef<
   layeredSettings?: LayeredSettings
   tortoiseSettings?: TortoiseSettings
   terrazzoSettings?: TerrazzoSettings
+  candySettings?: CandySettings
   cameraSettings?: CameraSettings
   aoSettings?: AOSettings
   dotColor?: string
@@ -2951,7 +2963,7 @@ const PBRViewerInner = forwardRef<
   onGeometrySettingsChange?: (settings: Partial<GeometrySettings>) => void
   }
 >(function PBRViewer(
-  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, dotGrid, dotColor, layeredSettings, tortoiseSettings, terrazzoSettings, cameraSettings, aoSettings, showGrid, showRotateControls, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
+  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, dotGrid, dotColor, layeredSettings, tortoiseSettings, terrazzoSettings, candySettings, cameraSettings, aoSettings, showGrid, showRotateControls, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
   ref,
   ) {
   const exportFnRef = useRef<(() => void) | null>(null)
@@ -3031,6 +3043,7 @@ const PBRViewerInner = forwardRef<
             layeredSettings={layeredSettings}
             tortoiseSettings={tortoiseSettings}
             terrazzoSettings={terrazzoSettings}
+            candySettings={candySettings}
             gradientSettings={gradientSettings}
             customMaterial={customMaterial}
             onModelLoadError={onModelLoadError}

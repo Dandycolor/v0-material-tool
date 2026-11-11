@@ -24,6 +24,7 @@ import { CAMERA_DEFAULT, type CameraSettings } from "@/components/pbr-viewer"
 import { AO_DEFAULT, type AOSettings } from "@/components/ambient-occlusion"
 import { MATCAP_LIGHT_DEFAULT, setMatcapLight, type MatcapLight } from "@/lib/matcap-light"
 import { sketch, useSketch } from "@/lib/sketch/store"
+import { CANDY_DEFAULT, CANDY_PRESETS, type CandySettings, type CandyAxis } from "@/lib/candy-material"
 import { TERRAZZO_DEFAULT, TERRAZZO_PRESETS, type TerrazzoSettings } from "@/lib/terrazzo-material"
 import { TORTOISE_DEFAULT, TORTOISE_PRESETS, type TortoiseSettings } from "@/lib/tortoise-material"
 import { installUISounds, setSoundEnabled, UISound } from "@/lib/knopika/sounds"
@@ -961,10 +962,13 @@ export default function MaterialTool() {
   // Procedural terrazzo replaces the Terrazzo texture set
   const [terrazzo, setTerrazzo] = useState<TerrazzoSettings>({ ...TERRAZZO_DEFAULT })
   const setTz = (u: Partial<TerrazzoSettings>) => setTerrazzo((p) => ({ ...p, ...u }))
-  const [procPick, setProcPick] = useState<"" | "tortoise" | "terrazzo">("")
+  const [candy, setCandy] = useState<CandySettings>({ ...CANDY_DEFAULT })
+  const setCd = (u: Partial<CandySettings>) => setCandy((p) => ({ ...p, ...u }))
+  const [procPick, setProcPick] = useState<"" | "tortoise" | "terrazzo" | "candy">("")
   const tsPicked = procPick === "tortoise"
   const tsOn = materialTypeTab === "pbr" && tsPicked
   const tzOn = materialTypeTab === "pbr" && procPick === "terrazzo"
+  const cdOn = materialTypeTab === "pbr" && procPick === "candy"
 
   // Gradient settings
   const [showGradient, setShowGradient] = useState(false)
@@ -1023,6 +1027,9 @@ export default function MaterialTool() {
   useEffect(() => {
     setTerrazzo((prev) => (prev.enabled === tzOn ? prev : { ...prev, enabled: tzOn }))
   }, [tzOn])
+  useEffect(() => {
+    setCandy((prev) => (prev.enabled === cdOn ? prev : { ...prev, enabled: cdOn }))
+  }, [cdOn])
 
   // Replace Noun Project API state with Iconify
   // Noun Project API state
@@ -1512,6 +1519,9 @@ export default function MaterialTool() {
   // CSS preview of a terrazzo palette (angular chips on the binder)
   const terrazzoThumb = (b: string, c: string[]) =>
     `radial-gradient(circle at 30% 26%, #ffffff80 0 5%, transparent 20%), conic-gradient(from 20deg at 30% 62%, ${c[0]} 0 30deg, transparent 30deg) 0 0 / 100% 100% no-repeat, linear-gradient(35deg, transparent 56%, ${c[1]} 56% 64%, transparent 64%), linear-gradient(120deg, transparent 22%, ${c[2]} 22% 28%, transparent 28%), linear-gradient(160deg, transparent 70%, ${c[3]} 70% 77%, transparent 77%), linear-gradient(80deg, transparent 40%, ${c[0]} 40% 45%, transparent 45%), ${b}`
+  // CSS preview of a candy palette: frosted ball with the gradient inside
+  const candyThumb = (c: string[], hue = 0) =>
+    `radial-gradient(circle at 34% 28%, #ffffffcc 0 8%, transparent 26%), radial-gradient(circle at 50% 50%, transparent 55%, #ffffff55 72%, transparent 74%), linear-gradient(135deg, ${c[0]}, ${c[1]} 50%, ${c[2]})${hue ? "" : ""}`
   const pickMaterial = (fn: () => void) => {
     fn()
     setMatSetOpen(true)
@@ -1527,6 +1537,14 @@ export default function MaterialTool() {
         desc: "Procedural shading with its own light — PBR lighting is off.",
         thumb: `radial-gradient(circle at 40% 35%, ${gradientSettings.color1}, ${gradientSettings.color2})`,
       }
+    if (cdOn) {
+      const pr = CANDY_PRESETS.find((p) => p.c[0] === candy.c1 && p.c[2] === candy.c3)
+      return {
+        title: `Candy · ${pr?.name || "Custom"}`,
+        desc: "Frosted translucent plastic filled with a colour gradient.",
+        thumb: candyThumb([candy.c1, candy.c2, candy.c3], candy.hue),
+      }
+    }
     if (tzOn) {
       const pr = TERRAZZO_PRESETS.find((p) => p.base === terrazzo.base && p.c[0] === terrazzo.c1)
       return {
@@ -1617,6 +1635,7 @@ export default function MaterialTool() {
               layeredSettings={layered}
               tortoiseSettings={tortoise}
               terrazzoSettings={terrazzo}
+              candySettings={candy}
               dotColor={tv.vars["--on-ground-faint"]}
               showGrid={showGrid}
               cameraSettings={cam}
@@ -1869,7 +1888,9 @@ export default function MaterialTool() {
                 <div className="mat-lib">
                   {Object.entries(MATERIAL_PRESETS).map(([key, preset]) => (
                     <Fragment key={key}>
-                      {key === "terrazzo" ? (
+                      {key === "dirtyGlass" ? (
+                        <Tile round color={candyThumb([candy.c1, candy.c2, candy.c3])} title="Candy" on={procPick === "candy"} onClick={() => pickMaterial(() => setProcPick("candy"))} />
+                      ) : key === "terrazzo" ? (
                         <Tile round color={terrazzoThumb(terrazzo.base, [terrazzo.c1, terrazzo.c2, terrazzo.c3, terrazzo.c4])} title="Terrazzo" on={procPick === "terrazzo"} onClick={() => pickMaterial(() => setProcPick("terrazzo"))} />
                       ) : (
                         <Tile round image={preset.baseColor || undefined} color={GLASS_THUMB} title={preset.name} on={!procPick && selectedPreset === key} onClick={() => pickMaterial(() => { setProcPick(""); handlePresetChange(key) })} />
@@ -2011,6 +2032,48 @@ export default function MaterialTool() {
                       />
                     )}
                     <Field icon="snow" label="Noise" value={(gradientSettings as any).noise || 0} min={0} max={2} step={0.1} onChange={(v) => setGradientSettings((prev) => ({ ...prev, noise: v }) as any)} />
+                  </div>
+                </>
+              )}
+
+              {cdOn && (
+                <>
+                  <div className="kk-card">
+                    <span className="tlabel">PRESETS</span>
+                    <div className="mat-lib ts-presets">
+                      {CANDY_PRESETS.map((p) => (
+                        <Tile key={p.name} round color={candyThumb(p.c)} title={p.name} on={candy.c1 === p.c[0] && candy.c3 === p.c[2]} onClick={() => setCd({ c1: p.c[0], c2: p.c[1], c3: p.c[2], hue: 0 })} />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="kk-card">
+                    <span className="tlabel">GRADIENT</span>
+                    <Field icon="hue" label="Hue" value={candy.hue} min={0} max={360} step={1} format={(v) => `${Math.round(v)}°`} onChange={(v) => setCd({ hue: v })} />
+                    <div className="kk-colorbar" style={{ ["--c" as string]: `linear-gradient(90deg, ${candy.c1}, ${candy.c2}, ${candy.c3})`, filter: `hue-rotate(${candy.hue}deg)` }} />
+                    <ColorField label="Start" value={candy.c1} onChange={(v) => setCd({ c1: v })} />
+                    <ColorField label="Middle" value={candy.c2} onChange={(v) => setCd({ c2: v })} />
+                    <ColorField label="End" value={candy.c3} onChange={(v) => setCd({ c3: v })} />
+                    <Segmented
+                      value={candy.axis}
+                      onChange={(v) => setCd({ axis: v as CandyAxis })}
+                      options={[
+                        { v: "diag", label: "Diag" },
+                        { v: "y", label: "Vert" },
+                        { v: "x", label: "Horiz" },
+                        { v: "z", label: "Depth" },
+                      ]}
+                    />
+                    <Field icon="pan" label="Offset" value={candy.offset} min={-1} max={1} step={0.01} onChange={(v) => setCd({ offset: v })} />
+                    <Field icon="width" label="Spread" value={candy.spread} min={0.2} max={2} step={0.01} onChange={(v) => setCd({ spread: v })} />
+                  </div>
+                  <div className="kk-card">
+                    <span className="tlabel">PLASTIC</span>
+                    <Field icon="snow" label="Frost" value={candy.frost} min={0} max={1} step={0.01} onChange={(v) => setCd({ frost: v })} />
+                    <Field icon="drop" label="Clarity" value={candy.clarity} min={0} max={1} step={0.01} onChange={(v) => setCd({ clarity: v })} />
+                    <Field icon="height" label="Depth" value={candy.depth} min={0} max={3} step={0.01} onChange={(v) => setCd({ depth: v })} />
+                    <Field icon="sun" label="Inner glow" value={candy.glow} min={0} max={1.5} step={0.01} onChange={(v) => setCd({ glow: v })} />
+                    <Field icon="circle" label="Milky edge" value={candy.milk} min={0} max={1} step={0.01} onChange={(v) => setCd({ milk: v })} />
+                    <Field icon="spark" label="Gloss" value={candy.gloss} min={0} max={1} step={0.01} onChange={(v) => setCd({ gloss: v })} />
                   </div>
                 </>
               )}
@@ -2202,7 +2265,7 @@ export default function MaterialTool() {
                 </>
               )}
 
-              {((materialTypeTab === "pbr" && !tsOn && !tzOn) || materialTypeTab === "custom") && (
+              {((materialTypeTab === "pbr" && !tsOn && !tzOn && !cdOn) || materialTypeTab === "custom") && (
                 <>
                   <div className="kk-card" id="matSurface">
                     <Field icon="layers" label="Normal scale" value={materialSettings.normalScale} min={0} max={3} step={0.1} onChange={(v) => setMat({ normalScale: v })} />

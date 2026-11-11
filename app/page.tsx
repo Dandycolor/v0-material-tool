@@ -2071,6 +2071,13 @@ export default function MaterialTool() {
                     <Field icon="sun" label="Inner glow" value={candy.glow} min={0} max={1.5} step={0.01} onChange={(v) => setCd({ glow: v })} />
                     <Field icon="circle" label="Milky edge" value={candy.milk} min={0} max={1} step={0.01} onChange={(v) => setCd({ milk: v })} />
                     <Field icon="hue" label="Edge colour" hint="White milky edge … edge glowing in the gradient colour" value={candy.rimTint} min={0} max={1} step={0.01} onChange={(v) => setCd({ rimTint: v })} />
+                  </div>
+                  <div className="kk-card">
+                    <Caption title="Edge light" desc="A thin bright line on every edge and bevel — small details included." />
+                    <Field icon="spark" label="Intensity" value={candy.edge} min={0} max={3} step={0.01} onChange={(v) => setCd({ edge: v })} />
+                    <Field icon="width" label="Width" value={candy.edgeWidth} min={0} max={1} step={0.01} onChange={(v) => setCd({ edgeWidth: v })} />
+                    <Field icon="orbit" label="Side" value={candy.edgeAngle} min={-180} max={180} step={1} format={(v) => `${Math.round(v)}°`} onChange={(v) => setCd({ edgeAngle: v })} />
+                    <Field icon="dial" label="Focus" hint="0 = all around · 1 = only from the chosen side" value={candy.edgeFocus} min={0} max={1} step={0.01} onChange={(v) => setCd({ edgeFocus: v })} />
                     <Field icon="spark" label="Gloss" value={candy.gloss} min={0} max={1} step={0.01} onChange={(v) => setCd({ gloss: v })} />
                   </div>
                 </>

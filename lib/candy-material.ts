@@ -27,6 +27,10 @@ export interface CandySettings {
   glow: number // inner glow 0…1.5
   milk: number // milky fresnel rim 0…1
   rimTint: number // 0 = white rim … 1 = rim in the gradient colour (saturated edge glow)
+  edge: number // crisp edge light 0…3 (thin bright line on every edge, incl. small details)
+  edgeWidth: number // 0…1
+  edgeFocus: number // 0 = all around … 1 = only from the edge-light side
+  edgeAngle: number // degrees, side the edge light comes from (0 = right, 90 = top)
   gloss: number // clearcoat 0…1
 }
 
@@ -59,6 +63,10 @@ export const CANDY_DEFAULT: CandySettings = {
   glow: 0.55,
   milk: 0.45,
   rimTint: 0.3,
+  edge: 0,
+  edgeWidth: 0.3,
+  edgeFocus: 0.4,
+  edgeAngle: 150,
   gloss: 0.35,
 }
 
@@ -66,6 +74,7 @@ const GLSL = /* glsl */ `
 uniform vec3 cdC1; uniform vec3 cdC2; uniform vec3 cdC3;
 uniform vec3 cdAxis; uniform float cdOffset; uniform float cdSpread;
 uniform float cdGlow; uniform float cdMilk; uniform float cdSoft; uniform float cdRimTint;
+uniform float cdEdge; uniform float cdEdgeW; uniform float cdEdgeFocus; uniform vec2 cdEdgeDir;
 varying vec3 vCdObj;
 vec3 cdGrad;
 `
@@ -95,6 +104,10 @@ export function createCandyMaterial() {
     cdMilk: { value: 0.4 },
     cdSoft: { value: 0.8 },
     cdRimTint: { value: 0.5 },
+    cdEdge: { value: 0 },
+    cdEdgeW: { value: 0.3 },
+    cdEdgeFocus: { value: 0.4 },
+    cdEdgeDir: { value: new THREE.Vector2(-1, 0) },
     uHueShift: { value: 0 },
   }
   m.userData.cd = u
@@ -130,11 +143,20 @@ export function createCandyMaterial() {
   float cdFres = pow(1.0 - cdFacing, 2.5);
   vec3 cdRim = mix(vec3(1.0), cdGrad * 1.4, cdRimTint);
   totalEmissiveRadiance += cdRim * cdFres * cdMilk * 0.9;
+  // crisp edge light: a thin saturated line along silhouettes and every bevel
+  if (cdEdge > 0.0) {
+    float cdE = pow(1.0 - cdFacing, mix(9.0, 2.0, cdEdgeW));
+    vec2 cdN2 = normal.xy;
+    float cdSide = length(cdN2) > 1e-4 ? dot(normalize(cdN2), cdEdgeDir) * 0.5 + 0.5 : 0.5;
+    cdE *= mix(1.0, smoothstep(0.35, 1.0, cdSide) * 1.6, cdEdgeFocus);
+    vec3 cdEc = mix(vec3(1.0), cdGrad * 1.5 + 0.15, cdRimTint);
+    totalEmissiveRadiance += cdEc * cdE * cdEdge;
+  }
   }
 `,
       )
   }
-  m.customProgramCacheKey = () => "kk-candy-3"
+  m.customProgramCacheKey = () => "kk-candy-4"
   return m
 }
 
@@ -147,6 +169,11 @@ export function updateCandyMaterial(m: THREE.MeshPhysicalMaterial, s: CandySetti
   u.cdAxis.value.set(Math.cos(a) * Math.cos(t), Math.sin(a) * Math.cos(t), Math.sin(t))
   u.cdSoft.value = s.softness
   u.cdRimTint.value = s.rimTint
+  u.cdEdge.value = s.edge
+  u.cdEdgeW.value = s.edgeWidth
+  u.cdEdgeFocus.value = s.edgeFocus
+  const ea = (s.edgeAngle * Math.PI) / 180
+  u.cdEdgeDir.value.set(Math.cos(ea), Math.sin(ea))
   u.cdOffset.value = s.offset
   u.cdSpread.value = s.spread
   u.cdGlow.value = s.glow

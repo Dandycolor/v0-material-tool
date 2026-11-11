@@ -1,7 +1,7 @@
 "use client"
 
 import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber"
-import { OrbitControls, Environment, PerspectiveCamera as DreiPerspectiveCamera, OrthographicCamera as DreiOrthographicCamera } from "@react-three/drei"
+import { OrbitControls, Environment, PerspectiveCamera as DreiPerspectiveCamera } from "@react-three/drei"
 import { rot } from "@/lib/knopika/rotation"
 import { setMaterialHue, HUE_GLSL } from "@/lib/hue-shift"
 import { MATCAP_LIGHT_GLSL, matcapRotUniform, matcapGainUniform } from "@/lib/matcap-light"
@@ -3057,75 +3057,63 @@ export interface CameraSettings {
 }
 export const CAMERA_DEFAULT: CameraSettings = { projection: "perspective", fov: 50, isoTurn: 0 }
 
-/* Camera: a perspective camera (FOV / lens) and an orthographic one for isometric and free
-   axonometric views. Switching keeps the framing: the ortho zoom matches what the perspective
-   camera saw at the orbit target, and changing the FOV dollies so the shape keeps its size. */
+/* Camera: one perspective camera. Isometric / axonometric are a long telephoto (1.2° FOV far away),
+   which is visually parallel but keeps a real perspective depth buffer — screen-space effects (AO)
+   and everything else work unchanged (a true orthographic camera broke AO: a shifted "ghost").
+   Lens / projection changes dolly the camera so the shape keeps its size on screen; near/far follow
+   the distance so depth precision stays good at any range. */
+const ORTHO_FOV = 1.2
 function CameraRig({ cam }: { cam: CameraSettings }) {
-  const size = useThree((s) => s.size)
   const controls = useThree((s) => s.controls) as any
   const persp = useRef<THREE.PerspectiveCamera>(null)
-  const ortho = useRef<THREE.OrthographicCamera>(null)
   const isOrtho = cam.projection !== "perspective"
+  const fov = isOrtho ? ORTHO_FOV : cam.fov
   const target = () => (controls?.target as THREE.Vector3 | undefined)?.clone() ?? new THREE.Vector3()
-  const half = (fov: number) => Math.tan((fov * Math.PI) / 360)
+  const half = (f: number) => Math.tan((f * Math.PI) / 360)
 
-  // FOV change: dolly so the shape keeps its size on screen
-  const lastFov = useRef(cam.fov)
+  // FOV / projection change: dolly so the shape keeps its size
+  const lastFov = useRef(fov)
   useEffect(() => {
     const p = persp.current
-    if (!p || lastFov.current === cam.fov) return
+    if (!p || lastFov.current === fov) return
     const t = target()
-    const k = half(lastFov.current) / half(cam.fov)
+    const k = half(lastFov.current) / half(fov)
     p.position.sub(t).multiplyScalar(k).add(t)
-    p.fov = cam.fov
-    p.updateProjectionMatrix()
-    lastFov.current = cam.fov
+    p.fov = fov
+    lastFov.current = fov
+    fitClip()
     controls?.update?.()
-  }, [cam.fov])
+  }, [fov])
 
-  // perspective ⇄ orthographic, keeping the view
-  const lastOrtho = useRef(isOrtho)
-  useLayoutEffect(() => {
-    const p = persp.current, o = ortho.current
-    if (!p || !o || lastOrtho.current === isOrtho) return
-    lastOrtho.current = isOrtho
-    const t = target()
-    if (isOrtho) {
-      const d = p.position.distanceTo(t)
-      const dir = p.position.clone().sub(t).normalize()
-      o.position.copy(t).addScaledVector(dir, 20)
-      o.quaternion.copy(p.quaternion)
-      o.zoom = size.height / (2 * d * half(p.fov))
-      o.updateProjectionMatrix()
-    } else {
-      const dir = o.position.clone().sub(t).normalize()
-      const d = size.height / o.zoom / (2 * half(p.fov))
-      p.position.copy(t).addScaledVector(dir, d)
-      p.quaternion.copy(o.quaternion)
+  const fitClip = () => {
+    const p = persp.current
+    if (!p) return
+    const d = p.position.distanceTo(target())
+    const near = Math.max(0.01, d - 30)
+    const far = d + 30
+    if (Math.abs(p.near - near) > 1e-3 || Math.abs(p.far - far) > 1e-3) {
+      p.near = near
+      p.far = far
       p.updateProjectionMatrix()
-    }
-  }, [isOrtho])
+    } else if (p.fov !== fov) p.updateProjectionMatrix()
+  }
+  useFrame(fitClip)
 
   // isometric: snap to the true iso angle (35.26° down, 45° + quarter turns around)
   useEffect(() => {
-    const o = ortho.current
-    if (!o || cam.projection !== "isometric") return
+    const p = persp.current
+    if (!p || cam.projection !== "isometric") return
     const t = target()
+    const d = p.position.distanceTo(t)
     const az = Math.PI / 4 + (cam.isoTurn * Math.PI) / 2
     const el = Math.atan(1 / Math.SQRT2)
-    o.position.set(t.x + Math.sin(az) * Math.cos(el) * 20, t.y + Math.sin(el) * 20, t.z + Math.cos(az) * Math.cos(el) * 20)
-    o.up.set(0, 1, 0)
-    o.lookAt(t)
-    o.updateProjectionMatrix()
+    p.position.set(t.x + Math.sin(az) * Math.cos(el) * d, t.y + Math.sin(el) * d, t.z + Math.cos(az) * Math.cos(el) * d)
+    p.up.set(0, 1, 0)
+    p.lookAt(t)
     controls?.update?.()
   }, [cam.projection, cam.isoTurn, controls])
 
-  return (
-    <>
-      <DreiPerspectiveCamera ref={persp} makeDefault={!isOrtho} position={[0, 0, 3.7]} fov={50} near={0.01} far={200} />
-      <DreiOrthographicCamera ref={ortho} makeDefault={isOrtho} position={[0, 0, 20]} zoom={size.height / 3.45} near={0.01} far={200} />
-    </>
-  )
+  return <DreiPerspectiveCamera ref={persp} makeDefault position={[0, 0, 3.7]} fov={50} near={0.01} far={200} />
 }
 
 /* Orbit is off while the brush is drawing (hold Space or switch Draw off to orbit). */

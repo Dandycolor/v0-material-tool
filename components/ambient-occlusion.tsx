@@ -40,10 +40,12 @@ export function AmbientOcclusion({ settings }: { settings: AOSettings }) {
 
 function AOChain({ settings }: { settings: AOSettings }) {
   const { gl, scene, camera, size } = useThree()
+  const dpr = useThree((s) => s.viewport.dpr)
   const chain = useMemo(() => {
     const composer = new EffectComposer(gl, { frameBufferType: THREE.HalfFloatType, multisampling: 4 })
     composer.addPass(new RenderPass(scene, camera))
-    const ao = new N8AOPostPass(scene, camera, size.width, size.height)
+    const w = Math.floor(size.width * dpr), h = Math.floor(size.height * dpr)
+    const ao = new N8AOPostPass(scene, camera, w, h)
     ao.configuration.gammaCorrection = false
     ao.configuration.halfRes = false
     ao.configuration.aoSamples = 16
@@ -53,18 +55,16 @@ function AOChain({ settings }: { settings: AOSettings }) {
     // render the scene display-ready (tone mapped + sRGB, exactly like the normal path): three only
     // does that for the screen or an XR target, so the composer's buffers pose as one. The background
     // and dots then look identical, and AO darkens the final colours.
+    composer.setSize(size.width, size.height, false)
     asScreen(composer.inputBuffer)
     asScreen(composer.outputBuffer)
     return { composer, ao }
+    // rebuilt (not resized) on any size / pixel-ratio / camera change: resizing a live N8AO chain
+    // left its AO buffers out of step with the image (a shifted, scaled "ghost" of the model)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gl, scene, camera])
+  }, [gl, scene, camera, size.width, size.height, dpr])
 
   useEffect(() => () => chain.composer.dispose(), [chain])
-  useEffect(() => {
-    chain.composer.setSize(size.width, size.height)
-    asScreen(chain.composer.inputBuffer)
-    asScreen(chain.composer.outputBuffer)
-  }, [chain, size.width, size.height])
   useEffect(() => {
     const c = chain.ao.configuration
     c.intensity = settings.intensity

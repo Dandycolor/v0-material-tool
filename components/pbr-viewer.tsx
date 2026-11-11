@@ -10,6 +10,7 @@ import { extrudeAsync, flattenShape } from "@/lib/extrude/client"
 import { createBlob, BLOB_DEFAULT, type BlobSettings } from "@/lib/blob"
 import { BrushDrawer, BrushGeometry, useBrushDrawing } from "@/components/brush-drawer"
 import { AmbientOcclusion, AO_DEFAULT, POST_DEFAULT, renderFrame, type AOSettings, type PostSettings } from "@/components/ambient-occlusion"
+import { CustomEnvironment, HighlightPicker, useHighlightPicking } from "@/components/custom-environment"
 import { SketchDrawer, SketchGeometry, useSketchDrawing } from "@/components/sketch-drawer"
 import { createLayeredMaterial, updateLayeredMaterial, type LayeredSettings } from "@/lib/layered-material"
 import { createTortoiseMaterial, updateTortoiseMaterial, type TortoiseSettings } from "@/lib/tortoise-material"
@@ -33,6 +34,8 @@ function OverrideApplier({ material, on }: { material: THREE.Material; on: boole
     // environment uses scene.environmentIntensity) — so point the override at the scene's HDRI
     const env = state.scene.environment
     if (env && m.envMap !== env) m.envMap = env
+    // an explicit envMap uses material.envMapRotation, not the scene's — keep Direction working
+    if (m.envMapRotation && !m.envMapRotation.equals(state.scene.environmentRotation)) m.envMapRotation.copy(state.scene.environmentRotation)
     if (m.envMapIntensity !== overrideEnv.v) m.envMapIntensity = overrideEnv.v
   })
   useEffect(() => {
@@ -2902,10 +2905,14 @@ function SceneContent({
             onGeometrySettingsChange={onGeometrySettingsChange}
             gradientSettings={gradientSettings}
           />
-          <Environment
-            preset={lightingSettings.envMap as any}
-            environmentRotation={[0, lightingSettings.envRotation, 0]}
-          />
+          {lightingSettings.envMap === "custom" ? (
+            <CustomEnvironment rotation={lightingSettings.envRotation} />
+          ) : (
+            <Environment
+              preset={lightingSettings.envMap as any}
+              environmentRotation={[0, lightingSettings.envRotation, 0]}
+            />
+          )}
         </>
       )}
       <BrushDrawer active={geometrySettings.type === "sphere" && geometrySettings.primitiveType === "brush"} dark={isDarkGround(backgroundColor)} />
@@ -2913,6 +2920,7 @@ function SceneContent({
       </KnopikaRotGroup>
       </group>
       <GridHelper visible={showGrid} />
+      {lightingSettings.envMap === "custom" && <HighlightPicker rotation={lightingSettings.envRotation} />}
       {(() => {
         overrideEnv.v = lightingSettings?.envIntensity ?? 1
         return null
@@ -3151,7 +3159,8 @@ function CameraRig({ cam }: { cam: CameraSettings }) {
 function ViewOrbit({ enabled, brushMode, sketchMode }: { enabled: boolean; brushMode: boolean; sketchMode: boolean }) {
   const drawing = useBrushDrawing()
   const sketching = useSketchDrawing()
-  return <OrbitControls makeDefault enabled={enabled && !(brushMode && drawing) && !(sketchMode && sketching)} enableDamping dampingFactor={0.05} />
+  const picking = useHighlightPicking()
+  return <OrbitControls makeDefault enabled={enabled && !picking && !(brushMode && drawing) && !(sketchMode && sketching)} enableDamping dampingFactor={0.05} />
 }
 
 /* Memoised: UI-only state in the page (panels, theme, search input…) no longer re-renders the 3D tree. */

@@ -20,6 +20,7 @@ import { BLOB_DEFAULT, type BlobSettings, type BlobBase } from "@/lib/blob"
 import { LAYERED_DEFAULT, LAYERED_PALETTES, type LayeredSettings } from "@/lib/layered-material"
 import { generateNormalMap } from "@/lib/procedural-normal"
 import { brush, useBrush } from "@/lib/brush/store"
+import { HdriEditor } from "@/components/hdri-editor"
 import { CAMERA_DEFAULT, type CameraSettings } from "@/components/pbr-viewer"
 import { AO_DEFAULT, POST_DEFAULT, type AOSettings, type PostSettings } from "@/components/ambient-occlusion"
 import { MATCAP_LIGHT_DEFAULT, setMatcapLight, type MatcapLight } from "@/lib/matcap-light"
@@ -1356,7 +1357,7 @@ export default function MaterialTool() {
   // }
 
   // ---------- Knopika shell state ----------
-  const [panel, setPanel] = useState<"material" | "light" | "rotate" | "theme" | "camera" | null>("material")
+  const [panel, setPanel] = useState<"material" | "light" | "rotate" | "theme" | "camera" | "hdri" | null>("material")
   const [sourceOpen, setSourceOpen] = useState(false)
   const [theme, setTheme] = useState<KnopikaTheme>(THEME_DEFAULT)
   const [isPhone, setIsPhone] = useState(false)
@@ -2413,6 +2414,17 @@ export default function MaterialTool() {
                         {env[0].toUpperCase() + env.slice(1)}
                       </button>
                     ))}
+                    <button
+                      type="button"
+                      className={`kk-pill envpill ${lightingSettings.envMap === "custom" ? "is-on" : ""}`}
+                      onClick={() => {
+                        setLight({ envMap: "custom" })
+                        setPanel("hdri")
+                      }}
+                    >
+                      <Icon name="sun" />
+                      Custom…
+                    </button>
                   </div>
                   <div className="kk-card">
                     <Field
@@ -2444,6 +2456,12 @@ export default function MaterialTool() {
           {panel === "rotate" && <RotatePanel onClose={() => setPanel("material")} win={win("rotate", "kk-panel rotbar enter")} />}
 
           {/* right: theme tuner */}
+          {panel === "hdri" && (
+            <div {...win("hdri", "kk-panel tunerbar cambar enter")} aria-label="Custom HDRI editor">
+              <HdriEditor onBack={() => setPanel("light")} onClose={() => setPanel("material")} />
+            </div>
+          )}
+
           {panel === "camera" && (
             <div {...win("camera", "kk-panel tunerbar cambar enter")} aria-label="Camera and post effects">
               <PanelHead eyebrow={camTab === "camera" ? "Camera" : "Post effects"}>

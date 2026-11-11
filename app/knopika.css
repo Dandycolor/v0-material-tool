@@ -787,3 +787,17 @@
 .polya .post-row:first-of-type{margin-top:8px}
 .polya .post-soon{font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:var(--radius-pill);background:var(--panel-line)}
 .polya .cambar{bottom:auto;max-height:calc(100% - 92px)}
+/* Custom HDRI editor */
+.polya .hdri-map{position:relative;width:100%;aspect-ratio:2/1;flex:none;min-height:100px;border-radius:12px;overflow:hidden;background:#000;cursor:crosshair;touch-action:none;box-shadow:inset 0 0 0 1px var(--panel-line)}
+.polya .hdri-map canvas{width:100%;height:100%;display:block;image-rendering:auto}
+.polya .hdri-pin{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:99px;border:2px solid #fff;background:#0008;box-shadow:0 0 0 1px #0009;cursor:grab;padding:0}
+.polya .hdri-pin.is-on{background:#2bd47a;width:16px;height:16px;margin:-8px 0 0 -8px}
+.polya .hdri-pin.is-off{opacity:.4}
+.polya .hdri-pick{justify-content:center;margin:8px 0}
+.polya .hdri-pick.is-on{background:#2bd47a;color:#0b0b0b}
+.polya .hdri-presets{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.polya .hdri-list{display:flex;flex-direction:column;gap:2px}
+.polya .hdri-row{display:flex;align-items:center;gap:8px;padding:4px 4px 4px 8px;border-radius:10px;cursor:pointer;font:500 12px/1.2 var(--font-ui)}
+.polya .hdri-row.is-on{background:var(--panel-line)}
+.polya .hdri-row .hdri-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.polya .hdri-dot{width:10px;height:10px;border-radius:99px;box-shadow:0 0 0 1px #fff5;flex:none}

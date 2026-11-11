@@ -9,7 +9,6 @@
 import * as THREE from "three"
 import { HUE_GLSL } from "@/lib/hue-shift"
 
-export type CandyAxis = "y" | "x" | "z" | "diag"
 
 export interface CandySettings {
   enabled: boolean
@@ -17,14 +16,17 @@ export interface CandySettings {
   c2: string
   c3: string
   hue: number
-  axis: CandyAxis
+  angle: number // gradient direction on screen-facing plane, degrees (0 = left→right)
+  tilt: number // tilt toward depth, degrees -80…80
   offset: number // -1…1 shifts the gradient
   spread: number // 0.2…2 gradient length
+  softness: number // 0…1 transition width between the colours
   frost: number // roughness 0…1
   clarity: number // transmission 0…1
   depth: number // thickness
   glow: number // inner glow 0…1.5
   milk: number // milky fresnel rim 0…1
+  rimTint: number // 0 = white rim … 1 = rim in the gradient colour (saturated edge glow)
   gloss: number // clearcoat 0…1
 }
 
@@ -46,21 +48,24 @@ export const CANDY_DEFAULT: CandySettings = {
   c2: CANDY_PRESETS[0].c[1],
   c3: CANDY_PRESETS[0].c[2],
   hue: 0,
-  axis: "diag",
+  angle: -40,
+  tilt: 0,
   offset: 0,
   spread: 1,
+  softness: 0.8,
   frost: 0.45,
   clarity: 0.85,
   depth: 0.8,
   glow: 0.55,
   milk: 0.45,
+  rimTint: 0.5,
   gloss: 0.35,
 }
 
 const GLSL = /* glsl */ `
 uniform vec3 cdC1; uniform vec3 cdC2; uniform vec3 cdC3;
 uniform vec3 cdAxis; uniform float cdOffset; uniform float cdSpread;
-uniform float cdGlow; uniform float cdMilk;
+uniform float cdGlow; uniform float cdMilk; uniform float cdSoft; uniform float cdRimTint;
 varying vec3 vCdObj;
 vec3 cdGrad;
 `
@@ -88,6 +93,8 @@ export function createCandyMaterial() {
     cdSpread: { value: 1 },
     cdGlow: { value: 0.5 },
     cdMilk: { value: 0.4 },
+    cdSoft: { value: 0.8 },
+    cdRimTint: { value: 0.5 },
     uHueShift: { value: 0 },
   }
   m.userData.cd = u
@@ -103,8 +110,9 @@ export function createCandyMaterial() {
         /* glsl */ `
   {
   float cdT = clamp(dot(vCdObj, cdAxis) / (1.6 * cdSpread) + 0.5 - cdOffset * 0.5, 0.0, 1.0);
-  vec3 cdCol = mix(cdC1, cdC2, smoothstep(0.0, 0.5, cdT));
-  cdCol = mix(cdCol, cdC3, smoothstep(0.5, 1.0, cdT));
+  float cdW = 0.01 + cdSoft * 0.25;
+  vec3 cdCol = mix(cdC1, cdC2, smoothstep(0.25 - cdW, 0.25 + cdW, cdT));
+  cdCol = mix(cdCol, cdC3, smoothstep(0.75 - cdW, 0.75 + cdW, cdT));
   if (uHueShift != 0.0) cdCol = kkHueShift(cdCol, uHueShift);
   cdGrad = cdCol;
   diffuseColor.rgb *= cdCol;
@@ -120,20 +128,14 @@ export function createCandyMaterial() {
   totalEmissiveRadiance += cdGrad * cdGlow * (0.25 + 0.75 * cdFacing);
   // milky soft-touch edge
   float cdFres = pow(1.0 - cdFacing, 2.5);
-  totalEmissiveRadiance += mix(cdGrad, vec3(1.0), 0.6) * cdFres * cdMilk * 0.9;
+  vec3 cdRim = mix(vec3(1.0), cdGrad * 1.4, cdRimTint);
+  totalEmissiveRadiance += cdRim * cdFres * cdMilk * 0.9;
   }
 `,
       )
   }
-  m.customProgramCacheKey = () => "kk-candy-1"
+  m.customProgramCacheKey = () => "kk-candy-2"
   return m
-}
-
-const AXES: Record<CandyAxis, THREE.Vector3> = {
-  y: new THREE.Vector3(0, -1, 0),
-  x: new THREE.Vector3(1, 0, 0),
-  z: new THREE.Vector3(0, 0, 1),
-  diag: new THREE.Vector3(1, -1, 0.4).normalize(),
 }
 
 export function updateCandyMaterial(m: THREE.MeshPhysicalMaterial, s: CandySettings) {
@@ -141,7 +143,10 @@ export function updateCandyMaterial(m: THREE.MeshPhysicalMaterial, s: CandySetti
   u.cdC1.value.set(s.c1)
   u.cdC2.value.set(s.c2)
   u.cdC3.value.set(s.c3)
-  u.cdAxis.value.copy(AXES[s.axis])
+  const a = (s.angle * Math.PI) / 180, t = (s.tilt * Math.PI) / 180
+  u.cdAxis.value.set(Math.cos(a) * Math.cos(t), Math.sin(a) * Math.cos(t), Math.sin(t))
+  u.cdSoft.value = s.softness
+  u.cdRimTint.value = s.rimTint
   u.cdOffset.value = s.offset
   u.cdSpread.value = s.spread
   u.cdGlow.value = s.glow

@@ -9,7 +9,7 @@ import { setTriplanar, triplanarMatcapShaders, triplanarMatcapUniforms } from "@
 import { extrudeAsync, flattenShape } from "@/lib/extrude/client"
 import { createBlob, BLOB_DEFAULT, type BlobSettings } from "@/lib/blob"
 import { BrushDrawer, BrushGeometry, useBrushDrawing } from "@/components/brush-drawer"
-import { AmbientOcclusion, AO_DEFAULT, renderFrame, type AOSettings } from "@/components/ambient-occlusion"
+import { AmbientOcclusion, AO_DEFAULT, POST_DEFAULT, renderFrame, type AOSettings, type PostSettings } from "@/components/ambient-occlusion"
 import { SketchDrawer, SketchGeometry, useSketchDrawing } from "@/components/sketch-drawer"
 import { createLayeredMaterial, updateLayeredMaterial, type LayeredSettings } from "@/lib/layered-material"
 import { createTortoiseMaterial, updateTortoiseMaterial, type TortoiseSettings } from "@/lib/tortoise-material"
@@ -2940,6 +2940,7 @@ const PBRViewerInner = forwardRef<
   candySettings?: CandySettings
   cameraSettings?: CameraSettings
   aoSettings?: AOSettings
+  postSettings?: PostSettings
   dotColor?: string
   showGrid?: boolean
   showRotateControls?: boolean
@@ -2963,7 +2964,7 @@ const PBRViewerInner = forwardRef<
   onGeometrySettingsChange?: (settings: Partial<GeometrySettings>) => void
   }
 >(function PBRViewer(
-  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, dotGrid, dotColor, layeredSettings, tortoiseSettings, terrazzoSettings, candySettings, cameraSettings, aoSettings, showGrid, showRotateControls, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
+  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, dotGrid, dotColor, layeredSettings, tortoiseSettings, terrazzoSettings, candySettings, cameraSettings, aoSettings, postSettings, showGrid, showRotateControls, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
   ref,
   ) {
   const exportFnRef = useRef<(() => void) | null>(null)
@@ -3051,7 +3052,7 @@ const PBRViewerInner = forwardRef<
           />
         </Suspense>
         <CameraRig cam={cameraSettings || CAMERA_DEFAULT} />
-        <AmbientOcclusion settings={aoSettings || AO_DEFAULT} />
+        <AmbientOcclusion settings={aoSettings || AO_DEFAULT} post={postSettings || POST_DEFAULT} />
         <ViewOrbit
           enabled={!showRotateControls}
           brushMode={geometrySettings.type === "sphere" && geometrySettings.primitiveType === "brush"}

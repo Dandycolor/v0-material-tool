@@ -21,10 +21,10 @@ import { LAYERED_DEFAULT, LAYERED_PALETTES, type LayeredSettings } from "@/lib/l
 import { generateNormalMap } from "@/lib/procedural-normal"
 import { brush, useBrush } from "@/lib/brush/store"
 import { CAMERA_DEFAULT, type CameraSettings } from "@/components/pbr-viewer"
-import { AO_DEFAULT, type AOSettings } from "@/components/ambient-occlusion"
+import { AO_DEFAULT, POST_DEFAULT, type AOSettings, type PostSettings } from "@/components/ambient-occlusion"
 import { MATCAP_LIGHT_DEFAULT, setMatcapLight, type MatcapLight } from "@/lib/matcap-light"
 import { sketch, useSketch } from "@/lib/sketch/store"
-import { CANDY_DEFAULT, CANDY_PRESETS, type CandySettings, type CandyAxis } from "@/lib/candy-material"
+import { CANDY_DEFAULT, CANDY_PRESETS, type CandySettings } from "@/lib/candy-material"
 import { TERRAZZO_DEFAULT, TERRAZZO_PRESETS, type TerrazzoSettings } from "@/lib/terrazzo-material"
 import { TORTOISE_DEFAULT, TORTOISE_PRESETS, type TortoiseSettings } from "@/lib/tortoise-material"
 import { installUISounds, setSoundEnabled, UISound } from "@/lib/knopika/sounds"
@@ -922,6 +922,8 @@ export default function MaterialTool() {
   const [cam, setCam] = useState<CameraSettings>({ ...CAMERA_DEFAULT })
   const setC = (u: Partial<CameraSettings>) => setCam((p) => ({ ...p, ...u }))
   const [ao, setAo] = useState<AOSettings>({ ...AO_DEFAULT })
+  const [post, setPost] = useState<PostSettings>({ ...POST_DEFAULT })
+  const setP = (u: Partial<PostSettings>) => setPost((p) => ({ ...p, ...u }))
   const setA = (u: Partial<AOSettings>) => setAo((p) => ({ ...p, ...u }))
   const [camTab, setCamTab] = useState<"camera" | "post">("camera")
   const [showRotateControls, setShowRotateControls] = useState(false)
@@ -1640,6 +1642,7 @@ export default function MaterialTool() {
               showGrid={showGrid}
               cameraSettings={cam}
               aoSettings={ao}
+              postSettings={post}
               showRotateControls={showRotateControls}
               gradientSettings={gradientSettings}
               customMaterial={customMaterial}
@@ -2053,16 +2056,9 @@ export default function MaterialTool() {
                     <ColorField label="Start" value={candy.c1} onChange={(v) => setCd({ c1: v })} />
                     <ColorField label="Middle" value={candy.c2} onChange={(v) => setCd({ c2: v })} />
                     <ColorField label="End" value={candy.c3} onChange={(v) => setCd({ c3: v })} />
-                    <Segmented
-                      value={candy.axis}
-                      onChange={(v) => setCd({ axis: v as CandyAxis })}
-                      options={[
-                        { v: "diag", label: "Diag" },
-                        { v: "y", label: "Vert" },
-                        { v: "x", label: "Horiz" },
-                        { v: "z", label: "Depth" },
-                      ]}
-                    />
+                    <Field icon="orbit" label="Angle" value={candy.angle} min={-180} max={180} step={1} format={(v) => `${Math.round(v)}°`} onChange={(v) => setCd({ angle: v })} />
+                    <Field icon="height" label="Tilt" hint="Leans the gradient toward / away from you" value={candy.tilt} min={-80} max={80} step={1} format={(v) => `${Math.round(v)}°`} onChange={(v) => setCd({ tilt: v })} />
+                    <Field icon="drop" label="Softness" value={candy.softness} min={0} max={1} step={0.01} onChange={(v) => setCd({ softness: v })} />
                     <Field icon="pan" label="Offset" value={candy.offset} min={-1} max={1} step={0.01} onChange={(v) => setCd({ offset: v })} />
                     <Field icon="width" label="Spread" value={candy.spread} min={0.2} max={2} step={0.01} onChange={(v) => setCd({ spread: v })} />
                   </div>
@@ -2073,6 +2069,7 @@ export default function MaterialTool() {
                     <Field icon="height" label="Depth" value={candy.depth} min={0} max={3} step={0.01} onChange={(v) => setCd({ depth: v })} />
                     <Field icon="sun" label="Inner glow" value={candy.glow} min={0} max={1.5} step={0.01} onChange={(v) => setCd({ glow: v })} />
                     <Field icon="circle" label="Milky edge" value={candy.milk} min={0} max={1} step={0.01} onChange={(v) => setCd({ milk: v })} />
+                    <Field icon="hue" label="Edge colour" hint="White milky edge … edge glowing in the gradient colour" value={candy.rimTint} min={0} max={1} step={0.01} onChange={(v) => setCd({ rimTint: v })} />
                     <Field icon="spark" label="Gloss" value={candy.gloss} min={0} max={1} step={0.01} onChange={(v) => setCd({ gloss: v })} />
                   </div>
                 </>
@@ -2363,6 +2360,22 @@ export default function MaterialTool() {
                     <Field icon="dial" label="Intensity" value={ao.intensity} min={0} max={6} step={0.05} onChange={(v) => setA({ intensity: v })} />
                     <Field icon="circle" label="Radius" hint="How far the shadowing reaches" value={ao.radius} min={0.02} max={1.5} step={0.01} onChange={(v) => setA({ radius: v })} />
                     <Field icon="drop" label="Softness" value={ao.falloff} min={0.1} max={2} step={0.01} onChange={(v) => setA({ falloff: v })} />
+                    <ColorField label="Shadow colour" value={ao.color} onChange={(v) => setA({ color: v })} />
+                    <div className="kk-row" style={{ gap: 6, flexWrap: "wrap" }}>
+                      {[
+                        { c: "#000000", n: "Black" },
+                        { c: "#2a1a4a", n: "Plum" },
+                        { c: "#1d2a5a", n: "Navy" },
+                        { c: "#5a2a3a", n: "Wine" },
+                        { c: "#5c4a3a", n: "Warm" },
+                      ].map((t) => (
+                        <button key={t.c} type="button" className={`kk-pill ${ao.color === t.c ? "is-on" : ""}`} onClick={() => setA({ color: t.c })}>
+                          <span style={{ width: 10, height: 10, borderRadius: 99, background: t.c, display: "inline-block", boxShadow: "0 0 0 1px #fff4" }} />
+                          {t.n}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="hint2">Coloured shadows keep candy, glass and bright materials clean — black reads as dirt on them.</p>
                   </>
                 )}
               </div>
@@ -2500,15 +2513,25 @@ export default function MaterialTool() {
                   </div>
                 </>
               ) : (
-                <div className="kk-card">
-                  <Caption title="Post effects" desc="Filters applied to the final image. Coming soon." />
-                  {["Bloom", "Vignette", "Film grain", "Chromatic aberration", "Depth of field", "Color grading"].map((n) => (
-                    <div key={n} className="post-row" aria-disabled="true">
-                      <span>{n}</span>
-                      <span className="post-soon">soon</span>
-                    </div>
-                  ))}
-                </div>
+                <>
+                  <div className="kk-card">
+                    <SwitchRow title="Bloom" desc="Bright highlights bleed a soft glow." on={post.bloom} onChange={(v) => setP({ bloom: v })} />
+                    {post.bloom && (
+                      <>
+                        <Field icon="sun" label="Intensity" value={post.bloomIntensity} min={0} max={3} step={0.01} onChange={(v) => setP({ bloomIntensity: v })} />
+                        <Field icon="dial" label="Threshold" hint="How bright a pixel must be to glow" value={post.bloomThreshold} min={0} max={1} step={0.01} onChange={(v) => setP({ bloomThreshold: v })} />
+                        <Field icon="circle" label="Radius" value={post.bloomRadius} min={0} max={1} step={0.01} onChange={(v) => setP({ bloomRadius: v })} />
+                      </>
+                    )}
+                  </div>
+                  <div className="kk-card">
+                    <SwitchRow title="Chromatic aberration" desc="Colour fringes toward the edges, like a real lens." on={post.chroma} onChange={(v) => setP({ chroma: v })} />
+                    {post.chroma && <Field icon="width" label="Amount" value={post.chromaAmount} min={0} max={1} step={0.01} onChange={(v) => setP({ chromaAmount: v })} />}
+                  </div>
+                  <div className="kk-card">
+                    <Caption title="More soon" desc="Vignette, film grain, depth of field, colour grading." />
+                  </div>
+                </>
               )}
             </div>
           )}

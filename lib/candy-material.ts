@@ -52,13 +52,13 @@ export const CANDY_DEFAULT: CandySettings = {
   tilt: 0,
   offset: 0,
   spread: 1,
-  softness: 0.8,
+  softness: 1,
   frost: 0.45,
   clarity: 0.85,
   depth: 0.8,
   glow: 0.55,
   milk: 0.45,
-  rimTint: 0.5,
+  rimTint: 0.3,
   gloss: 0.35,
 }
 
@@ -110,7 +110,7 @@ export function createCandyMaterial() {
         /* glsl */ `
   {
   float cdT = clamp(dot(vCdObj, cdAxis) / (1.6 * cdSpread) + 0.5 - cdOffset * 0.5, 0.0, 1.0);
-  float cdW = 0.01 + cdSoft * 0.25;
+  float cdW = 0.01 + cdSoft * 0.24;
   vec3 cdCol = mix(cdC1, cdC2, smoothstep(0.25 - cdW, 0.25 + cdW, cdT));
   cdCol = mix(cdCol, cdC3, smoothstep(0.75 - cdW, 0.75 + cdW, cdT));
   if (uHueShift != 0.0) cdCol = kkHueShift(cdCol, uHueShift);
@@ -134,7 +134,7 @@ export function createCandyMaterial() {
 `,
       )
   }
-  m.customProgramCacheKey = () => "kk-candy-2"
+  m.customProgramCacheKey = () => "kk-candy-3"
   return m
 }
 

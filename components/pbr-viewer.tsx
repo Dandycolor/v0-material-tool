@@ -20,8 +20,21 @@ import { createTerrazzoMaterial, updateTerrazzoMaterial, type TerrazzoSettings }
    switching off puts each mesh's own material back. Checked every frame so meshes that remount
    (new texture set, model load, geometry rebuild) pick it up too. Overrides never record each other
    as a mesh's "own" material. */
+/** HDRI intensity for the procedural override materials (set by SceneContent each render) */
+const overrideEnv = { v: 1 }
+
 function OverrideApplier({ material, on }: { material: THREE.Material; on: boolean }) {
   const { scene } = useThree()
+  // override materials follow the HDRI intensity slider like every regular material
+  useFrame((state) => {
+    const m = material as any
+    if (!on || !("envMapIntensity" in m)) return
+    // three applies material.envMapIntensity only to an explicit material.envMap (the scene
+    // environment uses scene.environmentIntensity) — so point the override at the scene's HDRI
+    const env = state.scene.environment
+    if (env && m.envMap !== env) m.envMap = env
+    if (m.envMapIntensity !== overrideEnv.v) m.envMapIntensity = overrideEnv.v
+  })
   useEffect(() => {
     material.userData.kkOverride = true
   }, [material])
@@ -2900,6 +2913,10 @@ function SceneContent({
       </KnopikaRotGroup>
       </group>
       <GridHelper visible={showGrid} />
+      {(() => {
+        overrideEnv.v = lightingSettings?.envIntensity ?? 1
+        return null
+      })()}
       <LayeredApplier settings={layeredSettings} seed={(geometrySettings as any).blob?.seed ?? 0} />
       <TortoiseApplier settings={tortoiseSettings} />
       <TerrazzoApplier settings={terrazzoSettings} />

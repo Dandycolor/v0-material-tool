@@ -12,5 +12,6 @@ ICONS.dots = '<g fill="currentColor" stroke="none"><circle cx="6" cy="6" r="1.6"
 /* Pólya additions (stroke icons, same 24px grid) */
 Object.assign(ICONS, {
   brush: '<path d="M3.5 16.5c2.2-5.5 4.8-6 6.3-2.4s3.6 3.8 5.2-.4 2.7-5.9 5.5-4.2"/><circle cx="3.6" cy="16.4" r="1.1"/>',
+  camera: '<rect x="3" y="7" width="18" height="13" rx="3"/><circle cx="12" cy="13.5" r="3.6"/><path d="M8.5 7l1.6-2.8h3.8L15.5 7"/>',
   redo: '<path d="M15 7.5l4 4-4 4"/><path d="M19 11.5h-9a5 5 0 0 0 0 10h2"/>',
 })

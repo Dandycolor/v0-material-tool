@@ -20,6 +20,7 @@ import { BLOB_DEFAULT, type BlobSettings, type BlobBase } from "@/lib/blob"
 import { LAYERED_DEFAULT, LAYERED_PALETTES, type LayeredSettings } from "@/lib/layered-material"
 import { generateNormalMap } from "@/lib/procedural-normal"
 import { brush, useBrush } from "@/lib/brush/store"
+import { CAMERA_DEFAULT, type CameraSettings } from "@/components/pbr-viewer"
 import { MATCAP_LIGHT_DEFAULT, setMatcapLight, type MatcapLight } from "@/lib/matcap-light"
 import { sketch, useSketch } from "@/lib/sketch/store"
 import { TERRAZZO_DEFAULT, TERRAZZO_PRESETS, type TerrazzoSettings } from "@/lib/terrazzo-material"
@@ -915,6 +916,10 @@ export default function MaterialTool() {
   )
   const [backgroundColor, setBackgroundColor] = useState("#9724f5") // Knopika "Violet" ground
   const [showGrid, setShowGrid] = useState(false)
+  // Camera & post (post effects: placeholder tab for now)
+  const [cam, setCam] = useState<CameraSettings>({ ...CAMERA_DEFAULT })
+  const setC = (u: Partial<CameraSettings>) => setCam((p) => ({ ...p, ...u }))
+  const [camTab, setCamTab] = useState<"camera" | "post">("camera")
   const [showRotateControls, setShowRotateControls] = useState(false)
   
   // Custom material selections
@@ -1339,7 +1344,7 @@ export default function MaterialTool() {
   // }
 
   // ---------- Knopika shell state ----------
-  const [panel, setPanel] = useState<"material" | "light" | "rotate" | "theme" | null>("material")
+  const [panel, setPanel] = useState<"material" | "light" | "rotate" | "theme" | "camera" | null>("material")
   const [sourceOpen, setSourceOpen] = useState(false)
   const [theme, setTheme] = useState<KnopikaTheme>(THEME_DEFAULT)
   const [isPhone, setIsPhone] = useState(false)
@@ -1416,7 +1421,7 @@ export default function MaterialTool() {
 
   const setT = <K extends keyof KnopikaTheme>(k: K, v: KnopikaTheme[K]) => setTheme((t) => ({ ...t, [k]: v }))
   const tv = themeVars(backgroundColor, theme)
-  const togglePanel = (p: "material" | "light" | "rotate" | "theme") => setPanel((cur) => (cur === p ? "material" : p))
+  const togglePanel = (p: "material" | "light" | "rotate" | "theme" | "camera") => setPanel((cur) => (cur === p ? "material" : p))
 
   const onGeoChangeFromViewer = useCallback((updates: Partial<typeof geometrySettings>) => setGeometrySettings((g) => ({ ...g, ...updates })), [])
   const setGeo = (u: Partial<typeof geometrySettings>) => setGeometrySettings({ ...geometrySettings, ...u })
@@ -1611,6 +1616,7 @@ export default function MaterialTool() {
               terrazzoSettings={terrazzo}
               dotColor={tv.vars["--on-ground-faint"]}
               showGrid={showGrid}
+              cameraSettings={cam}
               showRotateControls={showRotateControls}
               gradientSettings={gradientSettings}
               customMaterial={customMaterial}
@@ -1672,7 +1678,7 @@ export default function MaterialTool() {
             </div>
             <div className="kk-pillgroup" style={{ padding: "0 6px" }}>
               <IconButton variant="ground" icon="dots" label="Dot grid" on={showDots} pressed={showDots} onClick={() => setShowDots(!showDots)} />
-              <IconButton variant="ground" icon="grid" label="Floor grid" on={showGrid} pressed={showGrid} onClick={() => setShowGrid(!showGrid)} />
+              <IconButton variant="ground" icon="camera" label="Camera & post" on={panel === "camera"} pressed={panel === "camera"} onClick={() => togglePanel("camera")} />
             </div>
           </div>
 
@@ -2348,6 +2354,88 @@ export default function MaterialTool() {
           {panel === "rotate" && <RotatePanel onClose={() => setPanel("material")} win={win("rotate", "kk-panel rotbar enter")} />}
 
           {/* right: theme tuner */}
+          {panel === "camera" && (
+            <div {...win("camera", "kk-panel tunerbar cambar enter")} aria-label="Camera and post effects">
+              <PanelHead eyebrow={camTab === "camera" ? "Camera" : "Post effects"}>
+                <IconButton size="sm" icon="undo" label="Reset camera" onClick={() => setCam({ ...CAMERA_DEFAULT })} />
+                <IconButton size="sm" icon="close" label="Close camera" onClick={() => setPanel("material")} />
+              </PanelHead>
+              <Segmented
+                value={camTab}
+                onChange={setCamTab}
+                options={[
+                  { v: "camera", label: "Camera" },
+                  { v: "post", label: "Post" },
+                ]}
+              />
+              {camTab === "camera" ? (
+                <>
+                  <div className="kk-card">
+                    <span className="tlabel">PROJECTION</span>
+                    <Segmented
+                      value={cam.projection}
+                      onChange={(v) => setC({ projection: v })}
+                      options={[
+                        { v: "perspective", label: "Perspective", title: "Real lens: things further away get smaller" },
+                        { v: "isometric", label: "Isometric", title: "Orthographic, locked to the true isometric angle" },
+                        { v: "axonometric", label: "Axonometric", title: "Orthographic, orbit to any angle" },
+                      ]}
+                    />
+                    {cam.projection === "isometric" && (
+                      <div className="kk-row" style={{ gap: 6, marginTop: 8 }}>
+                        <button type="button" className="kk-pill kk-grow" onClick={() => setC({ isoTurn: (cam.isoTurn + 3) % 4 })}>
+                          <Icon name="undo" />
+                          Turn left
+                        </button>
+                        <button type="button" className="kk-pill kk-grow" onClick={() => setC({ isoTurn: (cam.isoTurn + 1) % 4 })}>
+                          <Icon name="undo" className="kk-flipx" />
+                          Turn right
+                        </button>
+                      </div>
+                    )}
+                    {cam.projection === "axonometric" && <p className="hint2">Parallel lines stay parallel — orbit freely to pick the angle.</p>}
+                  </div>
+                  <div className="kk-card" aria-disabled={cam.projection !== "perspective"} style={cam.projection !== "perspective" ? { opacity: 0.45, pointerEvents: "none" } : undefined}>
+                    <span className="tlabel">LENS</span>
+                    <div className="lens-grid">
+                      {[
+                    { f: 14, n: "Ultra wide" },
+                    { f: 24, n: "Wide" },
+                    { f: 35, n: "Street" },
+                    { f: 50, n: "Normal" },
+                    { f: 85, n: "Portrait" },
+                    { f: 135, n: "Tele" },
+                  ].map((l) => {
+                        const fov = (2 * Math.atan(12 / l.f) * 180) / Math.PI
+                        const on = Math.abs(cam.fov - fov) < 0.3
+                        return (
+                          <button key={l.f} type="button" className={`kk-pill lens ${on ? "is-on" : ""}`} title={l.n} onClick={() => setC({ fov: Math.round(fov * 10) / 10 })}>
+                            <b>{l.f}</b>mm
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <Field icon="eye" label="Field of view" value={cam.fov} min={8} max={110} step={0.5} format={(v) => `${Math.round(v)}° · ${Math.round(12 / Math.tan((v * Math.PI) / 360))}mm`} onChange={(v) => setC({ fov: v })} />
+                    <p className="hint2">The camera dollies as you change the lens, so the shape keeps its size — only the perspective changes.</p>
+                  </div>
+                  <div className="kk-card">
+                    <SwitchRow title="Floor grid" desc="A reference grid under the shape — handy if you get lost." on={showGrid} onChange={setShowGrid} />
+                  </div>
+                </>
+              ) : (
+                <div className="kk-card">
+                  <Caption title="Post effects" desc="Filters applied to the final image. Coming soon." />
+                  {["Bloom", "Vignette", "Film grain", "Chromatic aberration", "Depth of field", "Color grading"].map((n) => (
+                    <div key={n} className="post-row" aria-disabled="true">
+                      <span>{n}</span>
+                      <span className="post-soon">soon</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {panel === "theme" && (
             <div {...win("theme", "kk-panel tunerbar enter")} aria-label="Theme">
               <PanelHead eyebrow="Theme · Knopika">

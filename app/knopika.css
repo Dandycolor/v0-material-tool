@@ -779,3 +779,11 @@
 .geobar .gbtns .kk-ibtn:disabled{opacity:.35;pointer-events:none}
 .polya .brush-hint{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:inline-flex;align-items:center;gap:10px;padding:12px 18px;border-radius:var(--radius-pill);background:var(--ink);color:var(--paper);font:500 13px/1.2 var(--font-ui);pointer-events:none;opacity:.85;max-width:calc(100% - 32px);text-align:center}
 .polya .brush-hint .kk-icon{width:18px;height:18px;flex:none}
+/* Camera & post panel */
+.polya .lens-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0 10px}
+.polya .lens-grid .kk-pill.lens{justify-content:center;gap:1px;font-size:11px}
+.polya .lens-grid .kk-pill.lens b{font-size:13px;font-weight:700}
+.polya .post-row{display:flex;align-items:center;justify-content:space-between;padding:9px 2px;border-top:1px solid var(--panel-line);font:500 12px/1.2 var(--font-ui);opacity:.55}
+.polya .post-row:first-of-type{margin-top:8px}
+.polya .post-soon{font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:var(--radius-pill);background:var(--panel-line)}
+.polya .cambar{bottom:auto;max-height:calc(100% - 92px)}

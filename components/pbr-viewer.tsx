@@ -9,6 +9,7 @@ import { setTriplanar, triplanarMatcapShaders, triplanarMatcapUniforms } from "@
 import { extrudeAsync, flattenShape } from "@/lib/extrude/client"
 import { createBlob, BLOB_DEFAULT, type BlobSettings } from "@/lib/blob"
 import { BrushDrawer, BrushGeometry, useBrushDrawing } from "@/components/brush-drawer"
+import { AmbientOcclusion, AO_DEFAULT, renderFrame, type AOSettings } from "@/components/ambient-occlusion"
 import { SketchDrawer, SketchGeometry, useSketchDrawing } from "@/components/sketch-drawer"
 import { createLayeredMaterial, updateLayeredMaterial, type LayeredSettings } from "@/lib/layered-material"
 import { createTortoiseMaterial, updateTortoiseMaterial, type TortoiseSettings } from "@/lib/tortoise-material"
@@ -2529,7 +2530,7 @@ function SceneContent({
         // Non-glass: simple transparent export
         scene.background = null
         for (let i = 0; i < 3; i++) {
-          gl.render(scene, camera)
+          renderFrame(gl, scene, camera)
         }
         requestAnimationFrame(() => {
           const dataURL = gl.domElement.toDataURL("image/png")
@@ -2547,7 +2548,7 @@ function SceneContent({
         // Glass: render with background, then mask with shape
         // Step 1: Render with background for transmission effects
         for (let i = 0; i < 3; i++) {
-          gl.render(scene, camera)
+          renderFrame(gl, scene, camera)
         }
         
         requestAnimationFrame(() => {
@@ -2569,7 +2570,7 @@ function SceneContent({
               }
             })
             
-            gl.render(scene, camera)
+            renderFrame(gl, scene, camera)
             
             requestAnimationFrame(() => {
               const maskCanvas = document.createElement("canvas")
@@ -2926,6 +2927,7 @@ const PBRViewerInner = forwardRef<
   tortoiseSettings?: TortoiseSettings
   terrazzoSettings?: TerrazzoSettings
   cameraSettings?: CameraSettings
+  aoSettings?: AOSettings
   dotColor?: string
   showGrid?: boolean
   showRotateControls?: boolean
@@ -2949,7 +2951,7 @@ const PBRViewerInner = forwardRef<
   onGeometrySettingsChange?: (settings: Partial<GeometrySettings>) => void
   }
 >(function PBRViewer(
-  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, dotGrid, dotColor, layeredSettings, tortoiseSettings, terrazzoSettings, cameraSettings, showGrid, showRotateControls, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
+  { geometrySettings, materialSettings, lightingSettings, renderMode, matcapTexture, matcapHueShift, matcapSettings, backgroundColor, dotGrid, dotColor, layeredSettings, tortoiseSettings, terrazzoSettings, cameraSettings, aoSettings, showGrid, showRotateControls, gradientSettings, customMaterial, onModelLoadError, onGeometrySettingsChange },
   ref,
   ) {
   const exportFnRef = useRef<(() => void) | null>(null)
@@ -3036,6 +3038,7 @@ const PBRViewerInner = forwardRef<
           />
         </Suspense>
         <CameraRig cam={cameraSettings || CAMERA_DEFAULT} />
+        <AmbientOcclusion settings={aoSettings || AO_DEFAULT} />
         <ViewOrbit
           enabled={!showRotateControls}
           brushMode={geometrySettings.type === "sphere" && geometrySettings.primitiveType === "brush"}

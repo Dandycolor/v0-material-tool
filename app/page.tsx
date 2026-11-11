@@ -21,6 +21,7 @@ import { LAYERED_DEFAULT, LAYERED_PALETTES, type LayeredSettings } from "@/lib/l
 import { generateNormalMap } from "@/lib/procedural-normal"
 import { brush, useBrush } from "@/lib/brush/store"
 import { CAMERA_DEFAULT, type CameraSettings } from "@/components/pbr-viewer"
+import { AO_DEFAULT, type AOSettings } from "@/components/ambient-occlusion"
 import { MATCAP_LIGHT_DEFAULT, setMatcapLight, type MatcapLight } from "@/lib/matcap-light"
 import { sketch, useSketch } from "@/lib/sketch/store"
 import { TERRAZZO_DEFAULT, TERRAZZO_PRESETS, type TerrazzoSettings } from "@/lib/terrazzo-material"
@@ -919,6 +920,8 @@ export default function MaterialTool() {
   // Camera & post (post effects: placeholder tab for now)
   const [cam, setCam] = useState<CameraSettings>({ ...CAMERA_DEFAULT })
   const setC = (u: Partial<CameraSettings>) => setCam((p) => ({ ...p, ...u }))
+  const [ao, setAo] = useState<AOSettings>({ ...AO_DEFAULT })
+  const setA = (u: Partial<AOSettings>) => setAo((p) => ({ ...p, ...u }))
   const [camTab, setCamTab] = useState<"camera" | "post">("camera")
   const [showRotateControls, setShowRotateControls] = useState(false)
   
@@ -1617,6 +1620,7 @@ export default function MaterialTool() {
               dotColor={tv.vars["--on-ground-faint"]}
               showGrid={showGrid}
               cameraSettings={cam}
+              aoSettings={ao}
               showRotateControls={showRotateControls}
               gradientSettings={gradientSettings}
               customMaterial={customMaterial}
@@ -2289,6 +2293,16 @@ export default function MaterialTool() {
               <PanelHead eyebrow={renderMode === "matcap" || materialTypeTab === "layered" ? "Light · Matcap" : "Light · Environment"}>
                 <IconButton size="sm" icon="close" label="Close lighting" onClick={() => setPanel("material")} />
               </PanelHead>
+              <div className="kk-card">
+                <SwitchRow title="Ambient occlusion" desc="Darkens creases, recesses and contact points — windows, column feet, folds." on={ao.enabled} onChange={(v) => setA({ enabled: v })} />
+                {ao.enabled && (
+                  <>
+                    <Field icon="dial" label="Intensity" value={ao.intensity} min={0} max={6} step={0.05} onChange={(v) => setA({ intensity: v })} />
+                    <Field icon="circle" label="Radius" hint="How far the shadowing reaches" value={ao.radius} min={0.02} max={1.5} step={0.01} onChange={(v) => setA({ radius: v })} />
+                    <Field icon="drop" label="Softness" value={ao.falloff} min={0.1} max={2} step={0.01} onChange={(v) => setA({ falloff: v })} />
+                  </>
+                )}
+              </div>
               {renderMode === "matcap" || materialTypeTab === "layered" ? (
                 <>
                   <div className="kk-card">

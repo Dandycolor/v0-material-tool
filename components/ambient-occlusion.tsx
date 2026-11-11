@@ -48,9 +48,16 @@ function AOChain({ settings }: { settings: AOSettings }) {
     const ao = new N8AOPostPass(scene, camera, w, h)
     ao.configuration.gammaCorrection = false
     ao.configuration.halfRes = false
-    ao.configuration.aoSamples = 16
+    // clean, not grainy: more samples, a tight depth-aware denoise (a wide one smears grey blotches
+    // across texture detail), and temporal accumulation while the view is still → noise-free
+    ao.configuration.aoSamples = 32
     ao.configuration.denoiseSamples = 8
-    ao.configuration.denoiseRadius = 12
+    ao.configuration.denoiseRadius = 5
+    ao.configuration.denoiseIterations = 2
+    ao.configuration.accumulate = true
+    // ignore the tiny self-occlusion of bumpy surfaces (scans, normal-rich meshes) that reads as dirt
+    ao.configuration.biasOffset = 0.02
+    ao.configuration.biasMultiplier = 0.4
     composer.addPass(ao)
     // render the scene display-ready (tone mapped + sRGB, exactly like the normal path): three only
     // does that for the screen or an XR target, so the composer's buffers pose as one. The background

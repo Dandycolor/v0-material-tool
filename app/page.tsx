@@ -14,7 +14,7 @@ import { Icon, IconButton, Range, Field, Switch, SwitchRow, ColorField, Segmente
 import { LightRig } from "@/components/knopika/light-rig"
 import { usePanelDrag } from "@/components/knopika/drag"
 import { OrbitRig, RotatePanel } from "@/components/knopika/orbit-rig"
-import { THEME_DEFAULT, GROUNDS, TUNER_ROWS, FONTS_DISPLAY, FONTS_UI, fmtRow, themeVars, exportCss, exportJson, type KnopikaTheme } from "@/lib/knopika/theme"
+import { THEME_DEFAULT, GROUND_DEFAULT, GROUNDS, TUNER_ROWS, FONTS_DISPLAY, FONTS_UI, fmtRow, themeVars, exportCss, exportJson, type KnopikaTheme } from "@/lib/knopika/theme"
 import { WEIGHTS } from "@/lib/knopika/icons"
 import { BLOB_DEFAULT, type BlobSettings, type BlobBase } from "@/lib/blob"
 import { LAYERED_DEFAULT, LAYERED_PALETTES, type LayeredSettings } from "@/lib/layered-material"
@@ -917,7 +917,7 @@ export default function MaterialTool() {
   const [materialTypeTab, setMaterialTypeTab] = useState<"pbr" | "custom" | "gradient" | "matcap" | "layered">(
     selectedPreset === "custom" ? "custom" : "pbr"
   )
-  const [backgroundColor, setBackgroundColor] = useState("#9724f5") // Knopika "Violet" ground
+  const [backgroundColor, setBackgroundColor] = useState(GROUND_DEFAULT) // Knopika Block on near-black
   const [showGrid, setShowGrid] = useState(false)
   // Camera & post (post effects: placeholder tab for now)
   const [cam, setCam] = useState<CameraSettings>({ ...CAMERA_DEFAULT })
@@ -1386,7 +1386,7 @@ export default function MaterialTool() {
   useEffect(() => {
     try {
       const raw = localStorage.getItem("polya-knopika-theme")
-      if (raw) setTheme({ ...THEME_DEFAULT, ...JSON.parse(raw) })
+      if (raw) setTheme({ ...THEME_DEFAULT, ...JSON.parse(raw), style: "block" })
       const bg = localStorage.getItem("polya-knopika-ground")
       if (bg && /^#[0-9a-f]{6}$/i.test(bg)) setBackgroundColor(bg)
     } catch {}
@@ -1616,8 +1616,7 @@ export default function MaterialTool() {
   return (
     <IconWeightContext.Provider value={theme.iconWeight}>
       <div
-        className={`wrap polya ${tv.dark ? "kk-ground-dark" : ""} ${theme.style === "expressive" ? "kk-expressive" : ""} ${theme.style === "block" ? "kk-block" : ""} ${theme.caps ? "caps" : ""}`}
-        data-xp-shape={theme.shape}
+        className={`wrap polya ${tv.dark ? "kk-ground-dark" : ""} kk-block ${theme.caps ? "caps" : ""}`}
         ref={rootRef}
         style={tv.vars as React.CSSProperties}
       >
@@ -2597,34 +2596,6 @@ export default function MaterialTool() {
                   <Icon name="speaker" />
                   <Range ink label="Example slider" value={tDemo} min={0} max={100} onChange={setTDemo} />
                 </label>
-              </div>
-
-              <div className="kk-card">
-                <span className="tlabel">COMPONENT STYLE</span>
-                <Segmented
-                  value={theme.style}
-                  onChange={(v) => setT("style", v)}
-                  options={[
-                    { v: "classic", label: "Classic" },
-                    { v: "expressive", label: "Expressive" },
-                    { v: "block", label: "Block" },
-                  ]}
-                />
-                {theme.style === "expressive" && (
-                  <>
-                    <span className="tlabel">ACCENT SHAPE</span>
-                    <Segmented
-                      value={theme.shape}
-                      onChange={(v) => setT("shape", v)}
-                      options={[
-                        { v: "cookie", label: "Cookie" },
-                        { v: "sunny", label: "Sunny" },
-                        { v: "clover", label: "Clover" },
-                        { v: "squircle", label: "Squircle" },
-                      ]}
-                    />
-                  </>
-                )}
               </div>
 
               <div className="kk-card">

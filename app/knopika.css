@@ -182,9 +182,6 @@
 .kk-switch::after{content:"";position:absolute;left:3px;top:3px;width:14px;height:14px;border-radius:var(--radius-knob);background:var(--panel-muted);transition:transform .3s cubic-bezier(.34,1.45,.55,1),background-color .2s,width .2s,height .2s,top .2s,left .2s}
 .kk-switch[aria-pressed="true"]{background:var(--paper)}
 .kk-switch[aria-pressed="true"]::after{transform:translateX(16px);background:var(--ink)}
-.kk-expressive .kk-switch{width:46px;height:26px}
-.kk-expressive .kk-switch::after{left:6px;top:6px;width:14px;height:14px}
-.kk-expressive .kk-switch[aria-pressed="true"]::after{left:3px;top:3px;width:20px;height:20px;transform:translateX(20px)}
 .kk-block .kk-switch{border-radius:7px;width:40px;height:22px}
 .kk-block .kk-switch::after{border-radius:4px;width:16px;height:16px}
 .kk-block .kk-switch[aria-pressed="true"]{background:var(--blk-on,rgba(255,255,255,.15))}
@@ -212,82 +209,30 @@
 .kk-hex:focus-within{box-shadow:0 0 0 2px var(--paper)}
 .kk-block .kk-hex{background:var(--blk-sink,rgba(0,0,0,.3))}
 
-/* ===================== Knopika Expressive =====================
-   Включается классом kk-expressive на любом предке (обычно <html>).
-   Меняет только форму и поведение компонентов; цвета, темы и раскладка те же. */
+/* ===================== Range wrapper (shared) ===================== */
 .kk-rwrap{position:relative;display:block;flex:1 1 auto;min-width:0;width:100%;--fill:var(--paper)}
 .kk-rwrap:has(.kk-range--ink){--fill:var(--on-ground)}
 .kk-rwave{display:none}
-.kk-expressive{--xp-spring:cubic-bezier(.3,1.6,.5,1);--xp-pop:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22M12.00%202.70A4.45%204.45%200%200%201%2017.98%204.88A4.45%204.45%200%200%201%2021.16%2010.39A4.45%204.45%200%200%201%2020.05%2016.65A4.45%204.45%200%200%201%2015.18%2020.74A4.45%204.45%200%200%201%208.82%2020.74A4.45%204.45%200%200%201%203.95%2016.65A4.45%204.45%200%200%201%202.84%2010.39A4.45%204.45%200%200%201%206.02%204.88A4.45%204.45%200%200%201%2012.00%202.70z%22%2F%3E%3C%2Fsvg%3E")}
-.kk-expressive[data-xp-shape="sunny"]{--xp-pop:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22M12.00%201.80A2.47%202.47%200%200%201%2015.90%202.58A2.47%202.47%200%200%201%2019.21%204.79A2.47%202.47%200%200%201%2021.42%208.10A2.47%202.47%200%200%201%2022.20%2012.00A2.47%202.47%200%200%201%2021.42%2015.90A2.47%202.47%200%200%201%2019.21%2019.21A2.47%202.47%200%200%201%2015.90%2021.42A2.47%202.47%200%200%201%2012.00%2022.20A2.47%202.47%200%200%201%208.10%2021.42A2.47%202.47%200%200%201%204.79%2019.21A2.47%202.47%200%200%201%202.58%2015.90A2.47%202.47%200%200%201%201.80%2012.00A2.47%202.47%200%200%201%202.58%208.10A2.47%202.47%200%200%201%204.79%204.79A2.47%202.47%200%200%201%208.10%202.58A2.47%202.47%200%200%201%2012.00%201.80z%22%2F%3E%3C%2Fsvg%3E")}
-.kk-expressive[data-xp-shape="clover"]{--xp-pop:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%226.6%22%20r%3D%225.6%22%2F%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2217.4%22%20r%3D%225.6%22%2F%3E%3Ccircle%20cx%3D%226.6%22%20cy%3D%2212%22%20r%3D%225.6%22%2F%3E%3Ccircle%20cx%3D%2217.4%22%20cy%3D%2212%22%20r%3D%225.6%22%2F%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%2212%22%20r%3D%226%22%2F%3E%3C%2Fsvg%3E")}
 
 /* формы: квадрат со скруглением в покое, круг при нажатии и во включённом состоянии */
-.kk-expressive .kk-ibtn{border-radius:32%;transition:border-radius .4s var(--xp-spring),transform .4s var(--xp-spring),background-color .2s,color .2s}
-.kk-expressive .kk-ibtn:active{border-radius:50%;transform:scale(.88)}
-.kk-expressive .kk-ibtn.is-on,.kk-expressive .kk-ibtn[aria-pressed="true"]{border-radius:50%}
 
 /* таблетки крупнее, при нажатии «сжимаются» в прямоугольник */
-.kk-expressive .kk-pill{white-space:nowrap;height:calc(var(--control-sm) + 8px);padding:0 calc(var(--space-3) + 4px);font-size:12px;transition:border-radius .4s var(--xp-spring),transform .4s var(--xp-spring),background-color .2s,color .2s}
-.kk-expressive .kk-pill:active{border-radius:10px;transform:scale(.95)}
-.kk-expressive .kk-pill--wide{height:calc(var(--control-md) + 16px);border-radius:16px}
-.kk-expressive .kk-pill--wide:active{border-radius:999px}
-.kk-expressive .kk-pill--wide .kk-icon{width:calc(var(--icon-size) * 1.3);height:calc(var(--icon-size) * 1.3)}
 
 /* связанные группы кнопок (как connected button group в M3): сегменты равной ширины через 2px,
    внутренние углы --xp-inner (8px), концы группы круглые, выбранный сегмент целиком круглый, у таблетки — галочка */
-.kk-expressive .kk-btngroup{gap:2px!important;flex-wrap:nowrap!important}
-.kk-expressive .kk-btngroup:not(.kk-btngroup--v){display:flex}
-.kk-expressive .kk-btngroup:not(.kk-btngroup--v) > :is(.kk-ibtn,.kk-pill){flex:1 1 0;min-width:0;width:auto;height:calc(var(--control-sm) + 8px);padding:0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:var(--xp-inner,8px);transition:border-radius .45s var(--xp-spring),background-color .2s,color .2s}
-.kk-expressive .kk-btngroup:not(.kk-btngroup--v) > :first-child{border-top-left-radius:999px;border-bottom-left-radius:999px}
-.kk-expressive .kk-btngroup:not(.kk-btngroup--v) > :last-child{border-top-right-radius:999px;border-bottom-right-radius:999px}
-.kk-expressive .kk-btngroup:not(.kk-btngroup--v) > .kk-ibtn{min-width:calc(var(--control-sm) + 10px);padding:0}
-.kk-expressive .kk-btngroup > .is-on{border-radius:999px!important}
-.kk-expressive .kk-btngroup > .kk-pill.is-on::before{content:"";flex:none;width:14px;height:14px;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22M5%2012.5l4.5%204.5L19%207.5%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.6%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22M5%2012.5l4.5%204.5L19%207.5%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.6%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3C/svg%3E") center/contain no-repeat}
-.kk-expressive .kk-btngroup--v > :is(.kk-ibtn,.kk-pill){border-radius:var(--xp-inner,8px);transition:border-radius .45s var(--xp-spring),background-color .2s,color .2s}
-.kk-expressive .kk-btngroup--v > :first-child{border-top-left-radius:999px;border-top-right-radius:999px}
-.kk-expressive .kk-btngroup--v > :last-child{border-bottom-left-radius:999px;border-bottom-right-radius:999px}
-.kk-expressive .kk-btngroup:not(.kk-btngroup--v) > :is(.kk-ibtn,.kk-pill):active{border-radius:999px}
 
 /* акцентные круглые кнопки — фигуры из библиотеки форм, поворачиваются при наведении */
-.kk-expressive .kk-spark{border-radius:0;-webkit-mask:var(--xp-pop) center/100% 100% no-repeat;mask:var(--xp-pop) center/100% 100% no-repeat;transition:transform .5s var(--xp-spring),background-color .2s;width:calc(var(--control-lg) * .95);height:calc(var(--control-lg) * .95)}
-.kk-expressive[data-xp-shape="squircle"] .kk-spark{-webkit-mask:none;mask:none;border-radius:34%}
-.kk-expressive .kk-spark:hover{transform:rotate(30deg) scale(1.06)}
-.kk-expressive .kk-spark:active{transform:rotate(60deg) scale(.9)}
-.kk-expressive .kk-spark .kk-icon{transition:transform .5s var(--xp-spring)}
-.kk-expressive .kk-spark:hover .kk-icon{transform:rotate(-30deg)}
-.kk-expressive .kk-play{border-radius:30%;transition:border-radius .4s var(--xp-spring),transform .4s var(--xp-spring)}
-.kk-expressive .kk-play:active{border-radius:50%;transform:scale(.92)}
 
 /* образцы: выбранный морфится из круга в скруглённый квадрат */
-.kk-expressive .kk-swatch,.kk-expressive .bgdot{transition:border-radius .4s var(--xp-spring),transform .4s var(--xp-spring),box-shadow .2s}
-.kk-expressive .kk-swatch.is-on,.kk-expressive .bgdot.is-on{border-radius:30%;transform:scale(1.08)}
-.kk-expressive .kk-swatch:active{transform:scale(.85)}
-.kk-expressive .kk-pick{transition:transform .4s var(--xp-spring),color .2s}
-.kk-expressive .kk-pick.is-on{transform:scale(1.25) rotate(-8deg)}
 
 /* индикатор шагов: выбранный — вытянутая таблетка */
-.kk-expressive .kk-steps button{transition:width .4s var(--xp-spring),height .4s var(--xp-spring),border-radius .4s,background-color .2s;width:8px;height:8px}
-.kk-expressive .kk-steps button.is-on{width:26px;height:8px;border-radius:999px;background:var(--paper);box-shadow:none}
 
 /* ползунки: толстая дорожка, ручка-штрих с зазором, активная часть — волна */
-.kk-expressive .kk-range{height:30px;--gap:7px}
-.kk-expressive .kk-range::-webkit-slider-runnable-track{height:12px;border-radius:6px;background:linear-gradient(90deg,transparent calc(var(--p) + var(--gap)),var(--track) calc(var(--p) + var(--gap)))}
-.kk-expressive .kk-range::-moz-range-track{height:12px;border-radius:6px;background:linear-gradient(90deg,transparent calc(var(--p) + var(--gap)),var(--track) calc(var(--p) + var(--gap)))}
-.kk-expressive .kk-range::-webkit-slider-thumb{width:4px;height:26px;border-radius:2px;margin-top:-7px;background:var(--fill);transition:height .25s var(--xp-spring)}
-.kk-expressive .kk-range::-moz-range-thumb{width:4px;height:26px;border-radius:2px;background:var(--fill)}
-.kk-expressive .kk-range:active::-webkit-slider-thumb{height:30px;margin-top:-9px}
-.kk-expressive .kk-range--thick::-webkit-slider-thumb{box-shadow:none}
-.kk-expressive .kk-rwave{display:block;position:absolute;left:0;top:50%;height:12px;margin-top:-6px;width:max(0px,calc(var(--p) - var(--gap,7px) + 2px));background:var(--fill);-webkit-mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2014%2010%22%3E%3Cpath%20d%3D%22M0%205%20Q3.5%200.5%207%205%20T14%205%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E") repeat-x 0 50%/14px 12px;mask:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2014%2010%22%3E%3Cpath%20d%3D%22M0%205%20Q3.5%200.5%207%205%20T14%205%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%223%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E") repeat-x 0 50%/14px 12px;pointer-events:none;animation:kk-wave 1.4s linear infinite}
-.kk-expressive .kk-rwrap .kk-range{position:relative}
 @keyframes kk-wave{to{-webkit-mask-position:14px 50%;mask-position:14px 50%}}
 
 /* заголовки крупнее, таблетки на поле выше */
-.kk-expressive .kk-title{font-size:18px;letter-spacing:-.01em}
-.kk-expressive .kk-pillgroup{height:calc(var(--control-md) + 8px)}
 /* вложенная кнопка повторяет форму контейнера: в круглой таблетке — круг, в карте со скруглением — квадрат со скруглением */
-.kk-pillgroup .kk-ibtn,.kk-expressive .kk-pillgroup .kk-ibtn{border-radius:max(4px,min(50%,calc(var(--radius-pill) - 3px)))}
-@media (prefers-reduced-motion:reduce){.kk-expressive .kk-rwave{animation:none}}
+.kk-pillgroup .kk-ibtn{border-radius:max(4px,min(50%,calc(var(--radius-pill) - 3px)))}
 
 /* ===================== Knopika Block =====================
    Класс kk-block на корне. Мягкие серые плитки: ползунок — блок с подписью и заливкой,
@@ -565,7 +510,6 @@
 .matcard .kk-colorfield input[type=color]{width:30px;height:30px;border-radius:9px}
 .matcard .kk-colorfield input[type=color]::-webkit-color-swatch{border-radius:9px}
 .matcard .kk-colorfield > span:not(.kk-hex){font-size:12px}
-.kk-expressive #matModes ~ .kk-grow{display:none}
 
 /* ---------- adaptive ---------- */
 @media (max-width:1100px){
@@ -693,8 +637,6 @@
   .polya .matopen{top:auto;bottom:calc(124px + env(safe-area-inset-bottom,0px));transform:none}
   .polya .stage.src-open .geobar,.polya .stage.src-open .tray{opacity:0;pointer-events:none}
 }
-.polya.kk-expressive .tseg .kk-pill{padding:0 6px;font-size:10.5px}
-.polya.kk-expressive .tseg .kk-pill.is-on::before{width:11px;height:11px}
 .polya .tunerbar{width:288px}
 .polya .tunerbar .kk-select select{background:var(--panel)}
 .polya .tprev .kk-play{width:calc(var(--control-lg) * .8);height:calc(var(--control-lg) * .8)}

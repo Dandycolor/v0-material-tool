@@ -91,37 +91,38 @@ export interface KnopikaTheme {
   track: number // caps letter-spacing, 1/100 em
 }
 
-/* base style ("Violet", Classic) — the CSS + JSON export Sava picked as the main style */
+/* the one Pólya theme: Knopika "Block" on a near-black ground — the CSS + JSON export Sava picked */
 export const THEME_DEFAULT: KnopikaTheme = {
-  style: "classic",
-  shape: "cookie",
+  style: "block",
+  shape: "clover",
   tint: true,
   depth: 100,
   edge: 0,
   radiusSm: 7,
-  radiusMd: 18,
-  radiusLg: 10,
+  radiusMd: 22,
+  radiusLg: 26,
   radiusPill: 999,
-  radiusControl: 22,
-  radiusKnob: 15,
-  controlSm: 32,
-  controlMd: 40,
-  controlLg: 56,
-  knob: 16,
-  swatch: 26,
-  unit: 3,
-  gapBlock: 9,
-  padPanel: 17,
+  radiusControl: 29,
+  radiusKnob: 42,
+  controlSm: 36,
+  controlMd: 48,
+  controlLg: 54,
+  knob: 24,
+  swatch: 25,
+  unit: 6,
+  gapBlock: 14,
+  padPanel: 15,
   padCard: 18,
   gapRow: 14,
-  iconSize: 18,
-  iconWeight: 3,
-  panelScale: 85,
+  iconSize: 20,
+  iconWeight: 4,
+  panelScale: 82,
   display: "Helvetica",
   ui: "Helvetica",
   caps: false,
   track: 5,
 }
+export const GROUND_DEFAULT = "#0a0a0a"
 
 type NumKey = { [K in keyof KnopikaTheme]: KnopikaTheme[K] extends number ? K : never }[keyof KnopikaTheme]
 export interface TunerRow {
@@ -192,7 +193,7 @@ export const GOOGLE_FONTS_URL =
 export const GROUNDS = [
   { hex: "#9724f5", name: "Violet" },
   { hex: "#f6551f", name: "Field" },
-  { hex: "#0c0c0c", name: "Night" },
+  { hex: "#0a0a0a", name: "Night" },
   { hex: "#b3c2cd", name: "Fog" },
   { hex: "#f4f1ec", name: "Paper" },
   { hex: "#1b2626", name: "Pine" },
@@ -229,7 +230,7 @@ const COLOR_KEYS = ["ground", "ground-tint", "on-ground", "on-ground-faint", "gr
 
 export function exportCss(ground: string, t: KnopikaTheme) {
   const { vars } = themeVars(ground, t)
-  return `/* Knopika · style: ${t.style}${t.style === "expressive" ? ` · shape: ${t.shape}` : ""} */\n:root{\n${Object.entries(vars)
+  return `/* Knopika · style: block */\n:root{\n${Object.entries(vars)
     .map(([k, v]) => `  ${k}: ${v};`)
     .join("\n")}\n}\n`
 }

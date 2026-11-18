@@ -214,6 +214,12 @@ export function sizeVars(t: KnopikaTheme) {
   ;[1, 2, 3, 4, 6].forEach((n) => (o[`--space-${n}`] = `${t.unit * n}px`))
   o["--caps-track"] = `${t.track / 100}em`
   o["--panel-zoom"] = String((t.panelScale ?? 100) / 100)
+  // window-scoped copies of the px tokens, scaled and rounded to whole pixels (see knopika.css)
+  const z = (t.panelScale ?? 100) / 100
+  Object.keys(o).forEach((k) => {
+    const m = /^(-?\d+(?:\.\d+)?)px$/.exec(o[k])
+    if (m && k !== "--radius-pill") o[`--pz-${k.slice(2)}`] = `${Math.max(1, Math.round(parseFloat(m[1]) * z))}px`
+  })
   o["--edge"] = String(t.edge / 100)
   o["--font-display"] = `${FONTS_DISPLAY[t.display] || HSTACK}, system-ui, sans-serif`
   o["--font-ui"] = `${FONTS_UI[t.ui] || HSTACK}, system-ui, sans-serif`
@@ -231,6 +237,7 @@ const COLOR_KEYS = ["ground", "ground-tint", "on-ground", "on-ground-faint", "gr
 export function exportCss(ground: string, t: KnopikaTheme) {
   const { vars } = themeVars(ground, t)
   return `/* Knopika · style: block */\n:root{\n${Object.entries(vars)
+    .filter(([k]) => !k.startsWith("--pz-"))
     .map(([k, v]) => `  ${k}: ${v};`)
     .join("\n")}\n}\n`
 }
